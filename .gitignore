@@ -39,3 +39,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Rust / Tauri build artifacts
+/src-tauri/target/
+/src-tauri/gen/
+
+# SQLite databases
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
