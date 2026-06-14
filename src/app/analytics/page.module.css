@@ -1,0 +1,84 @@
+.chartArea {
+  min-height: 200px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.chartPlaceholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 200px;
+  gap: 8px;
+}
+
+.chartIcon {
+  font-size: 2rem;
+  opacity: 0.3;
+}
+
+.chartText {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.barChart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  width: 100%;
+  height: 200px;
+  padding-top: 8px;
+}
+
+.barColumn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+.bar {
+  width: 100%;
+  max-width: 24px;
+  border-radius: 4px 4px 0 0;
+  min-height: 4px;
+  transition: height var(--transition-slow);
+  animation: fadeInUp 0.5s ease-out backwards;
+}
+
+.barLabel {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-top: 4px;
+}
+
+.completionGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-lg);
+  padding: var(--space-md) 0;
+}
+
+.completionItem {
+  text-align: center;
+}
+
+.completionLabel {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-xs);
+}
+
+.completionValue {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--text-primary);
+}

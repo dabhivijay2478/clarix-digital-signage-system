@@ -16,6 +16,8 @@ pub struct Screen {
     pub power_on: bool,
     pub orientation: Orientation,
     pub group_id: Option<String>,
+    pub operating_hours: Option<serde_json::Value>,
+    pub playlist_id: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -36,6 +38,8 @@ impl Default for Screen {
             power_on: true,
             orientation: Orientation::Landscape,
             group_id: None,
+            operating_hours: None,
+            playlist_id: None,
             created_at: Utc::now(),
         }
     }
@@ -95,6 +99,7 @@ pub struct PlaylistItem {
     pub content_id: String,
     pub order: u32,
     pub override_duration: Option<u32>,
+    pub display_schedule: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -134,6 +139,7 @@ pub enum AppWeekday {
 
 // ── Analytics ───────────────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AnalyticsEvent {
     pub id: String,
@@ -144,6 +150,7 @@ pub struct AnalyticsEvent {
     pub dwell_secs: Option<f64>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum AnalyticsEventType {
     Impression,
