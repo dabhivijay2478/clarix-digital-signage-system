@@ -376,7 +376,7 @@ export default function PlayerPage() {
           <video
             src={src}
             autoPlay
-            muted
+            playsInline
             loop={playableItems.length === 1}
             className="relative z-10 w-full h-full object-contain mx-auto"
           />
@@ -422,10 +422,10 @@ export default function PlayerPage() {
   // ── RENDER SELECTOR SCREEN ────────────────────────────────────────────────
   if (!screenId) {
     return (
-      <div className="w-screen h-screen bg-gradient-to-br from-bg-primary via-[#0B0F19] to-bg-secondary flex flex-col items-center justify-center p-8 select-none">
-        <div className="max-w-md w-full bg-bg-secondary/40 backdrop-blur-[40px] border border-white/5 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center animate-fadeIn">
+      <div className="w-screen h-screen bg-linear-to-br from-bg-primary via-[#0B0F19] to-bg-secondary flex flex-col items-center justify-center p-8 select-none">
+        <div className="max-w-md w-full bg-bg-secondary/40 backdrop-blur-2xl border border-white/5 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center animate-fadeIn">
           {/* Logo anim */}
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center font-bold text-white shadow-[0_0_25px_rgba(99,102,241,0.5)] mb-6 animate-pulse">
+          <div className="w-16 h-16 rounded-2xl bg-linear-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center font-bold text-white shadow-[0_0_25px_rgba(99,102,241,0.5)] mb-6 animate-pulse">
             <span className="text-2xl">S</span>
           </div>
 

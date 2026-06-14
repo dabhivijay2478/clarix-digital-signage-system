@@ -150,7 +150,7 @@ export default function SettingsPage() {
               />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', maxWidth: '600px' }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-[600px]">
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <label className="input-label" style={{ fontWeight: '600', color: 'white' }}>App Icon</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>

@@ -27,11 +27,19 @@ export default function ContentPage() {
     const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
     setFormName(nameWithoutExt);
 
-    // Auto-detect type
-    if (file.type.startsWith('video/')) {
+    // Auto-detect type by mime-type and file extension
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    const isVideoOrAudio = file.type.startsWith('video/') || file.type.startsWith('audio/') || 
+      ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'mpg', 'mpeg', '3gp', 'ts', 'webm', 'm2v', 'm4v', 'mp3', 'wav', 'aac', 'flac', 'ogg', 'mid'].includes(ext || '');
+    const isImage = file.type.startsWith('image/') || 
+      ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp', 'svg', 'heic', 'heif'].includes(ext || '');
+
+    if (isVideoOrAudio) {
       setFormType('Video');
-    } else if (file.type.startsWith('image/')) {
+    } else if (isImage) {
       setFormType('Image');
+    } else {
+      setFormType('WebApp');
     }
   };
 
@@ -41,19 +49,22 @@ export default function ContentPage() {
       return;
     }
 
-    const needsFile = formType === 'Image' || formType === 'Video' || formType === 'Ad' || formType === 'Slideshow';
-    if (needsFile && !selectedFile) {
+    const isUploadType = formType === 'Image' || formType === 'Video' || formType === 'Ad' || formType === 'Slideshow';
+    const isWebType = formType === 'WebApp';
+
+    if (isUploadType && !selectedFile) {
       showToast('Please select a media file to upload', 'warning');
       return;
     }
 
-    if (formType === 'WebApp' && !formUrl.trim()) {
-      showToast('Please enter the WebApp URL', 'warning');
+    if (isWebType && !formUrl.trim() && !selectedFile) {
+      showToast('Please enter a WebApp URL or upload a local document (HTML, PDF, TXT, Excel)', 'warning');
       return;
     }
 
     try {
       let filePath: string | undefined = undefined;
+      const needsFile = isUploadType || (isWebType && selectedFile);
 
       if (needsFile && selectedFile) {
         showToast('Uploading local asset...', 'info');
@@ -96,7 +107,7 @@ export default function ContentPage() {
     }
   };
 
-  const isUploadType = formType === 'Image' || formType === 'Video' || formType === 'Ad' || formType === 'Slideshow';
+  const isUploadType = formType === 'Image' || formType === 'Video' || formType === 'Ad' || formType === 'Slideshow' || formType === 'WebApp';
 
   return (
     <div>
@@ -190,11 +201,13 @@ export default function ContentPage() {
 
           {isUploadType && (
             <div>
-              <label className="input-label">Media File (Image/Video) *</label>
+              <label className="input-label">
+                {formType === 'WebApp' ? 'Local Web/Document File (HTML, PDF, XLS, TXT, ZIP - Optional)' : 'Media File (Image/Video/Audio) *'}
+              </label>
               <div className="border-2 border-dashed border-white/10 rounded-xl p-6 text-center hover:border-accent-primary/50 transition-colors cursor-pointer relative bg-white/5">
                 <input
                   type="file"
-                  accept="image/*,video/*"
+                  accept="image/*,video/*,audio/*,.pdf,.html,.htm,.xhtml,.txt,.xls,.xlsx,.zip,.tar,.ar,.xml,.rss"
                   onChange={handleFileChange}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
@@ -211,8 +224,12 @@ export default function ContentPage() {
                     </div>
                   ) : (
                     <div>
-                      <p className="text-sm font-semibold text-white">Click or drag image/video file</p>
-                      <p className="text-xs text-text-secondary mt-1">Supports PNG, JPG, MP4, GIF</p>
+                      <p className="text-sm font-semibold text-white">Click or drag file here</p>
+                      <p className="text-xs text-text-secondary mt-1">
+                        {formType === 'WebApp' 
+                          ? 'Supports HTML, PDF, TXT, Excel (XLS/XLSX), XML/RSS, ZIP/TAR' 
+                          : 'Supports PNG, JPG, JPEG, BMP, WebP, SVG, MP4, AVI, MOV, MP3, WAV'}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -233,7 +250,7 @@ export default function ContentPage() {
 
           {formType === 'WebApp' && (
             <div>
-              <label className="input-label">WebApp URL *</label>
+              <label className="input-label">WebApp URL (Optional if file is uploaded)</label>
               <input
                 className="input"
                 placeholder="https://..."

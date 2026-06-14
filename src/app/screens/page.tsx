@@ -518,11 +518,11 @@ export default function ScreensPage() {
         )}
 
         {/* Split grid layout */}
-        <div style={{ display: 'grid', gridTemplateColumns: '12fr', gap: '24px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '7fr 5fr', alignItems: 'start', gap: '24px' }}>
+        <div className="w-full">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             
             {/* Left Column: Screen Playlist */}
-            <div className="glass-card-static" style={{ display: 'flex', flexDirection: 'column', gap: '16px', minHeight: '450px' }}>
+            <div className="glass-card-static lg:col-span-7 flex flex-col gap-4 min-h-[450px]">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '12px' }}>
                 <h3 style={{ margin: 0, color: 'white', fontSize: '16px', fontWeight: 600 }}>Screen Playlist Items</h3>
                 <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
@@ -675,7 +675,7 @@ export default function ScreensPage() {
             </div>
 
             {/* Right Column: Content Library */}
-            <div className="glass-card-static" style={{ display: 'flex', flexDirection: 'column', gap: '16px', minHeight: '450px' }}>
+            <div className="glass-card-static lg:col-span-5 flex flex-col gap-4 min-h-[450px]">
               <div style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '12px' }}>
                 <h3 style={{ margin: 0, color: 'white', fontSize: '16px', fontWeight: 600, marginBottom: '12px' }}>Content Library</h3>
                 <input
