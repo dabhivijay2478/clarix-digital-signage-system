@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { CircleStop, MonitorPlus, PlaySquare, Rows3 } from 'lucide-react'
+import { CircleStop, Monitor, PlaySquare, Rows3 } from 'lucide-react'
 import StatCard from '@/components/StatCard'
 import { showToast } from '@/components/Toast'
 import { Badge } from '@/components/ui/badge'
@@ -97,7 +97,7 @@ export default function DashboardPage() {
         <Card>
           <CardHeader><CardTitle>Quick Actions</CardTitle></CardHeader>
           <CardContent className="flex flex-wrap gap-3">
-            <Button onClick={() => router.push('/screens')}><MonitorPlus />Add Screen</Button>
+            <Button onClick={() => router.push('/screens')}><Monitor />Add Screen</Button>
             <Button variant="outline" onClick={() => router.push('/content')}><PlaySquare />Upload Content</Button>
             <Button variant="outline" onClick={() => router.push('/playlists')}><Rows3 />New Playlist</Button>
             <Tooltip><TooltipTrigger asChild><Button variant="destructive" onClick={handleEmergencyStop}><CircleStop />Emergency Stop</Button></TooltipTrigger><TooltipContent>Immediately powers off every registered screen</TooltipContent></Tooltip>

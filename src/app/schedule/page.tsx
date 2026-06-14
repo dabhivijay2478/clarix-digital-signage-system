@@ -1,273 +1,83 @@
-'use client';
+'use client'
 
-import { useState } from 'react';
-import { useSchedule } from '../../hooks/useSchedule';
-import ScheduleTimeline from '../../components/ScheduleTimeline';
-import Modal from '../../components/Modal';
-import { showToast } from '../../components/Toast';
-import type { AppWeekday } from '../../lib/types';
-import { useScreens } from '../../hooks/useScreens';
-import { usePlaylists } from '../../hooks/usePlaylists';
+import { useState } from 'react'
+import { CalendarClock } from 'lucide-react'
+import ScheduleTimeline from '@/components/ScheduleTimeline'
+import Modal from '@/components/Modal'
+import { showToast } from '@/components/Toast'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { usePlaylists } from '@/hooks/usePlaylists'
+import { useSchedule } from '@/hooks/useSchedule'
+import { useScreens } from '@/hooks/useScreens'
+import type { AppWeekday } from '@/lib/types'
 
-const ALL_DAYS: AppWeekday[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const ALL_DAYS: AppWeekday[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 export default function SchedulePage() {
-  const { slots, loading, addSlot, deleteSlot } = useSchedule();
-  const { screens } = useScreens();
-  const { playlists } = usePlaylists();
-  const [showAdd, setShowAdd] = useState(false);
-  const [formName, setFormName] = useState('');
-  const [formStart, setFormStart] = useState('09:00');
-  const [formDuration, setFormDuration] = useState('60');
-  const [formPriority, setFormPriority] = useState('1');
-  const [formDays, setFormDays] = useState<AppWeekday[]>(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
-  const [formScreenIds, setFormScreenIds] = useState<string[]>([]);
-  const [formPlaylistId, setFormPlaylistId] = useState<string>('');
-
-  const toggleDay = (day: AppWeekday) => {
-    setFormDays((prev) =>
-      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
-    );
-  };
+  const { slots, loading, addSlot, deleteSlot } = useSchedule()
+  const { screens } = useScreens()
+  const { playlists } = usePlaylists()
+  const [showAdd, setShowAdd] = useState(false)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [formName, setFormName] = useState('')
+  const [formStart, setFormStart] = useState('09:00')
+  const [formDuration, setFormDuration] = useState('60')
+  const [formPriority, setFormPriority] = useState('1')
+  const [formDays, setFormDays] = useState<AppWeekday[]>(['Mon', 'Tue', 'Wed', 'Thu', 'Fri'])
+  const [formScreenIds, setFormScreenIds] = useState<string[]>([])
+  const [formPlaylistId, setFormPlaylistId] = useState('')
 
   const handleAdd = async () => {
-    if (!formName.trim()) {
-      showToast('Please enter a slot name', 'error');
-      return;
-    }
-    if (!formPlaylistId) {
-      showToast('Please select a playlist', 'error');
-      return;
-    }
-    if (formScreenIds.length === 0) {
-      showToast('Please select at least one screen', 'error');
-      return;
-    }
+    if (!formName.trim()) return showToast('Please enter a slot name', 'error')
+    if (!formPlaylistId) return showToast('Please select a playlist', 'error')
+    if (!formScreenIds.length) return showToast('Please select at least one screen', 'error')
     try {
-      await addSlot(
-        formName,
-        formScreenIds,
-        formPlaylistId,
-        formStart,
-        parseInt(formDuration) || 60,
-        formDays,
-        parseInt(formPriority) || 1
-      );
-      showToast(`Schedule "${formName}" created`, 'success');
-      setShowAdd(false);
-      setFormName('');
-      setFormScreenIds([]);
-      setFormPlaylistId('');
+      await addSlot(formName, formScreenIds, formPlaylistId, formStart, parseInt(formDuration) || 60, formDays, parseInt(formPriority) || 1)
+      showToast(`Schedule "${formName}" created`, 'success')
+      setShowAdd(false); setFormName(''); setFormScreenIds([]); setFormPlaylistId('')
     } catch {
-      showToast('Failed to create schedule', 'error');
+      showToast('Failed to create schedule', 'error')
     }
-  };
-
+  }
   const handleDelete = async (id: string) => {
-    const slot = slots.find((s) => s.id === id);
-    if (confirm(`Delete schedule "${slot?.name}"?`)) {
-      await deleteSlot(id);
-      showToast('Schedule deleted', 'info');
-    }
-  };
+    await deleteSlot(id); setDeleteId(null); showToast('Schedule deleted', 'info')
+  }
 
   return (
-    <div>
-      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
-          <h1 className="page-title">Schedule</h1>
-          <p className="page-subtitle">
-            {slots.length} active slot{slots.length !== 1 ? 's' : ''}
-          </p>
-        </div>
-        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
-          + Add Slot
-        </button>
-      </div>
+    <div className="space-y-6">
+      <div className="page-header flex items-center justify-between"><div><h1 className="page-title">Schedule</h1><Badge variant="secondary">{slots.length} active slots</Badge></div><Button onClick={() => setShowAdd(true)}>+ Add Slot</Button></div>
+      {loading ? <Skeleton className="h-80" /> : <ScheduleTimeline slots={slots} onDelete={setDeleteId} />}
+      <section className="space-y-3">
+        <h2 className="section-title">Active Slots</h2>
+        {!slots.length ? <Card className="border-dashed bg-transparent"><CardContent className="flex flex-col items-center py-16 text-center"><CalendarClock className="mb-4 size-10 text-muted-foreground/40" /><CardTitle>No schedule slots</CardTitle><CardDescription>Create a slot to automate playback.</CardDescription></CardContent></Card> : slots.map((slot) => {
+          const playlist = playlists.find((entry) => entry.id === slot.playlist_id)
+          const assignedScreens = screens.filter((screen) => slot.screen_ids.includes(screen.id))
+          return <Card key={slot.id}><CardHeader className="flex flex-row items-start justify-between"><div><CardTitle className="text-base">{slot.name}</CardTitle><CardDescription>{slot.start_time} · {slot.duration_mins}min · Priority {slot.priority}</CardDescription></div><Button variant="ghost" size="sm" onClick={() => setDeleteId(slot.id)}>Delete</Button></CardHeader><CardContent className="flex flex-wrap gap-2"><Badge>{playlist?.name || 'Unknown Playlist'}</Badge>{assignedScreens.map((screen) => <Badge key={screen.id} variant="secondary">{screen.name}</Badge>)}{slot.days_of_week.map((day) => <Badge key={day} variant="outline">{day}</Badge>)}</CardContent></Card>
+        })}
+      </section>
 
-      {loading ? (
-        <div className="empty-state">
-          <div className="empty-state-icon" style={{ animation: 'spin 1s linear infinite' }}>◔</div>
-          <div className="empty-state-title">Loading schedule...</div>
-        </div>
-      ) : (
-        <>
-          <ScheduleTimeline slots={slots} onDelete={handleDelete} />
+      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete schedule slot?</AlertDialogTitle><AlertDialogDescription>This removes “{slots.find((slot) => slot.id === deleteId)?.name}”.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => deleteId && handleDelete(deleteId)}>Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
 
-          {/* Slot List */}
-          <div style={{ marginTop: '24px' }}>
-            <h2 className="section-title">Active Slots</h2>
-            {slots.length === 0 ? (
-              <div className="glass-card-static empty-state">
-                <div className="empty-state-icon">◔</div>
-                <div className="empty-state-title">No schedule slots</div>
-                <div className="empty-state-text">
-                  Create schedule slots to automate content playback on your screens.
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {slots.map((slot) => {
-                  const playlist = playlists.find((p) => p.id === slot.playlist_id);
-                  const assignedScreens = screens.filter((s) => slot.screen_ids.includes(s.id));
-                  return (
-                    <div
-                      key={slot.id}
-                      className="glass-card"
-                      style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <div>
-                          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {slot.name}
-                          </div>
-                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-                            {slot.start_time} • {slot.duration_mins}min • P{slot.priority}
-                          </div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                            Playlist: <span style={{ color: 'var(--accent-secondary)', fontWeight: 500 }}>{playlist ? playlist.name : 'Unknown Playlist'}</span> • 
-                            Screens: <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{assignedScreens.map((s) => s.name).join(', ') || 'No Screens'}</span>
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          {slot.days_of_week.map((d) => (
-                            <span key={d} className="badge badge-accent" style={{ fontSize: '10px', padding: '2px 6px' }}>
-                              {d}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => handleDelete(slot.id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* Add Schedule Modal */}
-      <Modal
-        isOpen={showAdd}
-        onClose={() => setShowAdd(false)}
-        title="Add Schedule Slot"
-        actions={
-          <>
-            <button className="btn btn-secondary" onClick={() => setShowAdd(false)}>
-              Cancel
-            </button>
-            <button className="btn btn-primary" onClick={handleAdd}>
-              Create
-            </button>
-          </>
-        }
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div>
-            <label className="input-label">Slot Name *</label>
-            <input
-              className="input"
-              placeholder="e.g., Morning Show"
-              value={formName}
-              onChange={(e) => setFormName(e.target.value)}
-              autoFocus
-            />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label className="input-label">Start Time</label>
-              <input
-                className="input"
-                type="time"
-                value={formStart}
-                onChange={(e) => setFormStart(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="input-label">Duration (minutes)</label>
-              <input
-                className="input"
-                type="number"
-                value={formDuration}
-                onChange={(e) => setFormDuration(e.target.value)}
-              />
-            </div>
-          </div>
-          <div>
-            <label className="input-label">Priority</label>
-            <input
-              className="input"
-              type="number"
-              min="1"
-              max="10"
-              value={formPriority}
-              onChange={(e) => setFormPriority(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="input-label">Playlist *</label>
-            <select
-              className="input"
-              value={formPlaylistId}
-              onChange={(e) => setFormPlaylistId(e.target.value)}
-              style={{ background: 'var(--bg-tertiary)', color: 'white', border: '1px solid rgba(255,255,255,0.1)' }}
-            >
-              <option value="" style={{ background: 'var(--bg-primary)' }}>-- Select Playlist --</option>
-              {playlists.map((pl) => (
-                <option key={pl.id} value={pl.id} style={{ background: 'var(--bg-primary)' }}>
-                  {pl.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="input-label">Target Screens *</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '120px', overflowY: 'auto', padding: '8px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', background: 'rgba(0,0,0,0.2)' }}>
-              {screens.map((screen) => (
-                <label key={screen.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', cursor: 'pointer', color: 'white' }}>
-                  <input
-                    type="checkbox"
-                    checked={formScreenIds.includes(screen.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setFormScreenIds((prev) => [...prev, screen.id]);
-                      } else {
-                        setFormScreenIds((prev) => prev.filter((id) => id !== screen.id));
-                      }
-                    }}
-                    style={{ width: '14px', height: '14px', accentColor: 'var(--accent-primary)' }}
-                  />
-                  {screen.name} {screen.location ? `(${screen.location})` : ''}
-                </label>
-              ))}
-              {screens.length === 0 && (
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>No screens registered yet. Go to Screens page first.</span>
-              )}
-            </div>
-          </div>
-          <div>
-            <label className="input-label">Days</label>
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-              {ALL_DAYS.map((day) => (
-                <button
-                  key={day}
-                  type="button"
-                  className={`btn btn-sm ${formDays.includes(day) ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => toggleDay(day)}
-                >
-                  {day}
-                </button>
-              ))}
-            </div>
-          </div>
+      <Modal isOpen={showAdd} onClose={() => setShowAdd(false)} title="Add Schedule Slot" actions={<><Button variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button><Button onClick={handleAdd}>Create</Button></>}>
+        <div className="space-y-4">
+          <div className="space-y-2"><Label htmlFor="slot-name">Slot Name *</Label><Input id="slot-name" value={formName} onChange={(event) => setFormName(event.target.value)} /></div>
+          <div className="grid grid-cols-2 gap-3"><div className="space-y-2"><Label htmlFor="slot-start">Start Time</Label><Input id="slot-start" type="time" value={formStart} onChange={(event) => setFormStart(event.target.value)} /></div><div className="space-y-2"><Label htmlFor="slot-duration">Duration (minutes)</Label><Input id="slot-duration" type="number" value={formDuration} onChange={(event) => setFormDuration(event.target.value)} /></div></div>
+          <div className="space-y-2"><Label htmlFor="slot-priority">Priority</Label><Input id="slot-priority" type="number" min="1" max="10" value={formPriority} onChange={(event) => setFormPriority(event.target.value)} /></div>
+          <div className="space-y-2"><Label>Playlist *</Label><Select value={formPlaylistId} onValueChange={setFormPlaylistId}><SelectTrigger><SelectValue placeholder="Select playlist" /></SelectTrigger><SelectContent>{playlists.map((playlist) => <SelectItem key={playlist.id} value={playlist.id}>{playlist.name}</SelectItem>)}</SelectContent></Select></div>
+          <div className="space-y-2"><Label>Target Screens *</Label><ScrollArea className="h-32 rounded-md border border-border p-3"><div className="space-y-3">{screens.map((screen) => <div key={screen.id} className="flex items-center gap-2"><Checkbox id={`screen-${screen.id}`} checked={formScreenIds.includes(screen.id)} onCheckedChange={(checked) => setFormScreenIds((current) => checked ? [...current, screen.id] : current.filter((id) => id !== screen.id))} /><Label htmlFor={`screen-${screen.id}`}>{screen.name}</Label></div>)}</div></ScrollArea></div>
+          <div className="space-y-2"><Label>Days</Label><ToggleGroup type="multiple" value={formDays} onValueChange={(values) => setFormDays(values as AppWeekday[])}>{ALL_DAYS.map((day) => <ToggleGroupItem key={day} value={day}>{day}</ToggleGroupItem>)}</ToggleGroup></div>
         </div>
       </Modal>
     </div>
-  );
+  )
 }

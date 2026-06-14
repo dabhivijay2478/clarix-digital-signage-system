@@ -25,10 +25,7 @@ function StatCard({ icon, value, label, trend, color = 'accent' }: StatCardProps
   const [displayValue, setDisplayValue] = useState(value)
 
   useEffect(() => {
-    if (typeof value !== 'number') {
-      setDisplayValue(value)
-      return
-    }
+    if (typeof value !== 'number') return
     const started = performance.now()
     let frame = 0
     const tick = (now: number) => {
@@ -47,7 +44,7 @@ function StatCard({ icon, value, label, trend, color = 'accent' }: StatCardProps
         <span className={cn('flex size-10 items-center justify-center rounded-xl bg-muted text-lg', colors[color])}>{icon}</span>
       </CardHeader>
       <CardContent className="flex items-baseline gap-2">
-        <span className={cn('text-3xl font-bold tracking-tight', colors[color])}>{displayValue}</span>
+        <span className={cn('text-3xl font-bold tracking-tight', colors[color])}>{typeof value === 'number' ? displayValue : value}</span>
         {trend && (
           <Badge variant="outline" className={trend.positive ? 'border-green-500/30 text-green-400' : 'border-red-500/30 text-red-400'}>
             {trend.positive ? '+' : '-'}{trend.value}%

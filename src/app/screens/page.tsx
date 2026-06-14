@@ -490,7 +490,7 @@ export default function ScreensPage() {
               <div>
                 <span style={{ fontWeight: 'bold' }}>Unsaved Playlist Changes</span>
                 <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  You have modified this screen's playlist. Remember to save to apply updates.
+                  You have modified this screen&apos;s playlist. Remember to save to apply updates.
                 </p>
               </div>
             </div>

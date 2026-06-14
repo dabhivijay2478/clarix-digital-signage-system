@@ -6,6 +6,14 @@ import { useContent } from '../../hooks/useContent';
 import PlaylistEditor from '../../components/PlaylistEditor';
 import Modal from '../../components/Modal';
 import { showToast } from '../../components/Toast';
+import { X } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function PlaylistsPage() {
   const { playlists, loading, createPlaylist, updateItems, deletePlaylist } = usePlaylists();
@@ -14,6 +22,7 @@ export default function PlaylistsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [formName, setFormName] = useState('');
   const [formTransition, setFormTransition] = useState('Fade');
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const selectedPlaylist = playlists.find((p) => p.id === selectedId);
 
@@ -40,86 +49,46 @@ export default function PlaylistsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    const pl = playlists.find((p) => p.id === id);
-    if (confirm(`Delete playlist "${pl?.name}"?`)) {
-      await deletePlaylist(id);
-      if (selectedId === id) setSelectedId(null);
-      showToast('Playlist deleted', 'info');
-    }
+    await deletePlaylist(id);
+    if (selectedId === id) setSelectedId(null);
+    setDeleteId(null);
+    showToast('Playlist deleted', 'info');
   };
 
   return (
     <div>
-      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="page-header flex items-center justify-between">
         <div>
           <h1 className="page-title">Playlists</h1>
           <p className="page-subtitle">
             {playlists.length} playlist{playlists.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-          + New Playlist
-        </button>
+        <Button onClick={() => setShowCreate(true)}>+ New Playlist</Button>
       </div>
 
       {loading ? (
-        <div className="empty-state">
-          <div className="empty-state-icon" style={{ animation: 'spin 1s linear infinite' }}>◔</div>
-          <div className="empty-state-title">Loading playlists...</div>
-        </div>
+        <Skeleton className="h-[500px] w-full" />
       ) : (
-        <div style={{ display: 'flex', gap: '24px' }}>
+        <div className="flex gap-6">
           {/* Playlist List */}
-          <div style={{ width: '280px', flexShrink: 0 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div className="w-[280px] shrink-0">
+            <div className="flex flex-col gap-1">
               {playlists.map((pl) => (
-                <div
-                  key={pl.id}
-                  onClick={() => setSelectedId(pl.id)}
-                  style={{
-                    padding: '12px 16px',
-                    background: selectedId === pl.id ? 'rgba(99, 102, 241, 0.1)' : 'var(--glass-bg)',
-                    border: `1px solid ${selectedId === pl.id ? 'var(--border-accent)' : 'var(--glass-border)'}`,
-                    borderRadius: 'var(--radius-md)',
-                    cursor: 'pointer',
-                    transition: 'all var(--transition-fast)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text-primary)' }}>
-                      {pl.name}
-                    </div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-                      {pl.items.length} items • {pl.transition}
-                    </div>
-                  </div>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(pl.id);
-                    }}
-                    style={{ fontSize: '10px', padding: '4px 8px' }}
-                  >
-                    ✕
-                  </button>
+                <div key={pl.id} className="group relative">
+                  <Button variant={selectedId === pl.id ? 'secondary' : 'ghost'} className="h-auto w-full justify-start py-3 pr-10 text-left" onClick={() => setSelectedId(pl.id)}><span><span className="block font-semibold">{pl.name}</span><span className="block text-xs text-muted-foreground">{pl.items.length} items · {pl.transition}</span></span></Button>
+                  <Button aria-label={`Delete ${pl.name}`} variant="ghost" size="icon-sm" className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100" onClick={() => setDeleteId(pl.id)}><X /></Button>
                 </div>
               ))}
 
               {playlists.length === 0 && (
-                <div className="empty-state" style={{ padding: '32px 16px' }}>
-                  <div className="empty-state-icon">☰</div>
-                  <div className="empty-state-title">No playlists</div>
-                </div>
+                <Card className="border-dashed bg-transparent"><CardContent className="py-12 text-center text-sm text-muted-foreground">No playlists</CardContent></Card>
               )}
             </div>
           </div>
 
           {/* Playlist Editor */}
-          <div style={{ flex: 1 }}>
+          <div className="min-w-0 flex-1">
             {selectedPlaylist ? (
               <PlaylistEditor
                 playlist={selectedPlaylist}
@@ -127,17 +96,13 @@ export default function PlaylistsPage() {
                 onUpdateItems={handleUpdateItems}
               />
             ) : (
-              <div className="glass-card-static empty-state" style={{ minHeight: '400px' }}>
-                <div className="empty-state-icon">☰</div>
-                <div className="empty-state-title">Select a playlist to edit</div>
-                <div className="empty-state-text">
-                  Choose a playlist from the list or create a new one
-                </div>
-              </div>
+              <Card className="min-h-[400px] border-dashed bg-transparent"><CardContent className="flex min-h-[400px] items-center justify-center text-muted-foreground">Select a playlist to edit</CardContent></Card>
             )}
           </div>
         </div>
       )}
+
+      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete playlist?</AlertDialogTitle><AlertDialogDescription>This permanently removes “{playlists.find((playlist) => playlist.id === deleteId)?.name}”.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => deleteId && handleDelete(deleteId)}>Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
 
       {/* Create Playlist Modal */}
       <Modal
@@ -146,38 +111,23 @@ export default function PlaylistsPage() {
         title="New Playlist"
         actions={
           <>
-            <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>
-              Cancel
-            </button>
-            <button className="btn btn-primary" onClick={handleCreate}>
-              Create
-            </button>
+            <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
+            <Button onClick={handleCreate}>Create</Button>
           </>
         }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div>
-            <label className="input-label">Playlist Name *</label>
-            <input
-              className="input"
+        <div className="flex flex-col gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="playlist-name">Playlist Name *</Label>
+            <Input id="playlist-name"
               placeholder="e.g., Morning Rotation"
               value={formName}
               onChange={(e) => setFormName(e.target.value)}
-              autoFocus
             />
           </div>
-          <div>
-            <label className="input-label">Transition Effect</label>
-            <select
-              className="select"
-              value={formTransition}
-              onChange={(e) => setFormTransition(e.target.value)}
-            >
-              <option value="None">None</option>
-              <option value="Fade">Fade</option>
-              <option value="Slide">Slide</option>
-              <option value="Zoom">Zoom</option>
-            </select>
+          <div className="space-y-2">
+            <Label>Transition Effect</Label>
+            <Select value={formTransition} onValueChange={setFormTransition}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{['None', 'Fade', 'Slide', 'Zoom'].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select>
           </div>
         </div>
       </Modal>

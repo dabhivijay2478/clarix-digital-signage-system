@@ -911,6 +911,15 @@ a:hover {
   animation: zoomTransition 1.0s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .stagger > *,
+  .transition-fade,
+  .transition-slide,
+  .transition-zoom {
+    animation: none;
+  }
+}
+
 @keyframes fadeTransition {
   from { opacity: 0; }
   to { opacity: 1; }

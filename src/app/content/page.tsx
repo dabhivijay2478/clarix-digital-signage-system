@@ -5,6 +5,15 @@ import { useContent } from '../../hooks/useContent';
 import ContentCard from '../../components/ContentCard';
 import Modal from '../../components/Modal';
 import { showToast } from '../../components/Toast';
+import { LayoutGrid, Search } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const contentTypes = ['Image', 'Video', 'WebApp', 'Ad', 'Slideshow'];
 
@@ -17,6 +26,7 @@ export default function ContentPage() {
   const [formDuration, setFormDuration] = useState('30');
   const [formTags, setFormTags] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -100,65 +110,44 @@ export default function ContentPage() {
   };
 
   const handleDelete = async (id: string) => {
-    const item = items.find((i) => i.id === id);
-    if (confirm(`Delete "${item?.name}"?`)) {
-      await deleteItem(id);
-      showToast('Content deleted', 'info');
-    }
+    await deleteItem(id);
+    showToast('Content deleted', 'info');
+    setDeleteId(null);
   };
 
   const isUploadType = formType === 'Image' || formType === 'Video' || formType === 'Ad' || formType === 'Slideshow' || formType === 'WebApp';
 
   return (
     <div>
-      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="page-header flex items-center justify-between gap-4">
         <div>
           <h1 className="page-title">Content Library</h1>
-          <p className="page-subtitle">
-            {items.length} item{items.length !== 1 ? 's' : ''}
-          </p>
+          <Badge variant="secondary">{items.length} item{items.length !== 1 ? 's' : ''}</Badge>
         </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <input
-            className="input"
+        <div className="flex items-center gap-2">
+          <div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input
+            className="w-60 pl-9"
             placeholder="Search content..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ width: '240px' }}
-          />
-          <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
-            + Add Content
-          </button>
+          /></div>
+          <Button onClick={() => setShowAdd(true)}>+ Add Content</Button>
         </div>
       </div>
 
       {loading ? (
-        <div className="empty-state">
-          <div className="empty-state-icon" style={{ animation: 'spin 1s linear infinite' }}>◔</div>
-          <div className="empty-state-title">Loading content...</div>
-        </div>
+        <div aria-busy="true" className="grid-auto">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-72" />)}</div>
       ) : items.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-state-icon">◧</div>
-          <div className="empty-state-title">No content yet</div>
-          <div className="empty-state-text">
-            Upload videos, images, ads, and web apps to your local content library.
-          </div>
-          <button
-            className="btn btn-primary"
-            style={{ marginTop: '16px' }}
-            onClick={() => setShowAdd(true)}
-          >
-            + Add Content
-          </button>
-        </div>
+        <Card className="border-dashed bg-transparent"><CardContent className="flex flex-col items-center py-16 text-center"><LayoutGrid className="mb-4 size-12 text-muted-foreground/40" /><CardTitle>No content yet</CardTitle><CardDescription className="mt-1">Upload videos, images, ads, and web apps to your local content library.</CardDescription><Button className="mt-6" onClick={() => setShowAdd(true)}>+ Add Content</Button></CardContent></Card>
       ) : (
         <div className="grid-auto stagger">
-          {items.map((item) => (
-            <ContentCard key={item.id} item={item} onDelete={handleDelete} />
-          ))}
+          {items.map((item) => <ContentCard key={item.id} item={item} onDelete={setDeleteId} />)}
         </div>
       )}
+
+      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete content?</AlertDialogTitle><AlertDialogDescription>This permanently removes “{items.find((item) => item.id === deleteId)?.name}”.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => deleteId && handleDelete(deleteId)}>Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+      </AlertDialog>
 
       {/* Add Content Modal */}
       <Modal
@@ -170,41 +159,35 @@ export default function ContentPage() {
         title="Add Content"
         actions={
           <>
-            <button className="btn btn-secondary" onClick={() => {
+            <Button variant="outline" onClick={() => {
               setShowAdd(false);
               setSelectedFile(null);
             }}>
               Cancel
-            </button>
-            <button className="btn btn-primary" onClick={handleAdd}>
+            </Button>
+            <Button onClick={handleAdd}>
               Add Content
-            </button>
+            </Button>
           </>
         }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div>
-            <label className="input-label">Content Type</label>
-            <select
-              className="select"
-              value={formType}
-              onChange={(e) => {
-                setFormType(e.target.value);
+        <div className="flex flex-col gap-4">
+          <div className="space-y-2">
+            <Label>Content Type</Label>
+            <Select value={formType} onValueChange={(value) => {
+                setFormType(value);
                 setSelectedFile(null);
-              }}
-            >
-              {contentTypes.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
+              }}>
+              <SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{contentTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+            </Select>
           </div>
 
           {isUploadType && (
             <div>
-              <label className="input-label">
+              <Label>
                 {formType === 'WebApp' ? 'Local Web/Document File (HTML, PDF, XLS, TXT, ZIP - Optional)' : 'Media File (Image/Video/Audio) *'}
-              </label>
-              <div className="border-2 border-dashed border-white/10 rounded-xl p-6 text-center hover:border-accent-primary/50 transition-colors cursor-pointer relative bg-white/5">
+              </Label>
+              <div className="relative mt-2 cursor-pointer rounded-xl border-2 border-dashed border-zinc-700 bg-zinc-900/50 p-6 text-center hover:border-primary/50">
                 <input
                   type="file"
                   accept="image/*,video/*,audio/*,.pdf,.html,.htm,.xhtml,.txt,.xls,.xlsx,.zip,.tar,.ar,.xml,.rss"
@@ -238,21 +221,18 @@ export default function ContentPage() {
           )}
 
           <div>
-            <label className="input-label">Content Name *</label>
-            <input
-              className="input"
+            <Label htmlFor="content-name">Content Name *</Label>
+            <Input id="content-name"
               placeholder="e.g., Welcome Video"
               value={formName}
               onChange={(e) => setFormName(e.target.value)}
-              autoFocus
             />
           </div>
 
           {formType === 'WebApp' && (
             <div>
-              <label className="input-label">WebApp URL (Optional if file is uploaded)</label>
-              <input
-                className="input"
+              <Label htmlFor="content-url">WebApp URL (Optional if file is uploaded)</Label>
+              <Input id="content-url"
                 placeholder="https://..."
                 value={formUrl}
                 onChange={(e) => setFormUrl(e.target.value)}
@@ -261,9 +241,8 @@ export default function ContentPage() {
           )}
 
           <div>
-            <label className="input-label">Duration (seconds)</label>
-            <input
-              className="input"
+            <Label htmlFor="content-duration">Duration (seconds)</Label>
+            <Input id="content-duration"
               type="number"
               placeholder="30"
               value={formDuration}
@@ -272,9 +251,8 @@ export default function ContentPage() {
           </div>
 
           <div>
-            <label className="input-label">Tags (comma-separated)</label>
-            <input
-              className="input"
+            <Label htmlFor="content-tags">Tags (comma-separated)</Label>
+            <Input id="content-tags"
               placeholder="promo, welcome, lobby"
               value={formTags}
               onChange={(e) => setFormTags(e.target.value)}
