@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import AppLayoutWrapper from "../components/AppLayoutWrapper";
-import ToastContainer from "../components/Toast";
+import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 export const metadata: Metadata = {
   title: "SignalOS — Digital Signage Management",
@@ -25,8 +26,10 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <AppLayoutWrapper>{children}</AppLayoutWrapper>
-        <ToastContainer />
+        <TooltipProvider>
+          <AppLayoutWrapper>{children}</AppLayoutWrapper>
+          <Toaster position="top-right" theme="dark" richColors />
+        </TooltipProvider>
       </body>
     </html>
   );
