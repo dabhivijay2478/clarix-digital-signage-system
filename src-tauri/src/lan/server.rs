@@ -2,9 +2,8 @@ use std::{collections::HashMap, convert::Infallible, path::{Path as FsPath, Path
 
 use axum::{
     body::Body,
-    extract::{Path, Query, Request, State},
-    http::{header::{ACCESS_CONTROL_ALLOW_ORIGIN, HOST, ORIGIN, VARY}, HeaderMap, StatusCode},
-    middleware::{self, Next},
+    extract::{Path, Query, State},
+    http::{HeaderMap, StatusCode},
     response::{Response, sse::{Event, KeepAlive, Sse}},
     routing::{get, post},
     Json, Router,
@@ -15,7 +14,7 @@ use rusqlite::params;
 use sha2::{Digest, Sha256};
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
-use tower_http::services::{ServeDir, ServeFile};
+use tower_http::{cors::CorsLayer, services::{ServeDir, ServeFile}};
 
 use crate::{
     db::{self, DbPool},
@@ -101,7 +100,7 @@ pub async fn start_controller_server(
         .route("/api/content", get(read_content))
         .route("/api/schedule", get(read_schedule))
         .route("/media/{filename}", get(legacy_media))
-        .layer(middleware::from_fn(same_host_read_cors));
+        .layer(CorsLayer::permissive());
 
     let router = Router::new()
         .route("/v1/health", get(health))
@@ -128,23 +127,8 @@ pub async fn start_controller_server(
     Ok(port)
 }
 
-async fn same_host_read_cors(request: Request, next: Next) -> Response {
-    let allowed_origin = request.headers().get(ORIGIN).cloned().filter(|_| is_same_host_origin(request.headers()));
-    let mut response = next.run(request).await;
-    if let Some(origin) = allowed_origin {
-        response.headers_mut().insert(ACCESS_CONTROL_ALLOW_ORIGIN, origin);
-        response.headers_mut().insert(VARY, "Origin".parse().expect("valid Vary header"));
-    }
-    response
-}
-
-fn is_same_host_origin(headers: &HeaderMap) -> bool {
-    let Some(origin) = headers.get(ORIGIN).and_then(|origin| origin.to_str().ok()) else { return false };
-    let Some(request_host) = headers.get(HOST).and_then(|host| host.to_str().ok()) else { return false };
-    let Ok(origin_url) = reqwest::Url::parse(origin) else { return false };
-    let Ok(request_url) = reqwest::Url::parse(&format!("http://{request_host}")) else { return false };
-    origin_url.host_str() == request_url.host_str()
-}
+// CORS is handled by tower_http::cors::CorsLayer::permissive() on the browser_routes group.
+// This allows all origins, methods, and headers — including proper OPTIONS preflight handling.
 
 async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
