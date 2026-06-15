@@ -313,6 +313,15 @@ export default function ScreensPage() {
   const handleSync = async (id: string) => {
     const screen = screens.find((s) => s.id === id);
     if (!screen) return;
+
+    // Check online status before running sync (handles custom port matching as well)
+    const ip = screen.ip_address;
+    const isOnline = screen.is_online || (ip ? peers.some(p => p.ip === ip || ip.startsWith(p.ip + ':') || ip === p.ip) : false);
+    if (!isOnline) {
+      const confirmSync = confirm(`Screen "${screen.name}" appears to be offline. Would you like to try syncing anyway?`);
+      if (!confirmSync) return;
+    }
+
     setSyncingScreenIds((prev) => [...prev, id]);
     showToast(`Syncing database & files to "${screen.name}"...`, 'info');
     try {
@@ -320,7 +329,15 @@ export default function ScreensPage() {
       await lanApi.syncScreenData(id);
       showToast(`Screen "${screen.name}" synced successfully!`, 'success');
     } catch (err) {
-      showToast(`Sync failed: ${err}`, 'error');
+      const errStr = String(err);
+      if (errStr.includes("Failed to connect to screen") || errStr.includes("error sending request") || errStr.includes("ConnectError")) {
+        showToast(
+          `Sync failed: Screen "${screen.name}" (${screen.ip_address || 'No IP'}) is unreachable. Make sure the Screen Player app is running and both devices are on the same Wi-Fi.`,
+          'error'
+        );
+      } else {
+        showToast(`Sync failed: ${err}`, 'error');
+      }
     } finally {
       setSyncingScreenIds((prev) => prev.filter((sid) => sid !== id));
     }
