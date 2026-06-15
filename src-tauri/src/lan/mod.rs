@@ -123,7 +123,12 @@ pub async fn ping_screen_ip(ip: &str, port: u16) -> bool {
     use tokio::net::TcpStream;
     use std::time::Duration;
 
-    let addr = format!("{}:{}", ip, port);
+    let addr = if ip.contains(':') {
+        ip.to_string()
+    } else {
+        format!("{}:{}", ip, port)
+    };
+
     match tokio::time::timeout(Duration::from_millis(500), TcpStream::connect(&addr)).await {
         Ok(Ok(_)) => true,
         _ => false,

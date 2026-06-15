@@ -20,12 +20,19 @@ pub async fn start_lan_server(
     scheduler: Arc<crate::scheduler::SchedulerState>,
     lan_state: crate::lan::LanDiscoveryState,
 ) -> Result<u16, anyhow::Error> {
-    // Try to bind to port 7420 first, then search upwards
-    let mut port = 7420;
+    // Try to bind to SIGNALOS_PORT environment variable if specified, otherwise default to 7420
+    let custom_port = std::env::var("SIGNALOS_PORT")
+        .ok()
+        .and_then(|v| v.parse::<u16>().ok());
+
+    let mut port = custom_port.unwrap_or(7420);
     let listener = loop {
         match TcpListener::bind(format!("0.0.0.0:{}", port)).await {
             Ok(l) => break l,
-            Err(_) => {
+            Err(e) => {
+                if custom_port.is_some() {
+                    return Err(anyhow::anyhow!("Could not bind to specified SIGNALOS_PORT {}: {}", port, e));
+                }
                 port += 1;
                 if port > 7450 {
                     return Err(anyhow::anyhow!("No free ports available in range 7420-7450"));

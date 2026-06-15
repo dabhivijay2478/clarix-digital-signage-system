@@ -94,18 +94,39 @@ pub async fn sync_screen_data_impl(
         Ok::<_, String>(ip)
     }).await.map_err(|e| e.to_string())??;
 
-    let ip = match screen_ip {
+    let screen_ip_raw = match screen_ip {
         Some(ip) => ip,
         None => return Err("Screen does not have an IP address".to_string()),
     };
 
-    // Find the port of this screen from the discovered peers
-    let peers = lan_state.read().await.get_peers().await;
-    let port = peers
-        .iter()
-        .find(|p| p.ip == ip)
-        .map(|p| p.port)
-        .unwrap_or(7420);
+    // Parse port if specified in the IP address (e.g., "192.168.3.169:6820")
+    let (ip, port) = if screen_ip_raw.contains(':') {
+        let parts: Vec<&str> = screen_ip_raw.split(':').collect();
+        if parts.len() == 2 {
+            let parsed_port = parts[1].parse::<u16>().map_err(|_| "Invalid port in IP address".to_string())?;
+            (parts[0].to_string(), parsed_port)
+        } else {
+            (screen_ip_raw, 7420)
+        }
+    } else {
+        // Find the port of this screen from the discovered peers
+        let peers = lan_state.read().await.get_peers().await;
+        if let Some(p) = peers.iter().find(|p| p.ip == screen_ip_raw) {
+            (screen_ip_raw, p.port)
+        } else {
+            // Screen is not in peer list (e.g. mDNS blocked on office Wi-Fi).
+            // Let's probe the screen IP on ports 7420-7425 to find which one is active!
+            let mut active_port = 7420;
+            for test_port in 7420..=7425 {
+                if crate::lan::ping_screen_ip(&screen_ip_raw, test_port).await {
+                    active_port = test_port;
+                    tracing::info!("Found active screen server on {}:{}", screen_ip_raw, active_port);
+                    break;
+                }
+            }
+            (screen_ip_raw, active_port)
+        }
+    };
 
     // Fetch the sync payload from the local DB
     let pool_clone2 = pool.clone();
