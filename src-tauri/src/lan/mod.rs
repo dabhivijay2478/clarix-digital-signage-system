@@ -15,7 +15,7 @@ const SERVICE_TYPE: &str = "_signalos._tcp.local.";
 pub fn resolve_local_private_ip() -> anyhow::Result<String> {
     use std::net::IpAddr;
 
-    let interfaces = local_ip_address::list_af_inet_net_interfaces()
+    let interfaces = local_ip_address::list_afinet_netifas()
         .map_err(|e| anyhow::anyhow!("Failed to list net interfaces: {}", e))?;
 
     let mut candidates = Vec::new();
