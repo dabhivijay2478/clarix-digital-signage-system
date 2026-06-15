@@ -8,6 +8,60 @@ pub mod server;
 
 const SERVICE_TYPE: &str = "_signalos._tcp.local.";
 
+/// Resolve the local private IP address.
+/// Instead of using local_ip_address::local_ip() which can connect to 8.8.8.8 and return public WAN/NAT IPs
+/// (like 152.59.5.8), this function iterates through all network interfaces and selects a private IPv4 address
+/// (10.x.x.x, 192.168.x.x, 172.16.x.x) on the main network interface (Wi-Fi, Ethernet).
+pub fn resolve_local_private_ip() -> anyhow::Result<String> {
+    use std::net::IpAddr;
+
+    let interfaces = local_ip_address::list_af_inet_net_interfaces()
+        .map_err(|e| anyhow::anyhow!("Failed to list net interfaces: {}", e))?;
+
+    let mut candidates = Vec::new();
+
+    for (name, ip) in interfaces {
+        if let IpAddr::V4(ipv4) = ip {
+            let octets = ipv4.octets();
+            let is_private = (octets[0] == 10)
+                || (octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31)
+                || (octets[0] == 192 && octets[1] == 168);
+
+            if is_private && !ipv4.is_loopback() {
+                candidates.push((name, ipv4.to_string()));
+            }
+        }
+    }
+
+    // Sort to prioritize Wi-Fi and Ethernet interfaces
+    candidates.sort_by(|a, b| {
+        let a_is_priority = a.0.starts_with("en") 
+            || a.0.starts_with("eth") 
+            || a.0.starts_with("wlan") 
+            || a.0.to_lowercase().contains("ethernet") 
+            || a.0.to_lowercase().contains("wi-fi");
+        let b_is_priority = b.0.starts_with("en") 
+            || b.0.starts_with("eth") 
+            || b.0.starts_with("wlan") 
+            || b.0.to_lowercase().contains("ethernet") 
+            || b.0.to_lowercase().contains("wi-fi");
+
+        match (a_is_priority, b_is_priority) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.0.cmp(&b.0),
+        }
+    });
+
+    if let Some((_, ip_str)) = candidates.first() {
+        Ok(ip_str.clone())
+    } else {
+        // Fall back to original library default if no private IP was discovered
+        let fallback = local_ip_address::local_ip()?.to_string();
+        Ok(fallback)
+    }
+}
+
 /// Type alias for the shared LAN state managed by Tauri.
 pub type LanDiscoveryState = Arc<RwLock<LanDiscovery>>;
 
@@ -38,7 +92,7 @@ impl LanDiscovery {
     /// Register this instance as a SignalOS service on the LAN.
     pub fn register_self(&self, screen_name: &str, port: u16) -> anyhow::Result<()> {
         let mdns = ServiceDaemon::new()?;
-        let ip = local_ip_address::local_ip()?.to_string();
+        let ip = resolve_local_private_ip()?;
 
         // Ensure hostname ends with '.local.' for mDNS compatibility
         let raw_hostname = gethostname::gethostname()
