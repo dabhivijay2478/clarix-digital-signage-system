@@ -566,7 +566,9 @@ export async function customConfirm(message: string): Promise<boolean> {
         title: 'Confirmation',
       });
     } catch (e) {
-      console.warn('Tauri dialog plugin ask failed, falling back to console:', e);
+      // Fallback silently if dialogue plugin is not permitted/installed
+      // This happens when the Tauri dialog plugin permissions are missing or cached
+      console.debug('Tauri dialog plugin ask command failed, falling back to browser confirm API:', e);
     }
   }
 
