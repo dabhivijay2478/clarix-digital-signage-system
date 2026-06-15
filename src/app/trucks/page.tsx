@@ -26,6 +26,7 @@ import { useTrucks } from '@/hooks/useTrucks'
 import { showToast } from '@/components/Toast'
 import StatCard from '@/components/StatCard'
 import Modal from '@/components/Modal'
+import { customConfirm } from '@/lib/tauri'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -259,9 +260,10 @@ export default function TrucksPage() {
     setEditingTruckId(null)
   }
 
-  const handleDeleteTruck = (id: string) => {
+  const handleDeleteTruck = async (id: string) => {
     const truck = getTruckById(id)
-    if (confirm(`Delete truck "${truck?.registration_number}"?`)) {
+    const confirmed = await customConfirm(`Delete truck "${truck?.registration_number}"?`)
+    if (confirmed) {
       deleteTruck(id)
       showToast('Truck deleted', 'info')
     }
@@ -312,9 +314,10 @@ export default function TrucksPage() {
     setEditingDriverId(null)
   }
 
-  const handleDeleteDriver = (id: string) => {
+  const handleDeleteDriver = async (id: string) => {
     const driver = getDriverById(id)
-    if (confirm(`Delete driver "${driver?.name}"?`)) {
+    const confirmed = await customConfirm(`Delete driver "${driver?.name}"?`)
+    if (confirmed) {
       deleteDriver(id)
       showToast('Driver deleted', 'info')
     }
@@ -1072,8 +1075,9 @@ export default function TrucksPage() {
                                 variant="outline"
                                 size="icon"
                                 className="size-7 text-destructive hover:bg-destructive/10"
-                                onClick={() => {
-                                  if (confirm('Delete this maintenance record?')) {
+                                onClick={async () => {
+                                  const confirmed = await customConfirm('Delete this maintenance record?');
+                                  if (confirmed) {
                                     deleteMaintenance(record.id)
                                     showToast('Record deleted', 'info')
                                   }

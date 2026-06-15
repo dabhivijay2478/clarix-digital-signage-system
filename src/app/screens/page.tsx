@@ -9,6 +9,7 @@ import ScreenCard from '../../components/ScreenCard';
 import Modal from '../../components/Modal';
 import { showToast } from '../../components/Toast';
 import type { Screen, PlaylistItem, ContentItem } from '../../lib/types';
+import { customConfirm } from '../../lib/tauri';
 import { Link2, Monitor, Plus, Wifi } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -254,9 +255,10 @@ export default function ScreensPage() {
     showToast("Settings applied locally", "success");
   };
 
-  const handleBack = () => {
+  const handleBack = async () => {
     if (hasUnsavedChanges) {
-      if (!confirm("You have unsaved changes. Discard them and exit?")) {
+      const confirmed = await customConfirm("You have unsaved changes. Discard them and exit?");
+      if (!confirmed) {
         return;
       }
     }
@@ -318,7 +320,7 @@ export default function ScreensPage() {
     const ip = screen.ip_address;
     const isOnline = screen.is_online || (ip ? peers.some(p => p.ip === ip || ip.startsWith(p.ip + ':') || ip === p.ip) : false);
     if (!isOnline) {
-      const confirmSync = confirm(`Screen "${screen.name}" appears to be offline. Would you like to try syncing anyway?`);
+      const confirmSync = await customConfirm(`Screen "${screen.name}" appears to be offline. Would you like to try syncing anyway?`);
       if (!confirmSync) return;
     }
 
@@ -345,7 +347,8 @@ export default function ScreensPage() {
 
   const handleDelete = async (id: string) => {
     const screen = screens.find((s) => s.id === id);
-    if (confirm(`Delete screen "${screen?.name}"?`)) {
+    const confirmed = await customConfirm(`Delete screen "${screen?.name}"?`);
+    if (confirmed) {
       await deleteScreen(id);
       showToast('Screen deleted', 'info');
     }

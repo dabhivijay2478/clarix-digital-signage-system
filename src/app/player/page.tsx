@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { screensApi, playlistsApi, contentApi, scheduleApi, analyticsApi, lanApi } from '../../lib/tauri';
+import { screensApi, playlistsApi, contentApi, scheduleApi, analyticsApi, lanApi, customConfirm } from '../../lib/tauri';
 import type { Screen, Playlist, ContentItem, ScheduleSlot, PlaylistItem } from '../../lib/types';
 import { showToast } from '../../components/Toast';
 
@@ -92,8 +92,9 @@ export default function PlayerPage() {
   };
 
   // Helper to disconnect screen representation
-  const handleDisconnectScreen = () => {
-    if (confirm('Disconnect screen from this Player device?')) {
+  const handleDisconnectScreen = async () => {
+    const confirmed = await customConfirm('Disconnect screen from this Player device?');
+    if (confirmed) {
       localStorage.removeItem('signalos_player_screen_id');
       setScreenId(null);
       loadScreensList();

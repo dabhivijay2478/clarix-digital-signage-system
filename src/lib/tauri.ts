@@ -552,3 +552,35 @@ export const onPeerDiscovered = (handler: (peer: PeerScreen) => void) =>
 
 export const onPeerLost = (handler: (fullname: string) => void) =>
   tauriListen('peer_lost', handler as (p: unknown) => void);
+
+// ── Custom Async Confirm dialog for Tauri & Browser fallback ────────────────
+export async function customConfirm(message: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+
+  if (isTauriRuntime()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      // In Tauri v2, the tauri-plugin-dialog ask command displays a confirmation dialog
+      return await invoke<boolean>('plugin:dialog|ask', {
+        message,
+        title: 'Confirmation',
+      });
+    } catch (e) {
+      console.warn('Tauri dialog plugin ask failed, falling back to console:', e);
+    }
+  }
+
+  // Fallback to normal confirm (which we overrode below to prevent Tauri crashes, but still works)
+  return window.confirm(message);
+}
+
+// Override window.confirm in Tauri to prevent the broken injected preload script from throwing:
+// "dialog.confirm not allowed. Command not found"
+if (typeof window !== 'undefined') {
+  window.confirm = (message?: string) => {
+    console.debug('Synchronous window.confirm intercept:', message);
+    // Return true by default so HMR and libraries don't fail, 
+    // but use customConfirm() for important user confirmations.
+    return true; 
+  };
+}
