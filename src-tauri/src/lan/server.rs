@@ -2,8 +2,9 @@ use std::{collections::HashMap, convert::Infallible, path::{Path as FsPath, Path
 
 use axum::{
     body::Body,
-    extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    extract::{Path, Query, Request, State},
+    http::{header::{ACCESS_CONTROL_ALLOW_ORIGIN, HOST, ORIGIN, VARY}, HeaderMap, StatusCode},
+    middleware::{self, Next},
     response::{Response, sse::{Event, KeepAlive, Sse}},
     routing::{get, post},
     Json, Router,
@@ -93,6 +94,15 @@ pub async fn start_controller_server(
     tokio::fs::create_dir_all(&media_dir).await?;
     let state = AppState { pool, media_dir, identity, events };
 
+    let browser_routes = Router::new()
+        .route("/v1/browser/events", get(stream_browser_events))
+        .route("/api/screens", get(read_screens))
+        .route("/api/playlists", get(read_playlists))
+        .route("/api/content", get(read_content))
+        .route("/api/schedule", get(read_schedule))
+        .route("/media/{filename}", get(legacy_media))
+        .layer(middleware::from_fn(same_host_read_cors));
+
     let router = Router::new()
         .route("/v1/health", get(health))
         .route("/v1/pairing/requests", post(create_pairing_request))
@@ -102,13 +112,8 @@ pub async fn start_controller_server(
         .route("/v1/assets/{sha256}", get(asset))
         .route("/v1/sync/ack", post(sync_ack))
         .route("/v1/events", get(stream_events))
-        .route("/v1/browser/events", get(stream_browser_events))
         .route("/status", get(health))
-        .route("/api/screens", get(read_screens))
-        .route("/api/playlists", get(read_playlists))
-        .route("/api/content", get(read_content))
-        .route("/api/schedule", get(read_schedule))
-        .route("/media/{filename}", get(legacy_media))
+        .merge(browser_routes)
         .route_service("/player", ServeFile::new(browser_assets_dir.join("player.html")))
         .route_service("/player/", ServeFile::new(browser_assets_dir.join("player.html")))
         .fallback_service(ServeDir::new(browser_assets_dir))
@@ -121,6 +126,24 @@ pub async fn start_controller_server(
         }
     });
     Ok(port)
+}
+
+async fn same_host_read_cors(request: Request, next: Next) -> Response {
+    let allowed_origin = request.headers().get(ORIGIN).cloned().filter(|_| is_same_host_origin(request.headers()));
+    let mut response = next.run(request).await;
+    if let Some(origin) = allowed_origin {
+        response.headers_mut().insert(ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+        response.headers_mut().insert(VARY, "Origin".parse().expect("valid Vary header"));
+    }
+    response
+}
+
+fn is_same_host_origin(headers: &HeaderMap) -> bool {
+    let Some(origin) = headers.get(ORIGIN).and_then(|origin| origin.to_str().ok()) else { return false };
+    let Some(request_host) = headers.get(HOST).and_then(|host| host.to_str().ok()) else { return false };
+    let Ok(origin_url) = reqwest::Url::parse(origin) else { return false };
+    let Ok(request_url) = reqwest::Url::parse(&format!("http://{request_host}")) else { return false };
+    origin_url.host_str() == request_url.host_str()
 }
 
 async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
@@ -675,7 +698,8 @@ fn internal_error(error: impl std::fmt::Display) -> (StatusCode, String) {
 
 #[cfg(test)]
 mod tests {
-    use super::sha256_bytes;
+    use super::{is_same_host_origin, sha256_bytes};
+    use axum::http::{header::{HOST, ORIGIN}, HeaderMap};
 
     #[test]
     fn produces_stable_sha256_asset_ids() {
@@ -683,5 +707,16 @@ mod tests {
             sha256_bytes(b"SignalOS"),
             "5803e439e3dafbeeb433a30cfd81ec152069d1f8285cb4651a3aad9d6dff7204"
         );
+    }
+
+    #[test]
+    fn allows_only_same_host_browser_origins() {
+        let mut headers = HeaderMap::new();
+        headers.insert(HOST, "10.133.93.199:7420".parse().unwrap());
+        headers.insert(ORIGIN, "http://10.133.93.199:3000".parse().unwrap());
+        assert!(is_same_host_origin(&headers));
+
+        headers.insert(ORIGIN, "http://evil.example:3000".parse().unwrap());
+        assert!(!is_same_host_origin(&headers));
     }
 }

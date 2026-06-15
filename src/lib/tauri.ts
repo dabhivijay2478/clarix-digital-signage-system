@@ -29,9 +29,16 @@ function isTauriRuntime(): boolean {
   return Boolean(globalRuntime.isTauri || tauriWindow.__TAURI__ || tauriWindow.__TAURI_IPC__ || tauriWindow.__TAURI_INTERNALS__);
 }
 
+const browserControllerPort = process.env.NEXT_PUBLIC_SIGNALOS_CONTROLLER_PORT ?? '7420';
+
+export function getBrowserControllerOrigin(): string {
+  if (typeof window === 'undefined') return `http://localhost:${browserControllerPort}`;
+  if (window.location.port === browserControllerPort) return window.location.origin;
+  return `http://${window.location.hostname}:${browserControllerPort}`;
+}
+
 async function getRustPort(): Promise<number> {
-  if (typeof window === 'undefined') return 7420;
-  const parsed = Number.parseInt(window.location.port, 10);
+  const parsed = Number.parseInt(browserControllerPort, 10);
   return Number.isFinite(parsed) ? parsed : 7420;
 }
 
@@ -44,9 +51,10 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
     const { invoke } = await import('@tauri-apps/api/core');
     return invoke<T>(cmd, args);
   } else {
-    // Browser fallback: fetch from the local SignalOS HTTP service.
+    // Browser development pages read from the fixed controller service. The
+    // installed browser player is already served from this origin.
     const port = await getRustPort();
-    const baseUrl = window.location.origin;
+    const baseUrl = getBrowserControllerOrigin();
     
     let url = '';
     

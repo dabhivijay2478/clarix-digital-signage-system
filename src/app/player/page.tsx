@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { screensApi, playlistsApi, contentApi, scheduleApi, analyticsApi, localNetworkApi, customConfirm } from '../../lib/tauri';
+import { screensApi, playlistsApi, contentApi, scheduleApi, analyticsApi, localNetworkApi, customConfirm, getBrowserControllerOrigin } from '../../lib/tauri';
 import type { Screen, Playlist, ContentItem, ScheduleSlot, PlaylistItem } from '../../lib/types';
 import { showToast } from '../../components/Toast';
 import { convertFileSrc } from '@tauri-apps/api/core';
@@ -239,7 +239,7 @@ export default function PlayerPage() {
   // Controller-hosted browser players refresh immediately when a revision is published.
   useEffect(() => {
     if (!screenId || typeof window === 'undefined' || !window.location.protocol.startsWith('http')) return;
-    const events = new EventSource('/v1/browser/events');
+    const events = new EventSource(`${getBrowserControllerOrigin()}/v1/browser/events`);
     events.addEventListener('revision', () => {
       void resolveActiveSignage();
     });
@@ -357,7 +357,7 @@ export default function PlayerPage() {
       }
       // Extract filename
       const filename = item.file_path.split(/[/\\]/).pop() || '';
-      return `${window.location.origin}/media/${encodeURIComponent(filename)}`;
+      return `${getBrowserControllerOrigin()}/media/${encodeURIComponent(filename)}`;
     }
     return '';
   };

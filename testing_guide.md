@@ -11,6 +11,8 @@ Do not use `http://<development-computer>:3000/player` for cross-machine product
 - The packaged SignalOS Player app on Mac or Windows for reliable offline playback.
 - `http://<controller-ip>:7420/player` for a connected-only browser player.
 
+During local development, pages opened from `http://<development-computer>:3000` read controller data from the fixed controller service at `http://<development-computer>:7420`. The dev server allows only loopback, filtered private Wi-Fi/Ethernet addresses, and any additional hosts listed in `SIGNALOS_DEV_ORIGINS`.
+
 ## Controller Setup
 
 1. Open **Settings → Device Operation Mode**.
@@ -21,7 +23,7 @@ Do not use `http://<development-computer>:3000/player` for cross-machine product
    - Windows: create an inbound program rule for SignalOS restricted to TCP port `7420` on Private networks.
 5. Add the logical screens that this controller will manage.
 
-SignalOS intentionally fails with a clear error if controller port `7420` is already occupied. Set `SIGNALOS_PORT` before launch only when a different fixed port is required.
+SignalOS intentionally fails with a clear error if controller port `7420` is already occupied. Set `SIGNALOS_PORT` before launch only when a different fixed port is required. For browser development with a custom port, set the matching `NEXT_PUBLIC_SIGNALOS_CONTROLLER_PORT`.
 
 ## Packaged Player Pairing
 
