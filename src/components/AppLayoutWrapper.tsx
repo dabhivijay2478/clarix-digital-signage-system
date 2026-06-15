@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 import { usePathname } from 'next/navigation'
-import Sidebar from './Sidebar'
+import Sidebar, { MobileSidebar } from './Sidebar'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useBrandingStore, useSidebarStore } from '@/store/ui'
 
@@ -32,9 +32,10 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Sidebar isCollapsed={isCollapsed} onToggle={toggle} />
+      <MobileSidebar />
       <main
-        className="h-screen transition-[margin] duration-300"
-        style={{ marginLeft: isCollapsed ? 'var(--sidebar-collapsed)' : 'var(--sidebar-width)' }}
+        className="app-main h-[calc(100vh-4rem)] transition-[margin] duration-300 lg:h-screen"
+        style={{ '--active-sidebar-width': isCollapsed ? 'var(--sidebar-collapsed)' : 'var(--sidebar-width)' } as React.CSSProperties}
       >
         <ScrollArea className="h-full">
           <div className="main-content">{children}</div>

@@ -38,13 +38,14 @@ function StatCard({ icon, value, label, trend, color = 'accent' }: StatCardProps
   }, [value])
 
   return (
-    <Card className="border-zinc-800/80 bg-zinc-900/60 shadow-lg backdrop-blur-md transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-700">
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <span className="text-sm font-medium text-muted-foreground">{label}</span>
-        <span className={cn('flex size-10 items-center justify-center rounded-xl bg-muted text-lg', colors[color])}>{icon}</span>
+    <Card className="group relative min-h-36 overflow-hidden transition-all duration-200 hover:-translate-y-1 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5">
+      <div className={cn('absolute -right-10 -top-10 size-28 rounded-full opacity-10 blur-2xl', color === 'success' ? 'bg-green-400' : color === 'warning' ? 'bg-amber-400' : color === 'info' ? 'bg-blue-400' : color === 'error' ? 'bg-red-400' : 'bg-primary')} />
+      <CardHeader className="relative flex flex-row items-center justify-between pb-2">
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</span>
+        <span className={cn('flex size-10 items-center justify-center rounded-xl border border-border/60 bg-muted/70 text-lg transition-transform group-hover:scale-105', colors[color])}>{icon}</span>
       </CardHeader>
-      <CardContent className="flex items-baseline gap-2">
-        <span className={cn('text-3xl font-bold tracking-tight', colors[color])}>{typeof value === 'number' ? displayValue : value}</span>
+      <CardContent className="relative flex items-end justify-between gap-2">
+        <span className={cn('text-4xl font-bold tracking-[-0.05em]', colors[color])}>{typeof value === 'number' ? displayValue : value}</span>
         {trend && (
           <Badge variant="outline" className={trend.positive ? 'border-green-500/30 text-green-400' : 'border-red-500/30 text-red-400'}>
             {trend.positive ? '+' : '-'}{trend.value}%

@@ -312,15 +312,6 @@
   }
 }
 
-/* ── Reset & Base ─────────────────────────────────────────────────────────── */
-*,
-*::before,
-*::after {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
 html {
   font-size: 16px;
   -webkit-font-smoothing: antialiased;
@@ -330,7 +321,9 @@ html {
 
 body {
   font-family: var(--font-sans);
-  background: var(--bg-primary);
+  background:
+    radial-gradient(circle at 75% -20%, rgba(99, 102, 241, 0.12), transparent 34%),
+    var(--bg-primary);
   color: var(--text-primary);
   line-height: 1.6;
   overflow: hidden;
@@ -464,12 +457,17 @@ a:hover {
 }
 
 .main-content {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: var(--space-xl);
-  margin-left: var(--sidebar-width);
-  transition: margin-left var(--transition-normal);
+  width: 100%;
+  max-width: 1680px;
+  min-height: 100%;
+  margin: 0 auto;
+  padding: clamp(20px, 3vw, 48px);
+}
+
+@media (min-width: 1024px) {
+  .app-main {
+    margin-left: var(--active-sidebar-width);
+  }
 }
 
 /* ── Glass Card ───────────────────────────────────────────────────────────── */
@@ -735,13 +733,13 @@ a:hover {
 
 /* ── Page Utilities ───────────────────────────────────────────────────────── */
 .page-header {
-  margin-bottom: var(--space-xl);
+  margin-bottom: clamp(24px, 3vw, 40px);
   animation: fadeInDown var(--transition-slow) ease-out;
 }
 
 .page-title {
-  font-size: var(--text-3xl);
-  font-weight: 700;
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  font-weight: 750;
   letter-spacing: -0.02em;
   background: var(--accent-gradient);
   -webkit-background-clip: text;
@@ -760,6 +758,16 @@ a:hover {
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: var(--space-md);
+}
+
+@media (max-width: 640px) {
+  .page-header {
+    margin-bottom: 24px;
+  }
+
+  .page-title {
+    font-size: 1.875rem;
+  }
 }
 
 /* ── Grid Layouts ─────────────────────────────────────────────────────────── */
@@ -871,10 +879,6 @@ a:hover {
   .grid-3 {
     grid-template-columns: repeat(2, 1fr);
   }
-  .main-content {
-    margin-left: var(--sidebar-collapsed);
-    padding: var(--space-lg);
-  }
 }
 
 @media (max-width: 768px) {
@@ -884,18 +888,14 @@ a:hover {
   .grid-3 {
     grid-template-columns: 1fr;
   }
-  .main-content {
-    padding: var(--space-md);
-  }
+  .main-content { padding: 20px 16px 32px; }
 }
 
 @media (max-width: 600px) {
   .grid-4 {
     grid-template-columns: 1fr;
   }
-  .main-content {
-    padding: var(--space-sm);
-  }
+  .main-content { padding: 16px 12px 28px; }
 }
 
 /* ── Signage Player Transition Animations ────────────────────────────────── */

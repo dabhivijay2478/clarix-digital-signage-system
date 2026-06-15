@@ -9,6 +9,14 @@ import ScreenCard from '../../components/ScreenCard';
 import Modal from '../../components/Modal';
 import { showToast } from '../../components/Toast';
 import type { Screen, PlaylistItem, ContentItem } from '../../lib/types';
+import { Link2, Monitor, Plus, Wifi } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function ScreensPage() {
   const { screens, loading, addScreen, editScreen, updateOperatingHours, setPower, setBrightness, deleteScreen } = useScreens();
@@ -1106,42 +1114,42 @@ export default function ScreensPage() {
   }
 
   return (
-    <div>
-      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <div className="space-y-6">
+      <div className="page-header flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="page-title">Screens</h1>
           <p className="page-subtitle">
             {screens.length} screen{screens.length !== 1 ? 's' : ''} registered
           </p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
-          + Add Screen
-        </button>
+        <Button className="w-full sm:w-auto" onClick={() => setShowAdd(true)}><Plus />Add Screen</Button>
       </div>
 
       {/* Auto-Discovered Network Screen section */}
       {unregisteredPeers.length > 0 && (
-        <div className="mb-8 p-6 bg-bg-secondary/40 backdrop-blur-[20px] border border-accent-primary/20 rounded-2xl animate-fadeIn">
-          <h2 className="text-sm font-semibold text-white mb-1 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-accent-primary animate-ping" />
-            Auto-Discovered LAN Signage Screens ({unregisteredPeers.length})
-          </h2>
-          <p className="text-xs text-text-secondary mb-4">
-            These active devices are running SignalOS Player on your local network/Wi-Fi router. Click to link them instantly.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <Card className="border-primary/20 bg-primary/[0.04]">
+          <CardHeader>
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Wifi className="size-5" /></div>
+              <div className="space-y-1">
+                <CardTitle className="flex flex-wrap items-center gap-2">Nearby screens <Badge variant="secondary">{unregisteredPeers.length} found</Badge></CardTitle>
+                <CardDescription>Active SignalOS Players discovered on your local network are ready to link.</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {unregisteredPeers.map((peer) => (
               <div
                 key={peer.id}
-                className="p-4 rounded-xl bg-white/5 border border-white/5 hover:border-accent-primary/40 transition-all duration-150 flex items-center justify-between"
+                className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-background/40 p-4 transition-colors hover:border-primary/30"
               >
-                <div className="flex flex-col gap-0.5 min-w-0 pr-4">
-                  <span className="text-xs font-bold text-white truncate">{peer.name}</span>
-                  <span className="text-[10px] text-text-muted font-mono">{peer.ip}:{peer.port}</span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{peer.name}</p>
+                  <p className="truncate font-mono text-xs text-muted-foreground">{peer.ip}:{peer.port}</p>
                 </div>
-                <button
-                  className="btn btn-sm btn-primary shrink-0"
-                  style={{ padding: '6px 12px', fontSize: '11px' }}
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={async () => {
                     try {
                       await addScreen(peer.name, "Discovered on Wi-Fi", peer.ip);
@@ -1151,34 +1159,25 @@ export default function ScreensPage() {
                     }
                   }}
                 >
-                  + Link Screen
-                </button>
+                  <Link2 />Link
+                </Button>
               </div>
             ))}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
       {loading ? (
-        <div className="empty-state">
-          <div className="empty-state-icon" style={{ animation: 'spin 1s linear infinite' }}>◔</div>
-          <div className="empty-state-title">Loading screens...</div>
-        </div>
+        <div aria-busy="true" className="grid-auto">{Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-72 rounded-2xl" />)}</div>
       ) : screens.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-state-icon">▣</div>
-          <div className="empty-state-title">No screens yet</div>
-          <div className="empty-state-text">
-            Add your first screen to start managing your digital signage network.
-          </div>
-          <button
-            className="btn btn-primary"
-            style={{ marginTop: '16px' }}
-            onClick={() => setShowAdd(true)}
-          >
-            + Add Screen
-          </button>
-        </div>
+        <Card className="border-dashed bg-transparent">
+          <CardContent className="flex min-h-80 flex-col items-center justify-center px-6 py-16 text-center">
+            <div className="mb-5 flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Monitor className="size-6" /></div>
+            <CardTitle>No screens yet</CardTitle>
+            <CardDescription className="mt-2 max-w-md">Add your first display to start managing playback, schedules, and screen health.</CardDescription>
+            <Button className="mt-6" onClick={() => setShowAdd(true)}><Plus />Add Screen</Button>
+          </CardContent>
+        </Card>
       ) : (
         <div className="grid-auto stagger">
           {screens.map((screen) => {
@@ -1209,74 +1208,66 @@ export default function ScreensPage() {
         title="Add Screen"
         actions={
           <>
-            <button className="btn btn-secondary" onClick={() => setShowAdd(false)}>
-              Cancel
-            </button>
-            <button className="btn btn-primary" onClick={handleAdd}>
-              Add Screen
-            </button>
+            <Button variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
+            <Button onClick={handleAdd}>Add Screen</Button>
           </>
         }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div>
-            <label className="input-label">Screen Name *</label>
-            <input
-              className="input"
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="screen-name">Screen Name *</Label>
+            <Input
+              id="screen-name"
               placeholder="e.g., Lobby Display"
               value={formName}
               onChange={(e) => setFormName(e.target.value)}
               autoFocus
             />
           </div>
-          <div>
-            <label className="input-label">Location</label>
-            <input
-              className="input"
+          <div className="space-y-2">
+            <Label htmlFor="screen-location">Location</Label>
+            <Input
+              id="screen-location"
               placeholder="e.g., Building A, Floor 1"
               value={formLocation}
               onChange={(e) => setFormLocation(e.target.value)}
             />
           </div>
-          <div>
-            <label className="input-label">IP Address (optional)</label>
-            <input
-              className="input"
+          <div className="space-y-2">
+            <Label htmlFor="screen-ip">IP Address (optional)</Label>
+            <Input
+              id="screen-ip"
               placeholder="e.g., 192.168.1.100"
               value={formIp}
               onChange={(e) => setFormIp(e.target.value)}
             />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
-            <div>
-              <label className="input-label">Orientation</label>
-              <select
-                className="input"
-                value={formOrientation}
-                onChange={(e) => setFormOrientation(e.target.value)}
-                style={{ background: 'var(--bg-tertiary)', color: 'white', border: '1px solid rgba(255,255,255,0.1)' }}
-              >
-                <option value="Landscape" style={{ background: 'var(--bg-primary)' }}>Landscape</option>
-                <option value="Portrait" style={{ background: 'var(--bg-primary)' }}>Portrait</option>
-                <option value="LandscapeFlipped" style={{ background: 'var(--bg-primary)' }}>Landscape Flipped</option>
-                <option value="PortraitFlipped" style={{ background: 'var(--bg-primary)' }}>Portrait Flipped</option>
-              </select>
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="screen-orientation">Orientation</Label>
+            <Select value={formOrientation} onValueChange={setFormOrientation}>
+              <SelectTrigger id="screen-orientation" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Landscape">Landscape</SelectItem>
+                <SelectItem value="Portrait">Portrait</SelectItem>
+                <SelectItem value="LandscapeFlipped">Landscape Flipped</SelectItem>
+                <SelectItem value="PortraitFlipped">Portrait Flipped</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label className="input-label">Width Resolution (px)</label>
-              <input
-                className="input"
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="screen-width">Width Resolution (px)</Label>
+              <Input
+                id="screen-width"
                 type="number"
                 value={formWidth}
                 onChange={(e) => setFormWidth(e.target.value)}
               />
             </div>
-            <div>
-              <label className="input-label">Height Resolution (px)</label>
-              <input
-                className="input"
+            <div className="space-y-2">
+              <Label htmlFor="screen-height">Height Resolution (px)</Label>
+              <Input
+                id="screen-height"
                 type="number"
                 value={formHeight}
                 onChange={(e) => setFormHeight(e.target.value)}

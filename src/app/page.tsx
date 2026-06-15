@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { CircleStop, Monitor, PlaySquare, Rows3 } from 'lucide-react'
+import { CircleStop, Clock3, Monitor, Network, PlaySquare, Rows3, Sparkles } from 'lucide-react'
 import StatCard from '@/components/StatCard'
 import { showToast } from '@/components/Toast'
 import { Badge } from '@/components/ui/badge'
@@ -70,10 +70,14 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div><h1 className="page-title">Dashboard</h1><p className="page-subtitle">System overview</p></div>
-        <Badge variant="outline" className="font-mono">{time}</Badge>
+    <div className="space-y-7 lg:space-y-9">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <Badge variant="outline" className="mb-3 border-primary/20 bg-primary/5 text-primary"><Sparkles /> Control center</Badge>
+          <h1 className="page-title">Dashboard</h1>
+          <p className="page-subtitle">A live view of your signage network and scheduled playback.</p>
+        </div>
+        <Badge variant="outline" className="h-9 gap-2 self-start rounded-lg bg-card/60 px-3 font-mono sm:self-auto"><Clock3 />{time}</Badge>
       </div>
 
       {loading ? (
@@ -83,7 +87,7 @@ export default function DashboardPage() {
         </div>
       ) : (
         <>
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard icon="▣" value={screensCount} label="Active Screens" />
             <StatCard icon="☰" value={playlistsCount} label="Playlists" color="info" />
             <StatCard icon="◔" value={uptime} label="Uptime" color="success" />
@@ -93,21 +97,21 @@ export default function DashboardPage() {
         </>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle>Quick Actions</CardTitle></CardHeader>
-          <CardContent className="flex flex-wrap gap-3">
-            <Button onClick={() => router.push('/screens')}><Monitor />Add Screen</Button>
-            <Button variant="outline" onClick={() => router.push('/content')}><PlaySquare />Upload Content</Button>
-            <Button variant="outline" onClick={() => router.push('/playlists')}><Rows3 />New Playlist</Button>
-            <Tooltip><TooltipTrigger asChild><Button variant="destructive" onClick={handleEmergencyStop}><CircleStop />Emergency Stop</Button></TooltipTrigger><TooltipContent>Immediately powers off every registered screen</TooltipContent></Tooltip>
+      <div className="grid gap-5 xl:grid-cols-[1.35fr_1fr]">
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between border-b border-border/50 pb-5"><div><CardTitle>Quick Actions</CardTitle><p className="mt-1 text-sm text-muted-foreground">Jump into the most common workflows.</p></div><Sparkles className="size-5 text-primary" /></CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            <Button className="h-14 justify-start px-4" onClick={() => router.push('/screens')}><span className="flex size-8 items-center justify-center rounded-lg bg-white/10"><Monitor /></span>Add a screen</Button>
+            <Button className="h-14 justify-start px-4" variant="outline" onClick={() => router.push('/content')}><span className="flex size-8 items-center justify-center rounded-lg bg-muted"><PlaySquare /></span>Upload content</Button>
+            <Button className="h-14 justify-start px-4" variant="outline" onClick={() => router.push('/playlists')}><span className="flex size-8 items-center justify-center rounded-lg bg-muted"><Rows3 /></span>Create playlist</Button>
+            <Tooltip><TooltipTrigger asChild><Button className="h-14 justify-start px-4" variant="destructive" onClick={handleEmergencyStop}><span className="flex size-8 items-center justify-center rounded-lg bg-black/10"><CircleStop /></span>Emergency stop</Button></TooltipTrigger><TooltipContent>Immediately powers off every registered screen</TooltipContent></Tooltip>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader><CardTitle>Network Status</CardTitle></CardHeader>
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between border-b border-border/50 pb-5"><div><CardTitle>Network Status</CardTitle><p className="mt-1 text-sm text-muted-foreground">Discovery and sync health.</p></div><Network className="size-5 text-blue-400" /></CardHeader>
           <CardContent>
             <Table><TableBody>
-              <TableRow><TableCell className="text-muted-foreground">LAN Peers</TableCell><TableCell className="text-right font-bold">{peerCount}</TableCell></TableRow>
+              <TableRow><TableCell className="text-muted-foreground">Nearby Wi-Fi Devices</TableCell><TableCell className="text-right font-bold">{peerCount}</TableCell></TableRow>
               <TableRow><TableCell className="text-muted-foreground">Discovery</TableCell><TableCell className="text-right"><Badge className="bg-green-600">Active</Badge></TableCell></TableRow>
               <TableRow><TableCell className="text-muted-foreground">Service</TableCell><TableCell className="text-right"><code className="rounded bg-muted px-1 font-mono text-xs">_signalos._tcp.local</code></TableCell></TableRow>
               <TableRow><TableCell className="text-muted-foreground">Sync Mode</TableCell><TableCell className="text-right font-medium">mDNS + TCP</TableCell></TableRow>

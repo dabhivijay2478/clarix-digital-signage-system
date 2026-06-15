@@ -5,7 +5,7 @@ import { useContent } from '../../hooks/useContent';
 import ContentCard from '../../components/ContentCard';
 import Modal from '../../components/Modal';
 import { showToast } from '../../components/Toast';
-import { LayoutGrid, Search } from 'lucide-react';
+import { LayoutGrid, Plus, Search, UploadCloud } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -119,19 +119,19 @@ export default function ContentPage() {
 
   return (
     <div>
-      <div className="page-header flex items-center justify-between gap-4">
+      <div className="page-header flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="page-title">Content Library</h1>
-          <Badge variant="secondary">{items.length} item{items.length !== 1 ? 's' : ''}</Badge>
+          <div className="mt-2"><Badge variant="secondary">{items.length} item{items.length !== 1 ? 's' : ''}</Badge></div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input
-            className="w-60 pl-9"
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <div className="relative sm:w-72"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input
+            className="w-full pl-9"
             placeholder="Search content..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           /></div>
-          <Button onClick={() => setShowAdd(true)}>+ Add Content</Button>
+          <Button onClick={() => setShowAdd(true)}><Plus />Add Content</Button>
         </div>
       </div>
 
@@ -178,16 +178,16 @@ export default function ContentPage() {
                 setFormType(value);
                 setSelectedFile(null);
               }}>
-              <SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{contentTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{contentTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
             </Select>
           </div>
 
           {isUploadType && (
-            <div>
+            <div className="space-y-2">
               <Label>
                 {formType === 'WebApp' ? 'Local Web/Document File (HTML, PDF, XLS, TXT, ZIP - Optional)' : 'Media File (Image/Video/Audio) *'}
               </Label>
-              <div className="relative mt-2 cursor-pointer rounded-xl border-2 border-dashed border-zinc-700 bg-zinc-900/50 p-6 text-center hover:border-primary/50">
+              <div className="relative cursor-pointer rounded-xl border border-dashed border-border bg-muted/20 p-6 text-center transition-colors hover:border-primary/50 hover:bg-primary/5">
                 <input
                   type="file"
                   accept="image/*,video/*,audio/*,.pdf,.html,.htm,.xhtml,.txt,.xls,.xlsx,.zip,.tar,.ar,.xml,.rss"
@@ -195,20 +195,20 @@ export default function ContentPage() {
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
                 <div className="flex flex-col items-center gap-2">
-                  <span className="text-3xl">📁</span>
+                  <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary"><UploadCloud className="size-5" /></div>
                   {selectedFile ? (
                     <div>
-                      <p className="text-sm font-semibold text-white truncate max-w-[280px]">
+                      <p className="max-w-[280px] truncate text-sm font-semibold text-foreground">
                         {selectedFile.name}
                       </p>
-                      <p className="text-xs text-text-secondary mt-1">
-                        {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Click to change
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB · Click to change
                       </p>
                     </div>
                   ) : (
                     <div>
-                      <p className="text-sm font-semibold text-white">Click or drag file here</p>
-                      <p className="text-xs text-text-secondary mt-1">
+                      <p className="text-sm font-semibold text-foreground">Click or drag file here</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
                         {formType === 'WebApp' 
                           ? 'Supports HTML, PDF, TXT, Excel (XLS/XLSX), XML/RSS, ZIP/TAR' 
                           : 'Supports PNG, JPG, JPEG, BMP, WebP, SVG, MP4, AVI, MOV, MP3, WAV'}
@@ -220,7 +220,7 @@ export default function ContentPage() {
             </div>
           )}
 
-          <div>
+          <div className="space-y-2">
             <Label htmlFor="content-name">Content Name *</Label>
             <Input id="content-name"
               placeholder="e.g., Welcome Video"
@@ -230,7 +230,7 @@ export default function ContentPage() {
           </div>
 
           {formType === 'WebApp' && (
-            <div>
+            <div className="space-y-2">
               <Label htmlFor="content-url">WebApp URL (Optional if file is uploaded)</Label>
               <Input id="content-url"
                 placeholder="https://..."
@@ -240,7 +240,7 @@ export default function ContentPage() {
             </div>
           )}
 
-          <div>
+          <div className="space-y-2">
             <Label htmlFor="content-duration">Duration (seconds)</Label>
             <Input id="content-duration"
               type="number"
@@ -250,7 +250,7 @@ export default function ContentPage() {
             />
           </div>
 
-          <div>
+          <div className="space-y-2">
             <Label htmlFor="content-tags">Tags (comma-separated)</Label>
             <Input id="content-tags"
               placeholder="promo, welcome, lobby"

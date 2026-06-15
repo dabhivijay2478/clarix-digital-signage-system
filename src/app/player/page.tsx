@@ -443,7 +443,7 @@ export default function PlayerPage() {
             <div className="py-6 flex flex-col items-center gap-3">
               <span className="text-sm text-white font-medium">No screens registered</span>
               <p className="text-xs text-text-muted max-w-[280px]">
-                Add this screen in the Controller dashboard first, then sync it to the LAN.
+                Add this screen in the Controller dashboard first, then sync it over the same Wi-Fi router.
               </p>
               <button
                 className="btn btn-secondary mt-4 text-xs"
@@ -466,14 +466,14 @@ export default function PlayerPage() {
                     </span>
                     <span className="text-[11px] text-text-secondary">{screen.location || 'No location'}</span>
                   </div>
-                  <span className="text-xs text-text-muted font-mono">{screen.ip_address || 'LAN'}</span>
+                  <span className="text-xs text-text-muted font-mono">{screen.ip_address || 'Same Wi-Fi'}</span>
                 </button>
               ))}
             </div>
           )}
 
           <div className="mt-8 pt-6 border-t border-white/5 w-full flex items-center justify-between text-[11px] text-text-muted">
-            <span>LAN Port: {port}</span>
+            <span>Service Port: {port}</span>
             <button className="hover:text-white" onClick={() => router.push('/')}>
               ← Back to Main
             </button>
@@ -521,7 +521,7 @@ export default function PlayerPage() {
           <div className="flex flex-col gap-1 text-[11px] text-text-muted bg-white/5 border border-white/5 rounded-xl px-4 py-3 font-mono">
             <div className="flex gap-4 justify-between">
               <span>Local IP:</span>
-              <span className="text-white">Active LAN Connection</span>
+              <span className="text-white">Same Wi-Fi Router</span>
             </div>
             <div className="flex gap-4 justify-between">
               <span>Dynamic Port:</span>
@@ -529,7 +529,7 @@ export default function PlayerPage() {
             </div>
             <div className="flex gap-4 justify-between">
               <span>System Mode:</span>
-              <span className="text-white">LAN Cable Offline Signage</span>
+              <span className="text-white">Offline Wi-Fi Signage</span>
             </div>
           </div>
 

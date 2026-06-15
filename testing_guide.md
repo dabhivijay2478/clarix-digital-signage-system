@@ -1,6 +1,6 @@
-# SignalOS — Local LAN Offline Digital Signage Setup & Testing Guide
+# SignalOS — Same-Wi-Fi Offline Digital Signage Setup & Testing Guide
 
-This guide details how to configure, pair, and synchronize media items between your **Controller** (laptop/dashboard) and **Screen Player** (TV screen/PC) using a local network setup (LAN cable or home Wi-Fi router). No cloud connections or internet access are required.
+This guide details how to configure, pair, and synchronize media items between your **Controller** (laptop/dashboard) and **Screen Player** (TV screen/PC) connected to the same Wi-Fi router. No cloud connections or internet access are required.
 
 ---
 
@@ -12,27 +12,12 @@ This guide details how to configure, pair, and synchronize media items between y
 
 ---
 
-## 🔌 Connection Options
+## 🔌 Wi-Fi Router Setup
 
-Choose **one** of the two connection styles below to configure your network:
-
-### Option A: Home Wi-Fi Router Setup (Easiest - Zero-Config)
-Use this setup if you want to test at home using your local Wi-Fi router.
+Use this setup to connect SignalOS devices through your Wi-Fi router.
 
 1. Connect your **Laptop** (Controller) and your **PC / TV Setup Box** (Screen Player) to the **same home Wi-Fi network**.
 2. No IP addresses need to be manually typed. The devices will automatically find each other using mDNS.
-
-### Option B: Direct LAN Cable Setup (For Direct Connection)
-Use this setup if you are connecting two devices directly using a physical Ethernet cable (with no router or switch).
-
-1. Plug one end of an Ethernet cable into the **Controller** and the other directly into the **Screen Player**.
-2. Because there is no router (DHCP server) to assign IP addresses automatically, you must manually set a static IP on both machines:
-   * **Controller Laptop**:
-     * IP Address: `10.0.0.1`
-     * Subnet Mask: `255.255.255.0`
-   * **Screen Player Device**:
-     * IP Address: `10.0.0.2`
-     * Subnet Mask: `255.255.255.0`
 
 ---
 
@@ -51,9 +36,9 @@ The application is pre-configured with a self-contained SQLite database backend.
 ### Step 3: Link Screen & Configure Details
 1. Launch the application on your **Controller Laptop**.
 2. Go to the **Screens** tab in the sidebar.
-3. Look at the top of the screen. Under **Auto-Discovered LAN Signage Screens**, your Screen Player device will automatically appear in real-time:
+3. Look at the top of the screen. Under **Nearby Screens**, your Screen Player device will automatically appear in real-time:
    ```
-   ⚡ Auto-Discovered LAN Signage Screens (1)
+   ⚡ Nearby Screens (1)
    [ Device-Hostname ]   192.168.1.51:7420    [ + Link Screen ]
    ```
 4. Click the **+ Link Screen** button. The device will be added instantly and its status indicator will turn **Online (Pulsing Green)**.

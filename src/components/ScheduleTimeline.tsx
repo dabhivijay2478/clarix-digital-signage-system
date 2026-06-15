@@ -28,14 +28,14 @@ function ScheduleTimeline({ slots, onDelete }: ScheduleTimelineProps) {
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Weekly Timeline</CardTitle>
+    <Card className="overflow-hidden">
+      <CardHeader className="flex flex-row items-center justify-between border-b border-border/50 pb-5">
+        <div><CardTitle>Weekly Timeline</CardTitle><p className="mt-1 text-sm text-muted-foreground">Scheduled playlist windows across the week.</p></div>
         <Badge variant="secondary">{slots.length} slots</Badge>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-1">
         <ScrollArea className="w-full">
-          <div className="min-w-[900px] pb-4">
+          <div className="min-w-[840px] pb-4">
             <div className="mb-4 flex border-b border-border pb-2 pl-16 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
               {HOURS.map((hour) => <div key={hour} className="min-w-8 flex-1 border-l border-border text-center first:border-l-0">{hour.toString().padStart(2, '0')}:00</div>)}
             </div>
