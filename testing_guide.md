@@ -27,7 +27,10 @@ Use this setup to connect SignalOS devices through your Wi-Fi router.
 The application is pre-configured with a self-contained SQLite database backend. No manual database setup or Docker Compose commands are required. The database `signalos.db` is automatically created and migrated on startup.
 
 ### Step 2: Start the Screen Player
-1. Launch the application on your **Screen Player** device (PC/TV).
+1. Launch the application on your **Screen Player** device (PC/TV):
+   ```bash
+   bun tauri dev
+   ```
 2. Go to **Settings** in the sidebar, and click **Launch Screen Player** (or navigate to the `/player` URL).
 3. Because the screen is not yet linked, it will display a **Local Standby Screen** detailing:
    * Its local network IP address (e.g., `192.168.1.51` or `10.0.0.2`).

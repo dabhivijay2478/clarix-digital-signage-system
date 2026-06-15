@@ -1,6 +1,8 @@
 # SignalOS — Digital Signage + Fleet Management Desktop App
 
-SignalOS is a cross-platform desktop application for managing **digital signage screens** and **truck fleets** from a single control center. Built with **Tauri v2**, **Next.js 16**, **Tailwind CSS v4**, and a self-contained **SQLite** database — no external servers or Docker needed.
+SignalOS is a cross-platform desktop application for managing **digital signage screens** and **truck fleets** from a single control center. Built with **Tauri v2**, **Next.js 16**, **Tailwind CSS v4**, **Bun**, and a self-contained **SQLite** database — no external servers or Docker needed.
+
+> **Package Manager**: This project uses **Bun** (fast, all-in-one JS runtime) instead of npm/pnpm.
 
 ---
 
@@ -12,10 +14,9 @@ Before you install SignalOS, make sure you have these tools installed on your co
 
 | # | Tool | Why You Need It | How to Check If Installed |
 |---|------|----------------|---------------------------|
-| 1 | **Node.js** (v18 or later) | Runs the frontend (the part you see) | Open Terminal/CMD → type `node -v` |
-| 2 | **npm** (comes with Node.js) | Installs packages/libraries | Open Terminal/CMD → type `npm -v` |
-| 3 | **Rust** | Compiles the backend (the engine) | Open Terminal/CMD → type `rustc --version` |
-| 4 | **Git** | Downloads the project code | Open Terminal/CMD → type `git --version` |
+| 1 | **Bun** | Fast JS runtime & package manager | Open Terminal/CMD → type `bun --version` |
+| 2 | **Rust** | Compiles the backend (the engine) | Open Terminal/CMD → type `rustc --version` |
+| 3 | **Git** | Downloads the project code | Open Terminal/CMD → type `git --version` |
 
 > If any command above shows "not found" or "not recognized", follow the installation steps below.
 
@@ -33,18 +34,19 @@ xcode-select --install
 
 A popup will appear — click **Install** and wait for it to finish. This gives you Git and essential build tools.
 
-### Step 2 — Install Node.js
+### Step 2 — Install Bun
 
-Go to **[https://nodejs.org](https://nodejs.org)** and download the **LTS** version (the big green button). Open the downloaded `.pkg` file and follow the installer.
+Bun is faster than npm and handles everything (package management, build tools, dev server).
+
+```bash
+curl -fsSL https://bun.sh/install | bash
+```
 
 Verify it worked:
 
 ```bash
-node -v
-# Should show something like: v22.x.x
-
-npm -v
-# Should show something like: 10.x.x
+bun --version
+# Should show something like: 1.3.x
 ```
 
 ### Step 3 — Install Rust
@@ -77,19 +79,34 @@ cd digital-signage-system
 
 > ⚠️ Replace `YOUR_USERNAME` with the actual GitHub username or organization.
 
-### Step 5 — Install Dependencies
+### Step 5 — Install Bun
+
+Bun is faster and more efficient than npm. Install it:
 
 ```bash
-# Install frontend packages (takes 1–2 minutes)
-npm install
+curl -fsSL https://bun.sh/install | bash
 ```
 
-### Step 6 — Run the App
+Verify:
+
+```bash
+bun --version
+# Should show: 1.x.x
+```
+
+### Step 6 — Install Dependencies
+
+```bash
+# Install frontend packages (takes 10–20 seconds with bun)
+bun install
+```
+
+### Step 7 — Run the App
 
 ```bash
 # Start the app in development mode
 # (First run takes 3–5 minutes to compile Rust code)
-npx tauri dev
+bun tauri dev
 ```
 
 The SignalOS window will open automatically. Subsequent launches are much faster.
@@ -106,18 +123,20 @@ The SignalOS window will open automatically. Subsequent launches are much faster
 
 > This is required by Rust to compile native code on Windows. It's free.
 
-### Step 2 — Install Node.js
+### Step 2 — Install Bun
 
-1. Go to **[https://nodejs.org](https://nodejs.org)**
-2. Download the **LTS** version (the big green button)
-3. Run the `.msi` installer — accept all defaults
-4. **Restart your computer** after installation
+Bun is faster than npm and handles everything (package management, build tools, dev server).
 
-Open **Command Prompt** (search "cmd" in Start Menu) and verify:
+Open **Command Prompt** (search "cmd" in Start Menu) and run:
 
 ```cmd
-node -v
-npm -v
+powershell -c "irm bun.sh/install.ps1 | iex"
+```
+
+Verify:
+
+```cmd
+bun --version
 ```
 
 ### Step 3 — Install Rust
@@ -159,16 +178,30 @@ cd live-feed
 
 > ⚠️ Replace `YOUR_USERNAME` with the actual GitHub username or organization.
 
-### Step 6 — Install Dependencies
+### Step 6 — Install Bun
+
+Bun is faster and more efficient than npm. Install it:
 
 ```cmd
-npm install
+powershell -c "irm bun.sh/install.ps1 | iex"
 ```
 
-### Step 7 — Run the App
+Verify:
 
 ```cmd
-npx tauri dev
+bun --version
+```
+
+### Step 7 — Install Dependencies
+
+```cmd
+bun install
+```
+
+### Step 8 — Run the App
+
+```cmd
+bun tauri dev
 ```
 
 > ⏳ The first build takes **5–10 minutes** on Windows (Rust compilation). Grab a coffee! Subsequent runs are fast.
@@ -180,7 +213,7 @@ npx tauri dev
 To create installable packages that you can share with others:
 
 ```bash
-npx tauri build
+bun tauri build
 ```
 
 ### Output Locations
@@ -256,7 +289,7 @@ Install **Visual Studio Build Tools** with the **"Desktop development with C++"*
 ### Port 3000 already in use
 Another app is using port 3000. Either stop that app, or change the port:
 ```bash
-PORT=3001 npx tauri dev
+PORT=3001 bun tauri dev
 ```
 
 ### App window doesn't open

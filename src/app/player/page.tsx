@@ -424,6 +424,13 @@ export default function PlayerPage() {
   if (!screenId) {
     return (
       <div className="w-screen h-screen bg-linear-to-br from-bg-primary via-[#0B0F19] to-bg-secondary flex flex-col items-center justify-center p-8 select-none">
+        {/* Port indicator badge - always visible top-right */}
+        <div className="absolute top-4 right-4 z-50 flex items-center gap-2 bg-white/5 border border-white/10 px-3 py-2 rounded-xl font-mono">
+          <div className="w-2 h-2 rounded-full bg-accent-primary animate-pulse" />
+          <span className="text-[11px] text-text-secondary">Port:</span>
+          <span className="text-sm font-bold text-accent-secondary">{port}</span>
+        </div>
+
         <div className="max-w-md w-full bg-bg-secondary/40 backdrop-blur-2xl border border-white/5 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center animate-fadeIn">
           {/* Logo anim */}
           <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-linear-to-br from-primary via-primary/80 to-secondary font-bold text-primary-foreground shadow-[0_0_25px_var(--accent-glow)] animate-pulse">
@@ -496,6 +503,13 @@ export default function PlayerPage() {
         {/* Modern glowing background lines */}
         <div className="pointer-events-none absolute left-1/4 top-1/4 h-[500px] w-[500px] rounded-full bg-primary/10 blur-[120px]" />
         <div className="pointer-events-none absolute bottom-1/4 right-1/4 h-[500px] w-[500px] rounded-full bg-secondary/10 blur-[120px]" />
+
+        {/* Port indicator badge - always visible top-right */}
+        <div className="absolute top-4 right-4 z-50 flex items-center gap-2 bg-white/5 border border-white/10 px-3 py-2 rounded-xl font-mono">
+          <div className="w-2 h-2 rounded-full bg-accent-primary animate-pulse" />
+          <span className="text-[11px] text-text-secondary">Port:</span>
+          <span className="text-sm font-bold text-accent-secondary">{port}</span>
+        </div>
 
         <div className="relative max-w-lg w-full flex flex-col items-center text-center animate-fadeIn z-10">
           {/* Pulsing screen icon */}
@@ -598,6 +612,13 @@ export default function PlayerPage() {
     <div className="w-screen h-screen bg-black overflow-hidden relative select-none flex items-center justify-center">
       <div style={getRotationStyle()}>
         {renderContentItem()}
+      </div>
+
+      {/* Port indicator badge - always visible top-right */}
+      <div className="absolute top-4 right-4 z-50 flex items-center gap-2 bg-black/60 backdrop-blur-md border border-white/10 px-3 py-2 rounded-xl font-mono">
+        <div className="w-2 h-2 rounded-full bg-accent-secondary animate-pulse" />
+        <span className="text-[11px] text-text-secondary">Port:</span>
+        <span className="text-sm font-bold text-white">{port}</span>
       </div>
 
       {/* Subtle indicator overlay on hover */}

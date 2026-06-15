@@ -272,7 +272,10 @@ pub async fn sync_screen_data_impl(
     }).await.map_err(|e| e.to_string())??;
 
     // Send payload to target screen HTTP server
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
     let sync_url = format!("http://{}:{}/sync", ip, port);
     
     tracing::info!("Syncing database to screen {} at {}", screen_id, sync_url);
