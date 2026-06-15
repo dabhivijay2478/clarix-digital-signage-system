@@ -1,1576 +1,687 @@
-use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
-use crate::db::DbPool;
-use rusqlite::params;
-use chrono;
-use uuid;
+use std::{collections::HashMap, convert::Infallible, path::{Path as FsPath, PathBuf}, time::Duration};
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+use axum::{
+    body::Body,
+    extract::{Path, Query, State},
+    http::{HeaderMap, StatusCode},
+    response::{Response, sse::{Event, KeepAlive, Sse}},
+    routing::{get, post},
+    Json, Router,
+};
+use chrono::{DateTime, Utc};
+use futures_util::StreamExt;
+use rusqlite::params;
+use sha2::{Digest, Sha256};
+use tokio::sync::broadcast;
+use tokio_stream::wrappers::BroadcastStream;
+use tower_http::services::{ServeDir, ServeFile};
+
+use crate::{
+    db::{self, DbPool},
+    models::{
+        AppWeekday, ContentItem, ContentType, DeviceIdentity, DeviceRole, Orientation, PairingRequest,
+        Playlist, PlaylistItem, Screen, ScreenResolution, SyncAck, SyncAsset, SyncManifest,
+        TransitionEffect,
+    },
+};
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub struct SyncPayload {
-    pub content_items: Vec<crate::models::ContentItem>,
-    pub playlists: Vec<crate::models::Playlist>,
+    pub screen: Option<Screen>,
+    pub content_items: Vec<ContentItem>,
+    pub playlists: Vec<Playlist>,
     pub schedule_slots: Vec<crate::models::ScheduleSlot>,
 }
 
-pub async fn start_lan_server(
-    db_pool: DbPool,
+#[derive(Clone)]
+pub struct SyncEventBus(pub broadcast::Sender<i64>);
+
+#[derive(Clone)]
+struct AppState {
+    pool: DbPool,
+    media_dir: PathBuf,
+    identity: DeviceIdentity,
+    events: SyncEventBus,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct PairingRequestInput {
+    device_id: String,
+    device_name: String,
+    player_kind: String,
+    screen_id: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct HeartbeatInput {
+    device_id: String,
+    device_name: String,
+    player_kind: String,
+    current_revision: i64,
+}
+
+#[derive(Debug, serde::Deserialize, Default)]
+struct TokenQuery {
+    token: Option<String>,
+}
+
+pub async fn start_controller_server(
+    pool: DbPool,
     app_data_dir: String,
-    scheduler: Arc<crate::scheduler::SchedulerState>,
-    lan_state: crate::lan::LanDiscoveryState,
-) -> Result<u16, anyhow::Error> {
-    // Try to bind to SIGNALOS_PORT environment variable if specified, otherwise default to 7420
-    let custom_port = std::env::var("SIGNALOS_PORT")
+    browser_assets_dir: PathBuf,
+    mut identity: DeviceIdentity,
+    events: SyncEventBus,
+) -> anyhow::Result<u16> {
+    let port = std::env::var("SIGNALOS_PORT")
         .ok()
-        .and_then(|v| v.parse::<u16>().ok());
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(identity.service_port);
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
+        .await
+        .map_err(|error| anyhow::anyhow!(
+            "Controller port {port} is unavailable. Close the conflicting application or configure SIGNALOS_PORT: {error}"
+        ))?;
+    identity.service_port = port;
+    if let Ok(conn) = pool.get() {
+        let _ = conn.execute(
+            "UPDATE device_settings SET service_port = ?1 WHERE singleton = 1",
+            params![port],
+        );
+    }
 
-    let mut port = custom_port.unwrap_or(7420);
-    let listener = loop {
-        match TcpListener::bind(format!("0.0.0.0:{}", port)).await {
-            Ok(l) => break l,
-            Err(e) => {
-                if custom_port.is_some() {
-                    return Err(anyhow::anyhow!("Could not bind to specified SIGNALOS_PORT {}: {}", port, e));
-                }
-                port += 1;
-                if port > 7450 {
-                    // Fall back to port 0 (bind to any available free ephemeral port assigned by the OS)
-                    match TcpListener::bind("0.0.0.0:0").await {
-                        Ok(l) => break l,
-                        Err(err) => return Err(anyhow::anyhow!("Failed to bind to any port, including dynamic port 0: {}", err)),
-                    }
-                }
-            }
-        }
-    };
-
-    let bound_port = listener.local_addr()?.port();
-    tracing::info!("SignalOS LAN Server listening on port {}", bound_port);
-
-    let db_pool = Arc::new(db_pool);
-    let media_dir = PathBuf::from(&app_data_dir).join("media");
+    let media_dir = PathBuf::from(app_data_dir).join("media");
     tokio::fs::create_dir_all(&media_dir).await?;
+    let state = AppState { pool, media_dir, identity, events };
 
+    let router = Router::new()
+        .route("/v1/health", get(health))
+        .route("/v1/pairing/requests", post(create_pairing_request))
+        .route("/v1/pairing/requests/{id}", get(get_pairing_request))
+        .route("/v1/players/heartbeat", post(player_heartbeat))
+        .route("/v1/sync/manifest", get(sync_manifest))
+        .route("/v1/assets/{sha256}", get(asset))
+        .route("/v1/sync/ack", post(sync_ack))
+        .route("/v1/events", get(stream_events))
+        .route("/v1/browser/events", get(stream_browser_events))
+        .route("/status", get(health))
+        .route("/api/screens", get(read_screens))
+        .route("/api/playlists", get(read_playlists))
+        .route("/api/content", get(read_content))
+        .route("/api/schedule", get(read_schedule))
+        .route("/media/{filename}", get(legacy_media))
+        .route_service("/player", ServeFile::new(browser_assets_dir.join("player.html")))
+        .route_service("/player/", ServeFile::new(browser_assets_dir.join("player.html")))
+        .fallback_service(ServeDir::new(browser_assets_dir))
+        .with_state(state);
+
+    tracing::info!("SignalOS controller listening on fixed port {port}");
     tokio::spawn(async move {
-        loop {
-            match listener.accept().await {
-                Ok((stream, _)) => {
-                    let pool = db_pool.clone();
-                    let m_dir = media_dir.clone();
-                    let sched = scheduler.clone();
-                    let lan = lan_state.clone();
-                    tokio::spawn(async move {
-                        if let Err(e) = handle_connection(stream, pool, m_dir, sched, lan).await {
-                            tracing::error!("Error handling LAN request: {}", e);
-                        }
-                    });
-                }
-                Err(e) => {
-                    tracing::error!("Error accepting connection: {}", e);
-                }
-            }
+        if let Err(error) = axum::serve(listener, router).await {
+            tracing::error!("Controller server stopped: {error}");
         }
     });
-
-    Ok(bound_port)
+    Ok(port)
 }
 
-async fn handle_connection(
-    mut stream: TcpStream,
-    pool: Arc<DbPool>,
-    media_dir: PathBuf,
-    scheduler: Arc<crate::scheduler::SchedulerState>,
-    lan_state: crate::lan::LanDiscoveryState,
-) -> Result<(), anyhow::Error> {
-    let mut buffer = Vec::new();
-    let mut temp_buf = [0u8; 1024];
-    
-    // Read headers until \r\n\r\n
-    let mut header_end = None;
-    loop {
-        let n = stream.read(&mut temp_buf).await?;
-        if n == 0 {
-            break;
-        }
-        buffer.extend_from_slice(&temp_buf[..n]);
-        
-        // Search for \r\n\r\n
-        if let Some(pos) = buffer.windows(4).position(|w| w == b"\r\n\r\n") {
-            header_end = Some(pos);
-            break;
-        }
-        
-        // Prevent buffer overflow (max 16KB headers)
-        if buffer.len() > 16384 {
-            send_response(&mut stream, 400, "Bad Request", "Headers too large", true).await?;
-            return Ok(());
-        }
-    }
+async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "status": "online",
+        "device_id": state.identity.device_id,
+        "display_name": state.identity.display_name,
+        "role": state.identity.role,
+        "protocol_version": state.identity.protocol_version,
+        "port": state.identity.service_port,
+        "revision": current_revision(&state.pool).unwrap_or(0),
+    }))
+}
 
-    let header_pos = match header_end {
-        Some(pos) => pos,
-        None => {
-            send_response(&mut stream, 400, "Bad Request", "Malformed HTTP request", true).await?;
-            return Ok(());
-        }
+async fn create_pairing_request(
+    State(state): State<AppState>,
+    Json(input): Json<PairingRequestInput>,
+) -> Result<(StatusCode, Json<PairingRequest>), (StatusCode, String)> {
+    let now = Utc::now();
+    let id = uuid::Uuid::new_v4().to_string();
+    let code = uuid::Uuid::new_v4().simple().to_string()[..6].to_uppercase();
+    let expires_at = now + chrono::Duration::minutes(15);
+    let request = PairingRequest {
+        id: id.clone(),
+        code: code.clone(),
+        device_id: input.device_id,
+        device_name: input.device_name,
+        player_kind: input.player_kind,
+        screen_id: input.screen_id,
+        status: "pending".to_string(),
+        token: None,
+        controller_id: Some(state.identity.device_id.clone()),
+        created_at: now.to_rfc3339(),
+        expires_at: expires_at.to_rfc3339(),
     };
-
-    // Split headers and initial body read
-    let header_part = &buffer[..header_pos];
-    let body_start_pos = header_pos + 4;
-    let initial_body = &buffer[body_start_pos..];
-
-    // Parse request line
-    let header_str = String::from_utf8_lossy(header_part);
-    let mut lines = header_str.lines();
-    let req_line = match lines.next() {
-        Some(line) => line,
-        None => {
-            send_response(&mut stream, 400, "Bad Request", "Empty request line", true).await?;
-            return Ok(());
-        }
-    };
-
-    let parts: Vec<&str> = req_line.split_whitespace().collect();
-    if parts.len() < 3 {
-        send_response(&mut stream, 400, "Bad Request", "Malformed request line", true).await?;
-        return Ok(());
-    }
-
-    let method = parts[0];
-    let path_and_query = parts[1];
-
-    // Parse headers to extract content-length
-    let mut content_length = 0;
-    for line in lines {
-        if line.is_empty() {
-            break;
-        }
-        let kv: Vec<&str> = line.splitn(2, ':').collect();
-        if kv.len() == 2 {
-            let key = kv[0].trim().to_lowercase();
-            let val = kv[1].trim();
-            if key == "content-length" {
-                content_length = val.parse().unwrap_or(0);
-            }
-        }
-    }
-
-    // Read remaining body bytes
-    let mut body = initial_body.to_vec();
-    if body.len() < content_length {
-        let mut remaining = content_length - body.len();
-        let mut body_buf = vec![0u8; 4096];
-        while remaining > 0 {
-            let n = stream.read(&mut body_buf).await?;
-            if n == 0 {
-                break;
-            }
-            body.extend_from_slice(&body_buf[..n]);
-            if n <= remaining {
-                remaining -= n;
-            } else {
-                remaining = 0;
-            }
-        }
-    }
-
-    // Support CORS preflight
-    if method == "OPTIONS" {
-        send_cors_response(&mut stream).await?;
-        return Ok(());
-    }
-
-    // Handle routes
-    let uri = path_and_query.split('?').next().unwrap_or("/");
-    let query = path_and_query.split('?').nth(1).unwrap_or("");
-
-    match (method, uri) {
-        ("POST", "/sync") => {
-            match serde_json::from_slice::<SyncPayload>(&body) {
-                Ok(payload) => {
-                    if let Err(e) = db_sync_payload(&pool, payload).await {
-                        send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"DB Sync failed: {}\"}}", e), true).await?;
-                    } else {
-                        send_response(&mut stream, 200, "OK", "{\"status\":\"success\"}", true).await?;
-                    }
-                }
-                Err(e) => {
-                    send_response(&mut stream, 400, "Bad Request", &format!("{{\"error\":\"Invalid JSON: {}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("POST", "/upload") => {
-            let mut filename = "uploaded_file".to_string();
-            for part in query.split('&') {
-                let kv: Vec<&str> = part.split('=').collect();
-                if kv.len() == 2 && kv[0] == "filename" {
-                    filename = url_decode(kv[1]);
-                }
-            }
-
-            // Sanitize filename to prevent directory traversal
-            let file_stem = std::path::Path::new(&filename)
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy();
-            let dest_path = media_dir.join(&*file_stem);
-
-            match tokio::fs::write(&dest_path, &body).await {
-                Ok(_) => {
-                    tracing::info!("Saved media file to {:?}", dest_path);
-                    let path_str = dest_path.to_string_lossy().to_string().replace('\\', "\\\\");
-                    send_response(&mut stream, 200, "OK", &format!("{{\"status\":\"success\",\"path\":\"{}\"}}", path_str), true).await?;
-                }
-                Err(e) => {
-                    send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"Failed to write file: {}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("GET", "/api/analytics/summary") => {
-            let mut screen_id: Option<String> = None;
-            for part in query.split('&') {
-                let kv: Vec<&str> = part.split('=').collect();
-                if kv.len() == 2 && kv[0] == "screen_id" {
-                    screen_id = Some(kv[1].to_string());
-                }
-            }
-
-            let pool = pool.clone();
-            match tokio::task::spawn_blocking(move || -> Result<String, anyhow::Error> {
-                let conn = pool.get()?;
-                let (impressions, plays, completions, skips, avg_dwell): (i64, i64, i64, i64, f64) = if let Some(ref id) = screen_id {
-                    let impressions: i64 = conn.query_row("SELECT COUNT(*) FROM analytics_events WHERE screen_id = ?1 AND event_type = 'Impression'", params![id], |r| r.get(0)).unwrap_or(0);
-                    let plays: i64 = conn.query_row("SELECT COUNT(*) FROM analytics_events WHERE screen_id = ?1 AND event_type = 'Play'", params![id], |r| r.get(0)).unwrap_or(0);
-                    let completions: i64 = conn.query_row("SELECT COUNT(*) FROM analytics_events WHERE screen_id = ?1 AND event_type = 'Complete'", params![id], |r| r.get(0)).unwrap_or(0);
-                    let skips: i64 = conn.query_row("SELECT COUNT(*) FROM analytics_events WHERE screen_id = ?1 AND event_type = 'Skip'", params![id], |r| r.get(0)).unwrap_or(0);
-                    let avg_dwell: f64 = conn.query_row("SELECT COALESCE(AVG(dwell_secs), 0.0) FROM analytics_events WHERE screen_id = ?1 AND dwell_secs IS NOT NULL", params![id], |r| r.get(0)).unwrap_or(0.0);
-                    (impressions, plays, completions, skips, avg_dwell)
-                } else {
-                    let impressions: i64 = conn.query_row("SELECT COUNT(*) FROM analytics_events WHERE event_type = 'Impression'", [], |r| r.get(0)).unwrap_or(0);
-                    let plays: i64 = conn.query_row("SELECT COUNT(*) FROM analytics_events WHERE event_type = 'Play'", [], |r| r.get(0)).unwrap_or(0);
-                    let completions: i64 = conn.query_row("SELECT COUNT(*) FROM analytics_events WHERE event_type = 'Complete'", [], |r| r.get(0)).unwrap_or(0);
-                    let skips: i64 = conn.query_row("SELECT COUNT(*) FROM analytics_events WHERE event_type = 'Skip'", [], |r| r.get(0)).unwrap_or(0);
-                    let avg_dwell: f64 = conn.query_row("SELECT COALESCE(AVG(dwell_secs), 0.0) FROM analytics_events WHERE dwell_secs IS NOT NULL", [], |r| r.get(0)).unwrap_or(0.0);
-                    (impressions, plays, completions, skips, avg_dwell)
-                };
-
-                let summary = serde_json::json!({
-                    "impressions": impressions,
-                    "plays": plays,
-                    "completions": completions,
-                    "skips": skips,
-                    "avg_dwell_secs": avg_dwell,
-                    "uptime_pct": 99.2
-                });
-
-                Ok(serde_json::to_string(&summary)?)
-            }).await? {
-                Ok(json) => {
-                    send_response(&mut stream, 200, "OK", &json, true).await?;
-                }
-                Err(e) => {
-                    send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"{}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("GET", "/api/analytics/timeline") => {
-            let mut screen_id: Option<String> = None;
-            let mut days = 7;
-            for part in query.split('&') {
-                let kv: Vec<&str> = part.split('=').collect();
-                if kv.len() == 2 {
-                    if kv[0] == "screen_id" {
-                        screen_id = Some(kv[1].to_string());
-                    } else if kv[0] == "days" {
-                        days = kv[1].parse::<i64>().unwrap_or(7);
-                    }
-                }
-            }
-
-            let pool = pool.clone();
-            match tokio::task::spawn_blocking(move || -> Result<String, anyhow::Error> {
-                let conn = pool.get()?;
-                let since = (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
-                let mut result = Vec::new();
-                if let Some(ref id) = screen_id {
-                    let mut stmt = conn.prepare(
-                        "SELECT strftime('%Y-%m-%d', timestamp) as day, event_type, COUNT(*) as cnt
-                         FROM analytics_events
-                         WHERE timestamp >= ?1 AND screen_id = ?2
-                         GROUP BY day, event_type
-                         ORDER BY day",
-                    )?;
-                    let rows = stmt.query_map(params![since, id], |row| {
-                        let day: String = row.get(0)?;
-                        let event_type: String = row.get(1)?;
-                        let count: i64 = row.get(2)?;
-                        Ok(serde_json::json!({
-                            "date": day,
-                            "event_type": event_type,
-                            "count": count,
-                        }))
-                    })?;
-                    for r in rows {
-                        result.push(r?);
-                    }
-                } else {
-                    let mut stmt = conn.prepare(
-                        "SELECT strftime('%Y-%m-%d', timestamp) as day, event_type, COUNT(*) as cnt
-                         FROM analytics_events
-                         WHERE timestamp >= ?1
-                         GROUP BY day, event_type
-                         ORDER BY day",
-                    )?;
-                    let rows = stmt.query_map(params![since], |row| {
-                        let day: String = row.get(0)?;
-                        let event_type: String = row.get(1)?;
-                        let count: i64 = row.get(2)?;
-                        Ok(serde_json::json!({
-                            "date": day,
-                            "event_type": event_type,
-                            "count": count,
-                        }))
-                    })?;
-                    for r in rows {
-                        result.push(r?);
-                    }
-                };
-
-                Ok(serde_json::to_string(&result)?)
-            }).await? {
-                Ok(json) => {
-                    send_response(&mut stream, 200, "OK", &json, true).await?;
-                }
-                Err(e) => {
-                    send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"{}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("POST", "/api/screens") => {
-            #[derive(serde::Deserialize)]
-            struct AddScreenPayload {
-                name: String,
-                location: String,
-                ip_address: Option<String>,
-                orientation: Option<String>,
-                resolution_w: Option<i32>,
-                resolution_h: Option<i32>,
-                playlist_id: Option<String>,
-            }
-
-            match serde_json::from_slice::<AddScreenPayload>(&body) {
-                Ok(payload) => {
-                    let pool = pool.clone();
-                    let id = uuid::Uuid::new_v4().to_string();
-                    let now = chrono::Utc::now();
-                    
-                    let id_clone = id.clone();
-                    let name_clone = payload.name.clone();
-                    let loc_clone = payload.location.clone();
-                    let ip_clone = payload.ip_address.clone();
-                    let orient_clone = payload.orientation.unwrap_or_else(|| "Landscape".to_string());
-                    let w_val = payload.resolution_w.unwrap_or(1920);
-                    let h_val = payload.resolution_h.unwrap_or(1080);
-                    let playlist_clone = payload.playlist_id.clone();
-                    
-                    match tokio::task::spawn_blocking(move || -> Result<crate::models::Screen, anyhow::Error> {
-                        let conn = pool.get()?;
-                        conn.execute(
-                            "INSERT INTO screens (id, name, location, ip_address, orientation, resolution_w, resolution_h, playlist_id, created_at)
-                             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                            params![id_clone, name_clone, loc_clone, ip_clone, orient_clone, w_val, h_val, playlist_clone, now.to_rfc3339()],
-                        )?;
-                        
-                        let orientation_parsed = match orient_clone.as_str() {
-                            "Portrait" => crate::models::Orientation::Portrait,
-                            "LandscapeFlipped" => crate::models::Orientation::LandscapeFlipped,
-                            "PortraitFlipped" => crate::models::Orientation::PortraitFlipped,
-                            _ => crate::models::Orientation::Landscape,
-                        };
-
-                        Ok(crate::models::Screen {
-                            id: id_clone,
-                            name: name_clone,
-                            location: loc_clone,
-                            ip_address: ip_clone,
-                            orientation: orientation_parsed,
-                            resolution: crate::models::ScreenResolution {
-                                width: w_val as u32,
-                                height: h_val as u32,
-                            },
-                            playlist_id: playlist_clone,
-                            created_at: now,
-                            ..Default::default()
-                        })
-                    }).await? {
-                        Ok(screen) => {
-                            send_response(&mut stream, 200, "OK", &serde_json::to_string(&screen)?, true).await?;
-                        }
-                        Err(e) => {
-                            send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"DB Error: {}\"}}", e), true).await?;
-                        }
-                    }
-                }
-                Err(e) => {
-                    send_response(&mut stream, 400, "Bad Request", &format!("{{\"error\":\"Invalid JSON: {}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("POST", "/api/screens/power") => {
-            #[derive(serde::Deserialize)]
-            struct UpdatePowerPayload {
-                id: String,
-                on: bool,
-            }
-
-            match serde_json::from_slice::<UpdatePowerPayload>(&body) {
-                Ok(payload) => {
-                    let pool = pool.clone();
-                    match tokio::task::spawn_blocking(move || -> Result<(), anyhow::Error> {
-                        let conn = pool.get()?;
-                        conn.execute(
-                            "UPDATE screens SET power_on = ?1 WHERE id = ?2",
-                            params![payload.on, payload.id],
-                        )?;
-                        Ok(())
-                    }).await? {
-                        Ok(_) => {
-                            send_response(&mut stream, 200, "OK", "{\"status\":\"success\"}", true).await?;
-                        }
-                        Err(e) => {
-                            send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"DB Error: {}\"}}", e), true).await?;
-                        }
-                    }
-                }
-                Err(e) => {
-                    send_response(&mut stream, 400, "Bad Request", &format!("{{\"error\":\"Invalid JSON: {}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("POST", "/api/screens/brightness") => {
-            #[derive(serde::Deserialize)]
-            struct UpdateBrightnessPayload {
-                id: String,
-                brightness: u8,
-            }
-
-            match serde_json::from_slice::<UpdateBrightnessPayload>(&body) {
-                Ok(payload) => {
-                    let brightness_val = payload.brightness.min(100) as i32;
-                    let pool = pool.clone();
-                    match tokio::task::spawn_blocking(move || -> Result<(), anyhow::Error> {
-                        let conn = pool.get()?;
-                        conn.execute(
-                            "UPDATE screens SET brightness = ?1 WHERE id = ?2",
-                            params![brightness_val, payload.id],
-                        )?;
-                        Ok(())
-                    }).await? {
-                        Ok(_) => {
-                            send_response(&mut stream, 200, "OK", "{\"status\":\"success\"}", true).await?;
-                        }
-                        Err(e) => {
-                            send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"DB Error: {}\"}}", e), true).await?;
-                        }
-                    }
-                }
-                Err(e) => {
-                    send_response(&mut stream, 400, "Bad Request", &format!("{{\"error\":\"Invalid JSON: {}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("POST", "/api/screens/edit") => {
-            #[derive(serde::Deserialize)]
-            struct EditScreenPayload {
-                id: String,
-                name: String,
-                location: String,
-                ip_address: Option<String>,
-                orientation: Option<String>,
-                resolution_w: Option<i32>,
-                resolution_h: Option<i32>,
-                playlist_id: Option<String>,
-            }
-
-            match serde_json::from_slice::<EditScreenPayload>(&body) {
-                Ok(payload) => {
-                    let pool = pool.clone();
-                    let orient_clone = payload.orientation.unwrap_or_else(|| "Landscape".to_string());
-                    let w_val = payload.resolution_w.unwrap_or(1920);
-                    let h_val = payload.resolution_h.unwrap_or(1080);
-                    let playlist_clone = payload.playlist_id.clone();
-                    match tokio::task::spawn_blocking(move || -> Result<(), anyhow::Error> {
-                        let conn = pool.get()?;
-                        conn.execute(
-                            "UPDATE screens SET name = ?1, location = ?2, ip_address = ?3, orientation = ?4, resolution_w = ?5, resolution_h = ?6, playlist_id = ?7 WHERE id = ?8",
-                            params![payload.name, payload.location, payload.ip_address, orient_clone, w_val, h_val, playlist_clone, payload.id],
-                        )?;
-                        Ok(())
-                    }).await? {
-                        Ok(_) => {
-                            send_response(&mut stream, 200, "OK", "{\"status\":\"success\"}", true).await?;
-                        }
-                        Err(e) => {
-                            send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"DB Error: {}\"}}", e), true).await?;
-                        }
-                    }
-                }
-                Err(e) => {
-                    send_response(&mut stream, 400, "Bad Request", &format!("{{\"error\":\"Invalid JSON: {}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("POST", "/api/screens/operating-hours") => {
-            #[derive(serde::Deserialize)]
-            struct UpdateOperatingHoursPayload {
-                id: String,
-                operating_hours: serde_json::Value,
-            }
-
-            match serde_json::from_slice::<UpdateOperatingHoursPayload>(&body) {
-                Ok(payload) => {
-                    let pool = pool.clone();
-                    let operating_hours_str = serde_json::to_string(&payload.operating_hours)?;
-                    match tokio::task::spawn_blocking(move || -> Result<(), anyhow::Error> {
-                        let conn = pool.get()?;
-                        conn.execute(
-                            "UPDATE screens SET operating_hours = ?1 WHERE id = ?2",
-                            params![operating_hours_str, payload.id],
-                        )?;
-                        Ok(())
-                    }).await? {
-                        Ok(_) => {
-                            send_response(&mut stream, 200, "OK", "{\"status\":\"success\"}", true).await?;
-                        }
-                        Err(e) => {
-                            send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"DB Error: {}\"}}", e), true).await?;
-                        }
-                    }
-                }
-                Err(e) => {
-                    send_response(&mut stream, 400, "Bad Request", &format!("{{\"error\":\"Invalid JSON: {}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("POST", "/api/screens/delete") => {
-            #[derive(serde::Deserialize)]
-            struct DeletePayload {
-                id: String,
-            }
-
-            match serde_json::from_slice::<DeletePayload>(&body) {
-                Ok(payload) => {
-                    let pool = pool.clone();
-                    match tokio::task::spawn_blocking(move || -> Result<(), anyhow::Error> {
-                        let conn = pool.get()?;
-                        conn.execute("DELETE FROM screens WHERE id = ?1", params![payload.id])?;
-                        Ok(())
-                    }).await? {
-                        Ok(_) => {
-                            send_response(&mut stream, 200, "OK", "{\"status\":\"success\"}", true).await?;
-                        }
-                        Err(e) => {
-                            send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"DB Error: {}\"}}", e), true).await?;
-                        }
-                    }
-                }
-                Err(e) => {
-                    send_response(&mut stream, 400, "Bad Request", &format!("{{\"error\":\"Invalid JSON: {}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("POST", "/api/screens/sync") => {
-            #[derive(serde::Deserialize)]
-            struct SyncScreenPayload {
-                screen_id: String,
-            }
-
-            match serde_json::from_slice::<SyncScreenPayload>(&body) {
-                Ok(payload) => {
-                    let pool = pool.clone();
-                    let lan = lan_state.clone();
-                    match crate::commands::lan::sync_screen_data_impl(payload.screen_id, (*pool).clone(), lan).await {
-                        Ok(_) => {
-                            send_response(&mut stream, 200, "OK", "{\"status\":\"success\"}", true).await?;
-                        }
-                        Err(e) => {
-                            send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"Sync Error: {}\"}}", e), true).await?;
-                        }
-                    }
-                }
-                Err(e) => {
-                    send_response(&mut stream, 400, "Bad Request", &format!("{{\"error\":\"Invalid JSON: {}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("POST", "/api/content") => {
-            #[derive(serde::Deserialize)]
-            struct AddContentPayload {
-                name: String,
-                content_type: String,
-                file_path: Option<String>,
-                url: Option<String>,
-                duration_secs: u32,
-                tags: Vec<String>,
-            }
-
-            match serde_json::from_slice::<AddContentPayload>(&body) {
-                Ok(payload) => {
-                    let id = uuid::Uuid::new_v4().to_string();
-                    let now = chrono::Utc::now();
-                    let pool = pool.clone();
-
-                    let ct = match payload.content_type.as_str() {
-                        "Video" => crate::models::ContentType::Video,
-                        "Image" => crate::models::ContentType::Image,
-                        "WebApp" => crate::models::ContentType::WebApp,
-                        "Ad" => crate::models::ContentType::Ad,
-                        "Slideshow" => crate::models::ContentType::Slideshow,
-                        _ => crate::models::ContentType::Image,
-                    };
-
-                    let duration = payload.duration_secs as i32;
-                    let tags_val = serde_json::to_string(&payload.tags).unwrap_or_else(|_| "[]".to_string());
-
-                    let id_clone = id.clone();
-                    let name_clone = payload.name.clone();
-                    let type_clone = payload.content_type.clone();
-                    let path_clone = payload.file_path.clone();
-                    let url_clone = payload.url.clone();
-
-                    match tokio::task::spawn_blocking(move || -> Result<crate::models::ContentItem, anyhow::Error> {
-                        let conn = pool.get()?;
-                        conn.execute(
-                            "INSERT INTO content_items (id, name, content_type, file_path, url, duration_secs, tags, created_at)
-                             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                            params![
-                                id_clone,
-                                name_clone,
-                                type_clone,
-                                path_clone,
-                                url_clone,
-                                duration,
-                                tags_val,
-                                now.to_rfc3339(),
-                            ],
-                        )?;
-                        Ok(crate::models::ContentItem {
-                            id: id_clone,
-                            name: name_clone,
-                            content_type: ct,
-                            file_path: path_clone,
-                            url: url_clone,
-                            duration_secs: payload.duration_secs,
-                            tags: payload.tags,
-                            created_at: now,
-                        })
-                    }).await? {
-                        Ok(item) => {
-                            send_response(&mut stream, 200, "OK", &serde_json::to_string(&item)?, true).await?;
-                        }
-                        Err(e) => {
-                            send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"DB Error: {}\"}}", e), true).await?;
-                        }
-                    }
-                }
-                Err(e) => {
-                    send_response(&mut stream, 400, "Bad Request", &format!("{{\"error\":\"Invalid JSON: {}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("POST", "/api/content/delete") => {
-            #[derive(serde::Deserialize)]
-            struct DeletePayload {
-                id: String,
-            }
-
-            match serde_json::from_slice::<DeletePayload>(&body) {
-                Ok(payload) => {
-                    let pool = pool.clone();
-                    match tokio::task::spawn_blocking(move || -> Result<(), anyhow::Error> {
-                        let conn = pool.get()?;
-                        conn.execute("DELETE FROM content_items WHERE id = ?1", params![payload.id])?;
-                        Ok(())
-                    }).await? {
-                        Ok(_) => {
-                            send_response(&mut stream, 200, "OK", "{\"status\":\"success\"}", true).await?;
-                        }
-                        Err(e) => {
-                            send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"DB Error: {}\"}}", e), true).await?;
-                        }
-                    }
-                }
-                Err(e) => {
-                    send_response(&mut stream, 400, "Bad Request", &format!("{{\"error\":\"Invalid JSON: {}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("POST", "/api/playlists") => {
-            #[derive(serde::Deserialize)]
-            struct CreatePlaylistPayload {
-                name: String,
-                transition: String,
-                loop_enabled: bool,
-            }
-
-            match serde_json::from_slice::<CreatePlaylistPayload>(&body) {
-                Ok(payload) => {
-                    let id = uuid::Uuid::new_v4().to_string();
-                    let now = chrono::Utc::now();
-                    let pool = pool.clone();
-
-                    let trans = match payload.transition.as_str() {
-                        "None" => crate::models::TransitionEffect::None,
-                        "Slide" => crate::models::TransitionEffect::Slide,
-                        "Zoom" => crate::models::TransitionEffect::Zoom,
-                        _ => crate::models::TransitionEffect::Fade,
-                    };
-
-                    let id_clone = id.clone();
-                    let name_clone = payload.name.clone();
-                    let transition_clone = payload.transition.clone();
-
-                    match tokio::task::spawn_blocking(move || -> Result<crate::models::Playlist, anyhow::Error> {
-                        let conn = pool.get()?;
-                        conn.execute(
-                            "INSERT INTO playlists (id, name, loop_enabled, transition, created_at)
-                             VALUES (?1, ?2, ?3, ?4, ?5)",
-                            params![id_clone, name_clone, payload.loop_enabled, transition_clone, now.to_rfc3339()],
-                        )?;
-                        Ok(crate::models::Playlist {
-                            id: id_clone,
-                            name: name_clone,
-                            items: Vec::new(),
-                            loop_enabled: payload.loop_enabled,
-                            transition: trans,
-                            created_at: now,
-                        })
-                    }).await? {
-                        Ok(playlist) => {
-                            send_response(&mut stream, 200, "OK", &serde_json::to_string(&playlist)?, true).await?;
-                        }
-                        Err(e) => {
-                            send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"DB Error: {}\"}}", e), true).await?;
-                        }
-                    }
-                }
-                Err(e) => {
-                    send_response(&mut stream, 400, "Bad Request", &format!("{{\"error\":\"Invalid JSON: {}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("POST", "/api/playlists/items") => {
-            #[derive(serde::Deserialize)]
-            struct UpdatePlaylistItemsPayload {
-                playlist_id: String,
-                items: Vec<crate::models::PlaylistItem>,
-            }
-
-            match serde_json::from_slice::<UpdatePlaylistItemsPayload>(&body) {
-                Ok(payload) => {
-                    let pool = pool.clone();
-                    match tokio::task::spawn_blocking(move || -> Result<(), anyhow::Error> {
-                        let mut conn = pool.get()?;
-                        let transaction = conn.transaction()?;
-
-                        transaction.execute(
-                            "DELETE FROM playlist_items WHERE playlist_id = ?1",
-                            params![payload.playlist_id],
-                        )?;
-
-                        for item in &payload.items {
-                            let order_idx = item.order as i32;
-                            let override_dur: Option<i32> = item.override_duration.map(|d| d as i32);
-                            let display_sched = serde_json::to_string(&item.display_schedule.clone().unwrap_or_else(|| serde_json::json!({})))?;
-                            let item_id = uuid::Uuid::new_v4().to_string();
-
-                            transaction.execute(
-                                "INSERT INTO playlist_items (id, playlist_id, content_id, order_index, override_duration, display_schedule)
-                                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                                params![
-                                    item_id,
-                                    payload.playlist_id,
-                                    item.content_id,
-                                    order_idx,
-                                    override_dur,
-                                    display_sched,
-                                ],
-                            )?;
-                        }
-
-                        transaction.commit()?;
-                        Ok(())
-                    }).await? {
-                        Ok(_) => {
-                            send_response(&mut stream, 200, "OK", "{\"status\":\"success\"}", true).await?;
-                        }
-                        Err(e) => {
-                            send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"DB Error: {}\"}}", e), true).await?;
-                        }
-                    }
-                }
-                Err(e) => {
-                    send_response(&mut stream, 400, "Bad Request", &format!("{{\"error\":\"Invalid JSON: {}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("POST", "/api/playlists/delete") => {
-            #[derive(serde::Deserialize)]
-            struct DeletePayload {
-                id: String,
-            }
-
-            match serde_json::from_slice::<DeletePayload>(&body) {
-                Ok(payload) => {
-                    let pool = pool.clone();
-                    match tokio::task::spawn_blocking(move || -> Result<(), anyhow::Error> {
-                        let conn = pool.get()?;
-                        conn.execute("DELETE FROM playlists WHERE id = ?1", params![payload.id])?;
-                        Ok(())
-                    }).await? {
-                        Ok(_) => {
-                            send_response(&mut stream, 200, "OK", "{\"status\":\"success\"}", true).await?;
-                        }
-                        Err(e) => {
-                            send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"DB Error: {}\"}}", e), true).await?;
-                        }
-                    }
-                }
-                Err(e) => {
-                    send_response(&mut stream, 400, "Bad Request", &format!("{{\"error\":\"Invalid JSON: {}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("POST", "/api/schedule") => {
-            #[derive(serde::Deserialize)]
-            struct AddSchedulePayload {
-                name: String,
-                screen_ids: Vec<String>,
-                playlist_id: String,
-                start_time: String,
-                duration_mins: u32,
-                days_of_week: Vec<crate::models::AppWeekday>,
-                priority: u8,
-            }
-
-            match serde_json::from_slice::<AddSchedulePayload>(&body) {
-                Ok(payload) => {
-                    let id = uuid::Uuid::new_v4().to_string();
-                    let now = chrono::Utc::now();
-                    let pool_for_query = pool.clone();
-                    let pool_for_reload = pool.clone();
-                    let scheduler_state = scheduler.clone();
-
-                    let parsed_time = chrono::NaiveTime::parse_from_str(&payload.start_time, "%H:%M:%S")
-                        .or_else(|_| chrono::NaiveTime::parse_from_str(&payload.start_time, "%H:%M"))
-                        .map_err(|e| anyhow::anyhow!("Invalid start_time format: {}", e));
-
-                    let parsed_time = match parsed_time {
-                        Ok(t) => t,
-                        Err(e) => {
-                            send_response(&mut stream, 400, "Bad Request", &format!("{{\"error\":\"{}\"}}", e), true).await?;
-                            return Ok(());
-                        }
-                    };
-
-                    let duration = payload.duration_mins as i32;
-                    let priority_val = payload.priority as i32;
-                    let screen_ids_val = serde_json::to_value(&payload.screen_ids).unwrap_or_else(|_| serde_json::json!([]));
-                    let days_val = serde_json::to_value(&payload.days_of_week).unwrap_or_else(|_| serde_json::json!([]));
-
-                    let id_clone = id.clone();
-                    let name_clone = payload.name.clone();
-                    let playlist_clone = payload.playlist_id.clone();
-
-                    match tokio::task::spawn_blocking(move || -> Result<(), anyhow::Error> {
-                        let conn = pool_for_query.get()?;
-                        let parsed_time_str = parsed_time.format("%H:%M:%S").to_string();
-                        conn.execute(
-                            "INSERT INTO schedule_slots (id, name, screen_ids, playlist_id, start_time,
-                             duration_mins, days_of_week, priority, is_active, created_at)
-                             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9)",
-                            params![
-                                id_clone,
-                                name_clone,
-                                serde_json::to_string(&screen_ids_val).unwrap_or_default(),
-                                playlist_clone,
-                                parsed_time_str,
-                                duration,
-                                serde_json::to_string(&days_val).unwrap_or_default(),
-                                priority_val,
-                                now.to_rfc3339(),
-                            ],
-                        )?;
-                        Ok(())
-                    }).await? {
-                        Ok(_) => {
-                            scheduler_state.reload(&pool_for_reload).await;
-                            send_response(&mut stream, 200, "OK", &format!("{{\"status\":\"success\",\"id\":\"{}\"}}", id), true).await?;
-                        }
-                        Err(e) => {
-                            send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"DB Error: {}\"}}", e), true).await?;
-                        }
-                    }
-                }
-                Err(e) => {
-                    send_response(&mut stream, 400, "Bad Request", &format!("{{\"error\":\"Invalid JSON: {}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("POST", "/api/schedule/delete") => {
-            #[derive(serde::Deserialize)]
-            struct DeletePayload {
-                id: String,
-            }
-
-            match serde_json::from_slice::<DeletePayload>(&body) {
-                Ok(payload) => {
-                    let pool_for_query = pool.clone();
-                    let pool_for_reload = pool.clone();
-                    let scheduler_state = scheduler.clone();
-                    match tokio::task::spawn_blocking(move || -> Result<(), anyhow::Error> {
-                        let conn = pool_for_query.get()?;
-                        conn.execute("UPDATE schedule_slots SET is_active = 0 WHERE id = ?1", params![payload.id])?;
-                        Ok(())
-                    }).await? {
-                        Ok(_) => {
-                            scheduler_state.reload(&pool_for_reload).await;
-                            send_response(&mut stream, 200, "OK", "{\"status\":\"success\"}", true).await?;
-                        }
-                        Err(e) => {
-                            send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"DB Error: {}\"}}", e), true).await?;
-                        }
-                    }
-                }
-                Err(e) => {
-                    send_response(&mut stream, 400, "Bad Request", &format!("{{\"error\":\"Invalid JSON: {}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("GET", "/api/screens/online") => {
-            let pool = pool.clone();
-            let screens = match tokio::task::spawn_blocking(move || -> Result<Vec<(String, String)>, anyhow::Error> {
-                let conn = pool.get()?;
-                let mut stmt = conn.prepare("SELECT id, ip_address FROM screens WHERE ip_address IS NOT NULL")?;
-                let rows = stmt.query_map([], |row| {
-                    let id: String = row.get(0)?;
-                    let ip: Option<String> = row.get(1)?;
-                    Ok((id, ip))
-                })?;
-
-                let mut result = Vec::new();
-                for r in rows {
-                    let (id, ip_opt) = r?;
-                    if let Some(ip) = ip_opt {
-                        result.push((id, ip));
-                    }
-                }
-                Ok(result)
-            }).await? {
-                Ok(s) => s,
-                Err(e) => {
-                    send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"{}\"}}", e), true).await?;
-                    return Ok(());
-                }
-            };
-
-            let mut tasks = Vec::new();
-            for (id, ip) in screens {
-                tasks.push(tokio::spawn(async move {
-                    let online = crate::lan::probe_host_reachable(&ip).await;
-                    (id, online)
-                }));
-            }
-
-            let mut results = Vec::new();
-            for task in tasks {
-                if let Ok(result) = task.await {
-                    results.push(result);
-                }
-            }
-
-            let json = serde_json::to_string(&results)?;
-            send_response(&mut stream, 200, "OK", &json, true).await?;
-        }
-        ("GET", "/api/screens/online/probe") => {
-            let mut ip = String::new();
-            for part in query.split('&') {
-                let kv: Vec<&str> = part.split('=').collect();
-                if kv.len() == 2 && kv[0] == "ip" {
-                    ip = kv[1].to_string();
-                }
-            }
-
-            let online = crate::lan::probe_host_reachable(&ip).await;
-            send_response(&mut stream, 200, "OK", &online.to_string(), true).await?;
-        }
-        ("GET", "/api/screens") => {
-            let pool = pool.clone();
-            match tokio::task::spawn_blocking(move || -> Result<String, anyhow::Error> {
-                let conn = pool.get()?;
-                let mut stmt = conn.prepare(
-                    "SELECT id, name, location, ip_address, mac_address,
-                            resolution_w, resolution_h, brightness, power_on,
-                            orientation, group_id, created_at, operating_hours, playlist_id
-                     FROM screens ORDER BY name",
-                )?;
-
-                let rows = stmt.query_map([], |row| {
-                    let orientation_str: String = row.get(9)?;
-                    let orientation = match orientation_str.as_str() {
-                        "Portrait" => crate::models::Orientation::Portrait,
-                        "LandscapeFlipped" => crate::models::Orientation::LandscapeFlipped,
-                        "PortraitFlipped" => crate::models::Orientation::PortraitFlipped,
-                        _ => crate::models::Orientation::Landscape,
-                    };
-
-                    let created_at_str: String = row.get(11)?;
-                    let created_at = chrono::DateTime::parse_from_rfc3339(&created_at_str)
-                        .map(|dt| dt.with_timezone(&chrono::Utc))
-                        .unwrap_or_else(|_| chrono::Utc::now());
-
-                    let operating_hours_str: String = row.get(12).unwrap_or_else(|_| "{}".to_string());
-                    let operating_hours: serde_json::Value = serde_json::from_str(&operating_hours_str)
-                        .unwrap_or(serde_json::Value::Null);
-
-                    Ok(crate::models::Screen {
-                        id: row.get(0)?,
-                        name: row.get(1)?,
-                        location: row.get(2)?,
-                        ip_address: row.get(3)?,
-                        mac_address: row.get(4)?,
-                        resolution: crate::models::ScreenResolution {
-                            width: row.get::<_, i32>(5)? as u32,
-                            height: row.get::<_, i32>(6)? as u32,
-                        },
-                        is_online: true,
-                        brightness: row.get::<_, i32>(7)? as u8,
-                        power_on: row.get(8)?,
-                        orientation,
-                        group_id: row.get(10)?,
-                        created_at,
-                        operating_hours: Some(operating_hours),
-                        playlist_id: row.get(13)?,
-                    })
-                })?;
-
-                let mut screens = Vec::new();
-                for r in rows {
-                    screens.push(r?);
-                }
-                Ok(serde_json::to_string(&screens)?)
-            }).await? {
-                Ok(json) => {
-                    send_response(&mut stream, 200, "OK", &json, true).await?;
-                }
-                Err(e) => {
-                    send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"{}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("GET", "/api/playlists") => {
-            let pool = pool.clone();
-            match tokio::task::spawn_blocking(move || -> Result<String, anyhow::Error> {
-                let conn = pool.get()?;
-                let mut stmt = conn.prepare(
-                    "SELECT id, name, loop_enabled, transition, created_at FROM playlists ORDER BY name",
-                )?;
-
-                let rows = stmt.query_map([], |row| {
-                    let transition_str: String = row.get(3)?;
-                    let transition = match transition_str.as_str() {
-                        "None" => crate::models::TransitionEffect::None,
-                        "Slide" => crate::models::TransitionEffect::Slide,
-                        "Zoom" => crate::models::TransitionEffect::Zoom,
-                        _ => crate::models::TransitionEffect::Fade,
-                    };
-
-                    let created_at_str: String = row.get(4)?;
-                    let created_at = chrono::DateTime::parse_from_rfc3339(&created_at_str)
-                        .map(|dt| dt.with_timezone(&chrono::Utc))
-                        .unwrap_or_else(|_| chrono::Utc::now());
-
-                    Ok(crate::models::Playlist {
-                        id: row.get(0)?,
-                        name: row.get(1)?,
-                        items: Vec::new(),
-                        loop_enabled: row.get(2)?,
-                        transition,
-                        created_at,
-                    })
-                })?;
-
-                let mut playlists = Vec::new();
-                for r in rows {
-                    playlists.push(r?);
-                }
-
-                let mut result = Vec::with_capacity(playlists.len());
-                for mut playlist in playlists {
-                    let mut item_stmt = conn.prepare(
-                        "SELECT content_id, order_index, override_duration, display_schedule
-                         FROM playlist_items
-                         WHERE playlist_id = ?1
-                         ORDER BY order_index",
-                    )?;
-                    let item_rows = item_stmt.query_map(params![playlist.id], |item_row| {
-                        let order_idx: i32 = item_row.get(1)?;
-                        let override_dur: Option<i32> = item_row.get(2)?;
-                        let display_sched_str: Option<String> = item_row.get(3)?;
-                        let display_schedule: Option<serde_json::Value> = display_sched_str
-                            .and_then(|s| serde_json::from_str(&s).ok());
-
-                        Ok(crate::models::PlaylistItem {
-                            content_id: item_row.get(0)?,
-                            order: order_idx as u32,
-                            override_duration: override_dur.map(|d| d as u32),
-                            display_schedule,
-                        })
-                    })?;
-
-                    let mut items = Vec::new();
-                    for r in item_rows {
-                        items.push(r?);
-                    }
-
-                    playlist.items = items;
-                    result.push(playlist);
-                }
-
-                Ok(serde_json::to_string(&result)?)
-            }).await? {
-                Ok(json) => {
-                    send_response(&mut stream, 200, "OK", &json, true).await?;
-                }
-                Err(e) => {
-                    send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"{}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("GET", "/api/content") => {
-            let pool = pool.clone();
-            match tokio::task::spawn_blocking(move || -> Result<String, anyhow::Error> {
-                let conn = pool.get()?;
-                let mut stmt = conn.prepare(
-                    "SELECT id, name, content_type, file_path, url, duration_secs, tags, created_at
-                     FROM content_items ORDER BY created_at DESC",
-                )?;
-
-                let rows = stmt.query_map([], |row| {
-                    let ct_str: String = row.get(2)?;
-                    let content_type = match ct_str.as_str() {
-                        "Video" => crate::models::ContentType::Video,
-                        "Image" => crate::models::ContentType::Image,
-                        "WebApp" => crate::models::ContentType::WebApp,
-                        "Ad" => crate::models::ContentType::Ad,
-                        "Slideshow" => crate::models::ContentType::Slideshow,
-                        _ => crate::models::ContentType::Image,
-                    };
-
-                    let tags_str: String = row.get(6).unwrap_or_else(|_| "[]".to_string());
-                    let tags: Vec<String> = serde_json::from_str(&tags_str).unwrap_or_default();
-
-                    let created_at_str: String = row.get(7)?;
-                    let created_at = chrono::DateTime::parse_from_rfc3339(&created_at_str)
-                        .map(|dt| dt.with_timezone(&chrono::Utc))
-                        .unwrap_or_else(|_| chrono::Utc::now());
-
-                    Ok(crate::models::ContentItem {
-                        id: row.get(0)?,
-                        name: row.get(1)?,
-                        content_type,
-                        file_path: row.get(3)?,
-                        url: row.get(4)?,
-                        duration_secs: row.get::<_, i32>(5)? as u32,
-                        tags,
-                        created_at,
-                    })
-                })?;
-
-                let mut items = Vec::new();
-                for r in rows {
-                    items.push(r?);
-                }
-
-                Ok(serde_json::to_string(&items)?)
-            }).await? {
-                Ok(json) => {
-                    send_response(&mut stream, 200, "OK", &json, true).await?;
-                }
-                Err(e) => {
-                    send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"{}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("GET", "/api/schedule") => {
-            let pool = pool.clone();
-            match tokio::task::spawn_blocking(move || -> Result<String, anyhow::Error> {
-                let conn = pool.get()?;
-                let mut stmt = conn.prepare(
-                    "SELECT id, name, screen_ids, playlist_id, start_time, duration_mins,
-                            days_of_week, priority, is_active, created_at
-                     FROM schedule_slots
-                     WHERE is_active = 1
-                     ORDER BY start_time",
-                )?;
-
-                let rows = stmt.query_map([], |row| {
-                    let screen_ids_str: String = row.get(2).unwrap_or_else(|_| "[]".to_string());
-                    let days_str: String = row.get(6).unwrap_or_else(|_| "[]".to_string());
-
-                    let screen_ids = serde_json::from_str(&screen_ids_str).unwrap_or_default();
-                    let days_of_week = serde_json::from_str(&days_str).unwrap_or_default();
-
-                    let created_at_str: String = row.get(9)?;
-                    let created_at = chrono::DateTime::parse_from_rfc3339(&created_at_str)
-                        .map(|dt| dt.with_timezone(&chrono::Utc))
-                        .unwrap_or_else(|_| chrono::Utc::now());
-
-                    Ok(crate::models::ScheduleSlot {
-                        id: row.get(0)?,
-                        name: row.get(1)?,
-                        screen_ids,
-                        playlist_id: row.get(3)?,
-                        start_time: row.get(4)?,
-                        duration_mins: row.get::<_, i32>(5)? as u32,
-                        days_of_week,
-                        priority: row.get::<_, i32>(7)? as u8,
-                        is_active: row.get::<_, i32>(8)? != 0,
-                        created_at,
-                    })
-                })?;
-
-                let mut slots = Vec::new();
-                for r in rows {
-                    slots.push(r?);
-                }
-
-                Ok(serde_json::to_string(&slots)?)
-            }).await? {
-                Ok(json) => {
-                    send_response(&mut stream, 200, "OK", &json, true).await?;
-                }
-                Err(e) => {
-                    send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"{}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("POST", "/api/analytics") => {
-            #[derive(serde::Deserialize)]
-            #[serde(rename_all = "camelCase")]
-            struct AnalyticsPayload {
-                screen_id: String,
-                content_id: String,
-                event_type: String,
-                dwell_secs: Option<f64>,
-            }
-
-            match serde_json::from_slice::<AnalyticsPayload>(&body) {
-                Ok(payload) => {
-                    let pool = pool.clone();
-                    let id = uuid::Uuid::new_v4().to_string();
-                    let now = chrono::Utc::now();
-                    match tokio::task::spawn_blocking(move || -> Result<(), anyhow::Error> {
-                        let conn = pool.get()?;
-                        conn.execute(
-                            "INSERT INTO analytics_events (id, screen_id, content_id, event_type, timestamp, dwell_secs)
-                             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                            params![
-                                id,
-                                payload.screen_id,
-                                payload.content_id,
-                                payload.event_type,
-                                now.to_rfc3339(),
-                                payload.dwell_secs,
-                            ],
-                        )?;
-                        Ok(())
-                    }).await? {
-                        Ok(_) => {
-                            send_response(&mut stream, 200, "OK", "{\"status\":\"success\"}", true).await?;
-                        }
-                        Err(e) => {
-                            send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"DB Error: {}\"}}", e), true).await?;
-                        }
-                    }
-                }
-                Err(e) => {
-                    send_response(&mut stream, 400, "Bad Request", &format!("{{\"error\":\"Invalid JSON: {}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("GET", "/status") => {
-            match get_local_status(&pool).await {
-                Ok(status_json) => {
-                    send_response(&mut stream, 200, "OK", &status_json, true).await?;
-                }
-                Err(e) => {
-                    send_response(&mut stream, 500, "Internal Server Error", &format!("{{\"error\":\"Status query failed: {}\"}}", e), true).await?;
-                }
-            }
-        }
-        ("GET", path) if path.starts_with("/media/") => {
-            let filename = &path["/media/".len()..];
-            let decoded_filename = url_decode(filename);
-            let file_stem = std::path::Path::new(&decoded_filename)
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy();
-            let file_path = media_dir.join(&*file_stem);
-
-            if file_path.exists() && file_path.is_file() {
-                match tokio::fs::read(&file_path).await {
-                    Ok(content) => {
-                        let content_type = match file_path.extension().and_then(|ext| ext.to_str()) {
-                            Some("mp4") => "video/mp4",
-                            Some("png") => "image/png",
-                            Some("jpg") | Some("jpeg") => "image/jpeg",
-                            Some("gif") => "image/gif",
-                            _ => "application/octet-stream",
-                        };
-                        send_binary_response(&mut stream, 200, "OK", &content, content_type).await?;
-                    }
-                    Err(e) => {
-                        send_response(&mut stream, 500, "Internal Server Error", &format!("Read error: {}", e), true).await?;
-                    }
-                }
-            } else {
-                send_response(&mut stream, 404, "Not Found", "File not found", true).await?;
-            }
-        }
-        _ => {
-            send_response(&mut stream, 404, "Not Found", "Route not found", true).await?;
-        }
-    }
-
-    Ok(())
-}
-
-async fn send_response(
-    stream: &mut TcpStream,
-    status_code: u16,
-    status_text: &str,
-    body: &str,
-    is_json: bool,
-) -> Result<(), anyhow::Error> {
-    let content_type = if is_json { "application/json" } else { "text/plain" };
-    let response = format!(
-        "HTTP/1.1 {} {}\r\n\
-         Content-Type: {}\r\n\
-         Content-Length: {}\r\n\
-         Access-Control-Allow-Origin: *\r\n\
-         Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n\
-         Access-Control-Allow-Headers: Content-Type\r\n\
-         Connection: close\r\n\
-         \r\n\
-         {}",
-        status_code, status_text, content_type, body.len(), body
-    );
-    stream.write_all(response.as_bytes()).await?;
-    stream.flush().await?;
-    Ok(())
-}
-
-async fn send_cors_response(stream: &mut TcpStream) -> Result<(), anyhow::Error> {
-    let response = "HTTP/1.1 204 No Content\r\n\
-                    Access-Control-Allow-Origin: *\r\n\
-                    Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n\
-                    Access-Control-Allow-Headers: Content-Type\r\n\
-                    Access-Control-Max-Age: 86400\r\n\
-                    Connection: close\r\n\
-                    \r\n";
-    stream.write_all(response.as_bytes()).await?;
-    stream.flush().await?;
-    Ok(())
-}
-
-async fn send_binary_response(
-    stream: &mut TcpStream,
-    status_code: u16,
-    status_text: &str,
-    body: &[u8],
-    content_type: &str,
-) -> Result<(), anyhow::Error> {
-    let response_headers = format!(
-        "HTTP/1.1 {} {}\r\n\
-         Content-Type: {}\r\n\
-         Content-Length: {}\r\n\
-         Access-Control-Allow-Origin: *\r\n\
-         Connection: close\r\n\
-         \r\n",
-        status_code, status_text, content_type, body.len()
-    );
-    stream.write_all(response_headers.as_bytes()).await?;
-    stream.write_all(body).await?;
-    stream.flush().await?;
-    Ok(())
-}
-
-async fn get_local_status(pool: &DbPool) -> Result<String, anyhow::Error> {
-    let pool = pool.clone();
-    let status = tokio::task::spawn_blocking(move || {
+    let pool = state.pool.clone();
+    let value = request.clone();
+    tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
         let conn = pool.get()?;
-        let screen_count: i64 = conn.query_row("SELECT COUNT(*) FROM screens", [], |r| r.get(0))?;
-        let content_count: i64 = conn.query_row("SELECT COUNT(*) FROM content_items", [], |r| r.get(0))?;
-        
-        let hostname = gethostname::gethostname().to_string_lossy().to_string();
-        
-        Ok::<_, anyhow::Error>(serde_json::json!({
-            "hostname": hostname,
-            "screens_registered": screen_count,
-            "content_count": content_count,
-            "status": "online"
-        }))
-    }).await??;
-    
-    Ok(serde_json::to_string(&status)?)
+        conn.execute(
+            "INSERT OR REPLACE INTO pairing_requests
+             (id, code, device_id, device_name, player_kind, screen_id, status, token, controller_id, created_at, expires_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![value.id, value.code, value.device_id, value.device_name, value.player_kind,
+                    value.screen_id, value.status, value.token, value.controller_id, value.created_at, value.expires_at],
+        )?;
+        Ok(())
+    }).await.map_err(internal_error)?.map_err(internal_error)?;
+    Ok((StatusCode::CREATED, Json(request)))
 }
 
-async fn db_sync_payload(
-    pool: &DbPool,
-    payload: SyncPayload,
-) -> Result<(), anyhow::Error> {
-    let pool = pool.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get()?;
-        let trans = conn.transaction()?;
+async fn get_pairing_request(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<PairingRequest>, (StatusCode, String)> {
+    let pool = state.pool.clone();
+    let request = tokio::task::spawn_blocking(move || query_pairing_request(&pool, &id))
+        .await.map_err(internal_error)?.map_err(internal_error)?;
+    request.map(Json).ok_or((StatusCode::NOT_FOUND, "Pairing request not found".to_string()))
+}
 
-        // 1. Delete all existing items (cascade where appropriate)
-        trans.execute("DELETE FROM schedule_slots", [])?;
-        trans.execute("DELETE FROM playlist_items", [])?;
-        trans.execute("DELETE FROM playlists", [])?;
-        trans.execute("DELETE FROM content_items", [])?;
+async fn player_heartbeat(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<HeartbeatInput>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let pairing = authenticate(&state.pool, &headers, None)?;
+    let screen_id = pairing.screen_id.ok_or((StatusCode::CONFLICT, "Player is not assigned to a screen".to_string()))?;
+    if pairing.device_id != input.device_id {
+        return Err((StatusCode::UNAUTHORIZED, "Token does not belong to this device".to_string()));
+    }
+    let now = Utc::now().to_rfc3339();
+    let pool = state.pool.clone();
+    let device_id = input.device_id;
+    let name = input.device_name;
+    let kind = input.player_kind;
+    let screen = screen_id.clone();
+    tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+        let conn = pool.get()?;
+        conn.execute(
+            "INSERT INTO player_heartbeats (device_id, screen_id, device_name, player_kind, current_revision, last_seen)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(device_id) DO UPDATE SET screen_id=excluded.screen_id, device_name=excluded.device_name,
+             player_kind=excluded.player_kind, current_revision=excluded.current_revision, last_seen=excluded.last_seen",
+            params![device_id, screen, name, kind, input.current_revision, now],
+        )?;
+        conn.execute(
+            "UPDATE screens SET device_id = ?1, pairing_status = 'paired', last_seen = ?2,
+             last_sync_revision = ?3 WHERE id = ?4",
+            params![pairing.device_id, now, input.current_revision, screen_id],
+        )?;
+        Ok(())
+    }).await.map_err(internal_error)?.map_err(internal_error)?;
+    Ok(Json(serde_json::json!({ "revision": current_revision(&state.pool).unwrap_or(0) })))
+}
 
-        // 2. Insert content items
-        for item in &payload.content_items {
-            let ct_str = match item.content_type {
-                crate::models::ContentType::Video => "Video",
-                crate::models::ContentType::Image => "Image",
-                crate::models::ContentType::WebApp => "WebApp",
-                crate::models::ContentType::Ad => "Ad",
-                crate::models::ContentType::Slideshow => "Slideshow",
-            };
-            let tags_val = serde_json::to_string(&item.tags)?;
-            let duration = item.duration_secs as i32;
+async fn sync_manifest(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<SyncManifest>, (StatusCode, String)> {
+    let pairing = authenticate(&state.pool, &headers, None)?;
+    let screen_id = pairing.screen_id.ok_or((StatusCode::CONFLICT, "Player is not assigned to a screen".to_string()))?;
+    build_manifest(&state.pool, &screen_id).map(Json).map_err(internal_error)
+}
 
-            trans.execute(
-                "INSERT INTO content_items (id, name, content_type, file_path, url, duration_secs, tags, created_at) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                params![
-                    item.id,
-                    item.name,
-                    ct_str,
-                    item.file_path,
-                    item.url,
-                    duration,
-                    tags_val,
-                    item.created_at.to_rfc3339(),
-                ],
+async fn asset(
+    State(state): State<AppState>,
+    Path(sha256): Path<String>,
+    Query(query): Query<TokenQuery>,
+    headers: HeaderMap,
+) -> Result<Response, (StatusCode, String)> {
+    authenticate(&state.pool, &headers, query.token.as_deref())?;
+    let pool = state.pool.clone();
+    let file_path = tokio::task::spawn_blocking(move || -> anyhow::Result<Option<String>> {
+        let conn = pool.get()?;
+        let mut stmt = conn.prepare("SELECT file_path FROM asset_checksums WHERE sha256 = ?1")?;
+        let mut rows = stmt.query(params![sha256])?;
+        Ok(rows.next()?.map(|row| row.get(0)).transpose()?)
+    }).await.map_err(internal_error)?.map_err(internal_error)?;
+    let path = file_path.ok_or((StatusCode::NOT_FOUND, "Asset not found".to_string()))?;
+    let bytes = tokio::fs::read(path).await.map_err(internal_error)?;
+    Ok(Response::builder()
+        .header("Content-Type", "application/octet-stream")
+        .body(Body::from(bytes))
+        .map_err(internal_error)?)
+}
+
+async fn sync_ack(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(ack): Json<SyncAck>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let pairing = authenticate(&state.pool, &headers, None)?;
+    if let Some(screen_id) = pairing.screen_id {
+        let pool = state.pool.clone();
+        tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+            let conn = pool.get()?;
+            conn.execute(
+                "UPDATE screens SET last_sync_revision = ?1, last_seen = ?2 WHERE id = ?3",
+                params![ack.revision, Utc::now().to_rfc3339(), screen_id],
             )?;
+            Ok(())
+        }).await.map_err(internal_error)?.map_err(internal_error)?;
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn stream_events(
+    State(state): State<AppState>,
+    Query(query): Query<TokenQuery>,
+    headers: HeaderMap,
+) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)> {
+    authenticate(&state.pool, &headers, query.token.as_deref())?;
+    let stream = BroadcastStream::new(state.events.0.subscribe()).filter_map(|message| async move {
+        match message {
+            Ok(revision) => Some(Ok(Event::default().event("revision").data(revision.to_string()))),
+            Err(_) => None,
         }
+    });
+    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
+}
 
-        // 3. Insert playlists
-        for playlist in &payload.playlists {
-            let transition_str = match playlist.transition {
-                crate::models::TransitionEffect::None => "None",
-                crate::models::TransitionEffect::Slide => "Slide",
-                crate::models::TransitionEffect::Zoom => "Zoom",
-                crate::models::TransitionEffect::Fade => "Fade",
-            };
+async fn stream_browser_events(
+    State(state): State<AppState>,
+) -> Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>> {
+    let stream = BroadcastStream::new(state.events.0.subscribe()).filter_map(|message| async move {
+        match message {
+            Ok(revision) => Some(Ok(Event::default().event("revision").data(revision.to_string()))),
+            Err(_) => None,
+        }
+    });
+    Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+}
 
-            trans.execute(
-                "INSERT INTO playlists (id, name, loop_enabled, transition, created_at) \
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![
-                    playlist.id,
-                    playlist.name,
-                    playlist.loop_enabled,
-                    transition_str,
-                    playlist.created_at.to_rfc3339(),
-                ],
-            )?;
+async fn read_screens(State(state): State<AppState>) -> Result<Json<Vec<Screen>>, (StatusCode, String)> {
+    query_screens(&state.pool).map(Json).map_err(internal_error)
+}
 
-            // Insert playlist items
-            for item in &playlist.items {
-                let item_id = uuid::Uuid::new_v4().to_string();
-                let order_idx = item.order as i32;
-                let override_dur: Option<i32> = item.override_duration.map(|d| d as i32);
-                let display_sched = serde_json::to_string(&item.display_schedule.clone().unwrap_or_else(|| serde_json::json!({})))?;
+async fn read_playlists(State(state): State<AppState>) -> Result<Json<Vec<Playlist>>, (StatusCode, String)> {
+    build_sync_payload(&state.pool, None).map(|payload| Json(payload.playlists)).map_err(internal_error)
+}
 
-                trans.execute(
-                    "INSERT INTO playlist_items (id, playlist_id, content_id, order_index, override_duration, display_schedule) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                    params![
-                        item_id,
-                        playlist.id,
-                        item.content_id,
-                        order_idx,
-                        override_dur,
-                        display_sched,
-                    ],
-                )?;
+async fn read_content(State(state): State<AppState>) -> Result<Json<Vec<ContentItem>>, (StatusCode, String)> {
+    build_sync_payload(&state.pool, None).map(|payload| Json(payload.content_items)).map_err(internal_error)
+}
+
+async fn read_schedule(State(state): State<AppState>) -> Result<Json<Vec<crate::models::ScheduleSlot>>, (StatusCode, String)> {
+    build_sync_payload(&state.pool, None).map(|payload| Json(payload.schedule_slots)).map_err(internal_error)
+}
+
+async fn legacy_media(
+    State(state): State<AppState>,
+    Path(filename): Path<String>,
+) -> Result<Response, (StatusCode, String)> {
+    let safe_name = FsPath::new(&filename).file_name().and_then(|value| value.to_str())
+        .ok_or((StatusCode::BAD_REQUEST, "Invalid filename".to_string()))?;
+    let bytes = tokio::fs::read(state.media_dir.join(safe_name)).await
+        .map_err(|_| (StatusCode::NOT_FOUND, "Media not found".to_string()))?;
+    Ok(Response::builder().body(Body::from(bytes)).map_err(internal_error)?)
+}
+
+fn authenticate(pool: &DbPool, headers: &HeaderMap, query_token: Option<&str>) -> Result<PairingRequest, (StatusCode, String)> {
+    let header_token = headers.get("authorization")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "));
+    let token = header_token.or(query_token).ok_or((StatusCode::UNAUTHORIZED, "Missing device token".to_string()))?;
+    let conn = pool.get().map_err(internal_error)?;
+    let mut stmt = conn.prepare(
+        "SELECT id, code, device_id, device_name, player_kind, screen_id, status, token, controller_id, created_at, expires_at
+         FROM pairing_requests WHERE token = ?1 AND status = 'approved'"
+    ).map_err(internal_error)?;
+    stmt.query_row(params![token], pairing_from_row)
+        .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid or expired device token".to_string()))
+}
+
+fn query_pairing_request(pool: &DbPool, id: &str) -> anyhow::Result<Option<PairingRequest>> {
+    let conn = pool.get()?;
+    let mut stmt = conn.prepare(
+        "SELECT id, code, device_id, device_name, player_kind, screen_id, status, token, controller_id, created_at, expires_at
+         FROM pairing_requests WHERE id = ?1"
+    )?;
+    let mut rows = stmt.query(params![id])?;
+    Ok(rows.next()?.map(pairing_from_row).transpose()?)
+}
+
+fn pairing_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PairingRequest> {
+    Ok(PairingRequest {
+        id: row.get(0)?, code: row.get(1)?, device_id: row.get(2)?, device_name: row.get(3)?,
+        player_kind: row.get(4)?, screen_id: row.get(5)?, status: row.get(6)?, token: row.get(7)?,
+        controller_id: row.get(8)?, created_at: row.get(9)?, expires_at: row.get(10)?,
+    })
+}
+
+pub fn current_revision(pool: &DbPool) -> anyhow::Result<i64> {
+    let conn = pool.get()?;
+    Ok(conn.query_row("SELECT current_revision FROM device_settings WHERE singleton = 1", [], |row| row.get(0))?)
+}
+
+pub fn publish_revision(pool: &DbPool, events: &SyncEventBus) -> anyhow::Result<i64> {
+    let conn = pool.get()?;
+    conn.execute("UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1", [])?;
+    let revision: i64 = conn.query_row("SELECT current_revision FROM device_settings WHERE singleton = 1", [], |row| row.get(0))?;
+    let _ = events.0.send(revision);
+    Ok(revision)
+}
+
+pub fn build_manifest(pool: &DbPool, screen_id: &str) -> anyhow::Result<SyncManifest> {
+    let payload = build_sync_payload(pool, Some(screen_id))?;
+    let revision = current_revision(pool)?;
+    let mut assets = Vec::new();
+    let conn = pool.get()?;
+    for item in &payload.content_items {
+        let Some(path) = item.file_path.as_deref() else { continue };
+        let file_path = PathBuf::from(path);
+        if !file_path.is_file() { continue; }
+        let bytes = std::fs::read(&file_path)?;
+        let sha256 = sha256_bytes(&bytes);
+        let filename = file_path.file_name().and_then(|value| value.to_str()).unwrap_or("asset").to_string();
+        assets.push(SyncAsset { content_id: item.id.clone(), sha256: sha256.clone(), filename, size: bytes.len() as u64 });
+        conn.execute(
+            "INSERT INTO asset_checksums (content_id, sha256, file_path, file_size, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(content_id) DO UPDATE SET sha256=excluded.sha256, file_path=excluded.file_path,
+             file_size=excluded.file_size, updated_at=excluded.updated_at",
+            params![item.id, sha256, path, bytes.len() as i64, Utc::now().to_rfc3339()],
+        )?;
+    }
+    Ok(SyncManifest { revision, screen_id: screen_id.to_string(), payload, assets })
+}
+
+pub fn build_sync_payload(pool: &DbPool, screen_id: Option<&str>) -> anyhow::Result<SyncPayload> {
+    let conn = pool.get()?;
+    let screen = screen_id.and_then(|id| query_screen(&conn, id).ok().flatten());
+    let mut content_stmt = conn.prepare(
+        "SELECT id, name, content_type, file_path, url, duration_secs, tags, created_at FROM content_items"
+    )?;
+    let content_items = content_stmt.query_map([], |row| {
+        let content_type = match row.get::<_, String>(2)?.as_str() {
+            "Video" => ContentType::Video, "WebApp" => ContentType::WebApp, "Ad" => ContentType::Ad,
+            "Slideshow" => ContentType::Slideshow, _ => ContentType::Image,
+        };
+        Ok(ContentItem {
+            id: row.get(0)?, name: row.get(1)?, content_type, file_path: row.get(3)?, url: row.get(4)?,
+            duration_secs: row.get::<_, i64>(5)? as u32,
+            tags: serde_json::from_str(&row.get::<_, String>(6)?).unwrap_or_default(),
+            created_at: parse_date(row.get(7)?),
+        })
+    })?.collect::<Result<Vec<_>, _>>()?;
+
+    let mut playlist_stmt = conn.prepare("SELECT id, name, loop_enabled, transition, created_at FROM playlists")?;
+    let playlist_rows = playlist_stmt.query_map([], |row| Ok((
+        row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, bool>(2)?,
+        row.get::<_, String>(3)?, row.get::<_, String>(4)?
+    )))?.collect::<Result<Vec<_>, _>>()?;
+    let mut playlists = Vec::new();
+    for (id, name, loop_enabled, transition, created_at) in playlist_rows {
+        let mut item_stmt = conn.prepare(
+            "SELECT content_id, order_index, override_duration, display_schedule
+             FROM playlist_items WHERE playlist_id = ?1 ORDER BY order_index"
+        )?;
+        let items = item_stmt.query_map(params![id], |row| Ok(PlaylistItem {
+            content_id: row.get(0)?, order: row.get::<_, i64>(1)? as u32,
+            override_duration: row.get::<_, Option<i64>>(2)?.map(|value| value as u32),
+            display_schedule: serde_json::from_str(&row.get::<_, String>(3)?).ok(),
+        }))?.collect::<Result<Vec<_>, _>>()?;
+        playlists.push(Playlist {
+            id, name, items, loop_enabled,
+            transition: match transition.as_str() { "None" => TransitionEffect::None, "Slide" => TransitionEffect::Slide, "Zoom" => TransitionEffect::Zoom, _ => TransitionEffect::Fade },
+            created_at: parse_date(created_at),
+        });
+    }
+
+    let mut schedule_stmt = conn.prepare(
+        "SELECT id, name, screen_ids, playlist_id, start_time, duration_mins, days_of_week, priority, is_active, created_at
+         FROM schedule_slots"
+    )?;
+    let schedule_slots = schedule_stmt.query_map([], |row| {
+        let start: String = row.get(4)?;
+        Ok(crate::models::ScheduleSlot {
+            id: row.get(0)?, name: row.get(1)?,
+            screen_ids: serde_json::from_str(&row.get::<_, String>(2)?).unwrap_or_default(),
+            playlist_id: row.get(3)?,
+            start_time: chrono::NaiveTime::parse_from_str(&start, "%H:%M:%S")
+                .or_else(|_| chrono::NaiveTime::parse_from_str(&start, "%H:%M"))
+                .unwrap_or_default(),
+            duration_mins: row.get::<_, i64>(5)? as u32,
+            days_of_week: serde_json::from_str::<Vec<AppWeekday>>(&row.get::<_, String>(6)?).unwrap_or_default(),
+            priority: row.get::<_, i64>(7)? as u8, is_active: row.get(8)?,
+            created_at: parse_date(row.get(9)?),
+        })
+    })?.collect::<Result<Vec<_>, _>>()?;
+    Ok(SyncPayload { screen, content_items, playlists, schedule_slots })
+}
+
+pub async fn run_player_sync_loop(pool: DbPool, app_data_dir: String) {
+    let client = match reqwest::Client::builder().timeout(Duration::from_secs(30)).build() {
+        Ok(client) => client,
+        Err(error) => { tracing::error!("Failed to initialize player sync client: {error}"); return; }
+    };
+    let media_dir = PathBuf::from(app_data_dir).join("media");
+    let _ = tokio::fs::create_dir_all(&media_dir).await;
+    loop {
+        let mut synced = false;
+        if let Ok(identity) = db::get_device_identity(&pool) {
+            if identity.role == DeviceRole::Player {
+                if let Err(error) = player_sync_once(&client, &pool, &media_dir, identity).await {
+                    tracing::debug!("Player sync waiting: {error}");
+                } else {
+                    synced = true;
+                }
             }
         }
-
-        // 4. Insert schedule slots
-        for slot in &payload.schedule_slots {
-            let screen_ids_val = serde_json::to_string(&slot.screen_ids)?;
-            let days_val = serde_json::to_string(&slot.days_of_week)?;
-            let duration = slot.duration_mins as i32;
-            let priority = slot.priority as i32;
-
-            trans.execute(
-                "INSERT INTO schedule_slots (id, name, screen_ids, playlist_id, start_time, duration_mins, days_of_week, priority, is_active, created_at) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-                params![
-                    slot.id,
-                    slot.name,
-                    screen_ids_val,
-                    slot.playlist_id,
-                    slot.start_time,
-                    duration,
-                    days_val,
-                    priority,
-                    if slot.is_active { 1 } else { 0 },
-                    slot.created_at.to_rfc3339(),
-                ],
-            )?;
+        if synced {
+            if let Ok(identity) = db::get_device_identity(&pool) {
+                if let Err(error) = wait_for_revision_event(&client, &identity).await {
+                    tracing::debug!("Player event stream waiting: {error}");
+                    tokio::time::sleep(Duration::from_secs(15)).await;
+                }
+                continue;
+            }
         }
+        tokio::time::sleep(Duration::from_secs(15)).await;
+    }
+}
 
-        trans.commit()?;
-        Ok::<(), anyhow::Error>(())
-    }).await??;
+async fn wait_for_revision_event(
+    client: &reqwest::Client,
+    identity: &DeviceIdentity,
+) -> anyhow::Result<()> {
+    let controller = identity.controller_url.as_deref()
+        .ok_or_else(|| anyhow::anyhow!("Controller address is not configured"))?
+        .trim_end_matches('/');
+    let token = identity.auth_token.as_deref()
+        .ok_or_else(|| anyhow::anyhow!("Player is not paired"))?;
+    let response = client
+        .get(format!("{controller}/v1/events"))
+        .bearer_auth(token)
+        .send()
+        .await?
+        .error_for_status()?;
+    let mut stream = response.bytes_stream();
+    match tokio::time::timeout(Duration::from_secs(15), stream.next()).await {
+        Ok(Some(Ok(_))) | Err(_) => Ok(()),
+        Ok(Some(Err(error))) => Err(error.into()),
+        Ok(None) => anyhow::bail!("Controller event stream closed"),
+    }
+}
 
+async fn player_sync_once(
+    client: &reqwest::Client,
+    pool: &DbPool,
+    media_dir: &FsPath,
+    mut identity: DeviceIdentity,
+) -> anyhow::Result<()> {
+    let controller = identity.controller_url.clone().ok_or_else(|| anyhow::anyhow!("Controller address is not configured"))?;
+    let base = controller.trim_end_matches('/');
+    if identity.auth_token.is_none() {
+        if let Some(request_id) = identity.pending_pairing_id.clone() {
+            let request: PairingRequest = client.get(format!("{base}/v1/pairing/requests/{request_id}")).send().await?.error_for_status()?.json().await?;
+            if request.status == "approved" {
+                let token = request.token.ok_or_else(|| anyhow::anyhow!("Approved pairing has no token"))?;
+                let screen_id = request.screen_id.ok_or_else(|| anyhow::anyhow!("Approved pairing has no screen"))?;
+                let conn = pool.get()?;
+                conn.execute(
+                    "UPDATE device_settings SET auth_token=?1, controller_id=?2, screen_id=?3, pending_pairing_id=NULL WHERE singleton=1",
+                    params![token, request.controller_id, screen_id],
+                )?;
+                identity = db::get_device_identity(pool)?;
+            } else {
+                return Ok(());
+            }
+        } else {
+            return Ok(());
+        }
+    }
+    let token = identity.auth_token.clone().unwrap_or_default();
+    let screen_id = identity.screen_id.clone().ok_or_else(|| anyhow::anyhow!("Player is not assigned to a screen"))?;
+    let heartbeat = HeartbeatInput {
+        device_id: identity.device_id.clone(), device_name: identity.display_name.clone(),
+        player_kind: "packaged".to_string(), current_revision: identity.current_revision,
+    };
+    client.post(format!("{base}/v1/players/heartbeat")).bearer_auth(&token).json(&heartbeat).send().await?.error_for_status()?;
+    let manifest: SyncManifest = client.get(format!("{base}/v1/sync/manifest")).bearer_auth(&token).send().await?.error_for_status()?.json().await?;
+    if manifest.revision <= identity.current_revision { return Ok(()); }
+
+    let mut payload = manifest.payload;
+    let asset_by_content: HashMap<String, SyncAsset> = manifest.assets.into_iter().map(|asset| (asset.content_id.clone(), asset)).collect();
+    for item in &mut payload.content_items {
+        let Some(asset) = asset_by_content.get(&item.id) else { continue };
+        let safe_name = FsPath::new(&asset.filename).file_name().and_then(|value| value.to_str()).unwrap_or("asset");
+        let destination = media_dir.join(format!("{}-{safe_name}", asset.sha256));
+        let valid_existing = std::fs::read(&destination).map(|bytes| sha256_bytes(&bytes) == asset.sha256).unwrap_or(false);
+        if !valid_existing {
+            let bytes = client.get(format!("{base}/v1/assets/{}", asset.sha256)).bearer_auth(&token).send().await?.error_for_status()?.bytes().await?;
+            if sha256_bytes(&bytes) != asset.sha256 { anyhow::bail!("Asset checksum verification failed for {}", asset.filename); }
+            let temporary = destination.with_extension("part");
+            tokio::fs::write(&temporary, &bytes).await?;
+            tokio::fs::rename(&temporary, &destination).await?;
+        }
+        item.file_path = Some(destination.to_string_lossy().to_string());
+    }
+    apply_sync_payload(pool, payload)?;
+    let conn = pool.get()?;
+    conn.execute(
+        "UPDATE device_settings SET current_revision=?1, last_successful_sync=?2 WHERE singleton=1",
+        params![manifest.revision, Utc::now().to_rfc3339()],
+    )?;
+    let ack = SyncAck { revision: manifest.revision, status: "applied".to_string(), message: Some(screen_id) };
+    client.post(format!("{base}/v1/sync/ack")).bearer_auth(token).json(&ack).send().await?.error_for_status()?;
     Ok(())
 }
 
-fn url_decode(s: &str) -> String {
-    let mut bytes = Vec::new();
-    let mut chars = s.chars();
-    while let Some(c) = chars.next() {
-        if c == '%' {
-            let mut hex = String::new();
-            if let Some(h1) = chars.next() {
-                hex.push(h1);
-            }
-            if let Some(h2) = chars.next() {
-                hex.push(h2);
-            }
-            if let Ok(b) = u8::from_str_radix(&hex, 16) {
-                bytes.push(b);
-            } else {
-                bytes.push(b'%');
-                bytes.extend_from_slice(hex.as_bytes());
-            }
-        } else if c == '+' {
-            bytes.push(b' ');
-        } else {
-            let mut buf = [0; 4];
-            let encoded = c.encode_utf8(&mut buf);
-            bytes.extend_from_slice(encoded.as_bytes());
+pub fn apply_sync_payload(pool: &DbPool, payload: SyncPayload) -> anyhow::Result<()> {
+    let mut conn = pool.get()?;
+    let tx = conn.transaction()?;
+    tx.execute("DELETE FROM schedule_slots", [])?;
+    tx.execute("DELETE FROM playlist_items", [])?;
+    tx.execute("DELETE FROM playlists", [])?;
+    tx.execute("DELETE FROM content_items", [])?;
+    if let Some(screen) = payload.screen {
+        tx.execute(
+            "INSERT INTO screens (id, name, location, resolution_w, resolution_h, brightness, power_on, orientation,
+             group_id, operating_hours, playlist_id, device_id, pairing_status, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'paired', ?13)
+             ON CONFLICT(id) DO UPDATE SET name=excluded.name, location=excluded.location, resolution_w=excluded.resolution_w,
+             resolution_h=excluded.resolution_h, brightness=excluded.brightness, power_on=excluded.power_on,
+             orientation=excluded.orientation, operating_hours=excluded.operating_hours, playlist_id=excluded.playlist_id",
+            params![screen.id, screen.name, screen.location, screen.resolution.width, screen.resolution.height,
+                    screen.brightness, screen.power_on, format!("{:?}", screen.orientation), screen.group_id,
+                    serde_json::to_string(&screen.operating_hours)?, screen.playlist_id, screen.device_id, screen.created_at.to_rfc3339()],
+        )?;
+    }
+    for item in payload.content_items {
+        tx.execute(
+            "INSERT INTO content_items (id, name, content_type, file_path, url, duration_secs, tags, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![item.id, item.name, format!("{:?}", item.content_type), item.file_path, item.url,
+                    item.duration_secs, serde_json::to_string(&item.tags)?, item.created_at.to_rfc3339()],
+        )?;
+    }
+    for playlist in payload.playlists {
+        tx.execute(
+            "INSERT INTO playlists (id, name, loop_enabled, transition, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![playlist.id, playlist.name, playlist.loop_enabled, format!("{:?}", playlist.transition), playlist.created_at.to_rfc3339()],
+        )?;
+        for item in playlist.items {
+            tx.execute(
+                "INSERT INTO playlist_items (id, playlist_id, content_id, order_index, override_duration, display_schedule)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![uuid::Uuid::new_v4().to_string(), playlist.id, item.content_id, item.order,
+                        item.override_duration, serde_json::to_string(&item.display_schedule)?],
+            )?;
         }
     }
-    String::from_utf8(bytes).unwrap_or_else(|_| s.to_string())
+    for slot in payload.schedule_slots {
+        tx.execute(
+            "INSERT INTO schedule_slots (id, name, screen_ids, playlist_id, start_time, duration_mins, days_of_week, priority, is_active, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![slot.id, slot.name, serde_json::to_string(&slot.screen_ids)?, slot.playlist_id, slot.start_time.to_string(),
+                    slot.duration_mins, serde_json::to_string(&slot.days_of_week)?, slot.priority, slot.is_active, slot.created_at.to_rfc3339()],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+fn query_screens(pool: &DbPool) -> anyhow::Result<Vec<Screen>> {
+    let conn = pool.get()?;
+    let mut stmt = conn.prepare("SELECT id FROM screens ORDER BY name")?;
+    let ids = stmt.query_map([], |row| row.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+    ids.iter().filter_map(|id| query_screen(&conn, id).transpose()).collect()
+}
+
+fn query_screen(conn: &rusqlite::Connection, id: &str) -> anyhow::Result<Option<Screen>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, location, ip_address, mac_address, resolution_w, resolution_h, brightness, power_on,
+         orientation, group_id, created_at, operating_hours, playlist_id, device_id, endpoint, pairing_status,
+         last_seen, last_sync_revision FROM screens WHERE id = ?1"
+    )?;
+    let mut rows = stmt.query(params![id])?;
+    let Some(row) = rows.next()? else { return Ok(None) };
+    let orientation = match row.get::<_, String>(9)?.as_str() {
+        "Portrait" => Orientation::Portrait, "LandscapeFlipped" => Orientation::LandscapeFlipped,
+        "PortraitFlipped" => Orientation::PortraitFlipped, _ => Orientation::Landscape,
+    };
+    let last_seen: Option<String> = row.get(17)?;
+    let online = last_seen.as_deref().and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+        .map(|value| Utc::now().signed_duration_since(value.with_timezone(&Utc)).num_seconds() < 45).unwrap_or(false);
+    Ok(Some(Screen {
+        id: row.get(0)?, name: row.get(1)?, location: row.get(2)?, ip_address: row.get(3)?, mac_address: row.get(4)?,
+        resolution: ScreenResolution { width: row.get::<_, i64>(5)? as u32, height: row.get::<_, i64>(6)? as u32 },
+        is_online: online, brightness: row.get::<_, i64>(7)? as u8, power_on: row.get(8)?, orientation,
+        group_id: row.get(10)?, created_at: parse_date(row.get(11)?),
+        operating_hours: serde_json::from_str(&row.get::<_, String>(12)?).ok(), playlist_id: row.get(13)?,
+        device_id: row.get(14)?, endpoint: row.get(15)?, pairing_status: row.get(16)?,
+        last_seen, last_sync_revision: row.get(18)?,
+    }))
+}
+
+fn parse_date(value: String) -> DateTime<Utc> {
+    DateTime::parse_from_rfc3339(&value).map(|date| date.with_timezone(&Utc)).unwrap_or_else(|_| Utc::now())
+}
+
+fn sha256_bytes(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+fn internal_error(error: impl std::fmt::Display) -> (StatusCode, String) {
+    tracing::error!("Network API error: {error}");
+    (StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sha256_bytes;
+
+    #[test]
+    fn produces_stable_sha256_asset_ids() {
+        assert_eq!(
+            sha256_bytes(b"SignalOS"),
+            "5803e439e3dafbeeb433a30cfd81ec152069d1f8285cb4651a3aad9d6dff7204"
+        );
+    }
 }

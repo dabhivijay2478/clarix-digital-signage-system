@@ -2,6 +2,7 @@ use anyhow::Result;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use std::path::Path;
+use crate::models::{DeviceIdentity, DeviceRole, NETWORK_PROTOCOL_VERSION};
 
 pub type DbPool = Pool<SqliteConnectionManager>;
 
@@ -30,6 +31,32 @@ pub fn init_db(app_data_dir: &str) -> Result<DbPool> {
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN operating_hours TEXT DEFAULT '{}'", []);
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN playlist_id TEXT", []);
     let _ = conn.execute("ALTER TABLE playlist_items ADD COLUMN display_schedule TEXT DEFAULT '{}'", []);
+    let _ = conn.execute("ALTER TABLE screens ADD COLUMN device_id TEXT", []);
+    let _ = conn.execute("ALTER TABLE screens ADD COLUMN endpoint TEXT", []);
+    let _ = conn.execute("ALTER TABLE screens ADD COLUMN pairing_status TEXT NOT NULL DEFAULT 'unpaired'", []);
+    let _ = conn.execute("ALTER TABLE screens ADD COLUMN last_seen TEXT", []);
+    let _ = conn.execute("ALTER TABLE screens ADD COLUMN last_sync_revision INTEGER NOT NULL DEFAULT 0", []);
+    let _ = conn.execute(
+        "UPDATE screens SET endpoint = ip_address, pairing_status = 'repair_required'
+         WHERE ip_address IS NOT NULL AND endpoint IS NULL AND device_id IS NULL",
+        [],
+    );
+
+    let device_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM device_settings WHERE singleton = 1",
+        [],
+        |row| row.get(0),
+    )?;
+    if device_count == 0 {
+        let device_id = uuid::Uuid::new_v4().to_string();
+        let hostname = gethostname::gethostname().to_string_lossy().to_string();
+        conn.execute(
+            "INSERT INTO device_settings
+             (singleton, device_id, display_name, role, service_port, protocol_version, current_revision)
+             VALUES (1, ?1, ?2, 'Controller', 7420, ?3, 1)",
+            rusqlite::params![device_id, hostname, NETWORK_PROTOCOL_VERSION],
+        )?;
+    }
 
     tracing::info!("SQLite Database initialized successfully with WAL mode");
     Ok(pool)
@@ -104,6 +131,91 @@ const SCHEMA: &str = r#"
         dwell_secs  REAL
     );
 
+    CREATE TABLE IF NOT EXISTS device_settings (
+        singleton          INTEGER PRIMARY KEY CHECK (singleton = 1),
+        device_id          TEXT NOT NULL,
+        display_name       TEXT NOT NULL,
+        role               TEXT NOT NULL DEFAULT 'Controller',
+        controller_url     TEXT,
+        controller_id      TEXT,
+        auth_token         TEXT,
+        screen_id          TEXT,
+        pending_pairing_id TEXT,
+        selected_interface TEXT,
+        service_port       INTEGER NOT NULL DEFAULT 7420,
+        protocol_version   TEXT NOT NULL DEFAULT '1',
+        current_revision   INTEGER NOT NULL DEFAULT 1,
+        last_successful_sync TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS pairing_requests (
+        id            TEXT PRIMARY KEY,
+        code          TEXT NOT NULL,
+        device_id     TEXT NOT NULL,
+        device_name   TEXT NOT NULL,
+        player_kind   TEXT NOT NULL,
+        screen_id     TEXT,
+        status        TEXT NOT NULL DEFAULT 'pending',
+        token         TEXT,
+        controller_id TEXT,
+        created_at    TEXT NOT NULL,
+        expires_at    TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS player_heartbeats (
+        device_id        TEXT PRIMARY KEY,
+        screen_id        TEXT NOT NULL,
+        device_name      TEXT NOT NULL,
+        player_kind      TEXT NOT NULL,
+        current_revision INTEGER NOT NULL DEFAULT 0,
+        last_seen        TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS asset_checksums (
+        content_id TEXT PRIMARY KEY,
+        sha256     TEXT NOT NULL,
+        file_path  TEXT NOT NULL,
+        file_size  INTEGER NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    CREATE TRIGGER IF NOT EXISTS revision_content_insert AFTER INSERT ON content_items
+    WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
+    BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
+    CREATE TRIGGER IF NOT EXISTS revision_content_update AFTER UPDATE ON content_items
+    WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
+    BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
+    CREATE TRIGGER IF NOT EXISTS revision_content_delete AFTER DELETE ON content_items
+    WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
+    BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
+    CREATE TRIGGER IF NOT EXISTS revision_playlist_insert AFTER INSERT ON playlists
+    WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
+    BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
+    CREATE TRIGGER IF NOT EXISTS revision_playlist_update AFTER UPDATE ON playlists
+    WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
+    BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
+    CREATE TRIGGER IF NOT EXISTS revision_playlist_delete AFTER DELETE ON playlists
+    WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
+    BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
+    CREATE TRIGGER IF NOT EXISTS revision_item_insert AFTER INSERT ON playlist_items
+    WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
+    BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
+    CREATE TRIGGER IF NOT EXISTS revision_item_update AFTER UPDATE ON playlist_items
+    WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
+    BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
+    CREATE TRIGGER IF NOT EXISTS revision_item_delete AFTER DELETE ON playlist_items
+    WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
+    BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
+    CREATE TRIGGER IF NOT EXISTS revision_schedule_insert AFTER INSERT ON schedule_slots
+    WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
+    BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
+    CREATE TRIGGER IF NOT EXISTS revision_schedule_update AFTER UPDATE ON schedule_slots
+    WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
+    BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
+    CREATE TRIGGER IF NOT EXISTS revision_schedule_delete AFTER DELETE ON schedule_slots
+    WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
+    BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
+
     -- Performance indexes
     CREATE INDEX IF NOT EXISTS idx_analytics_screen    ON analytics_events(screen_id);
     CREATE INDEX IF NOT EXISTS idx_analytics_ts        ON analytics_events(timestamp);
@@ -111,3 +223,31 @@ const SCHEMA: &str = r#"
     CREATE INDEX IF NOT EXISTS idx_schedule_active     ON schedule_slots(is_active);
     CREATE INDEX IF NOT EXISTS idx_playlist_items_pid  ON playlist_items(playlist_id);
 "#;
+
+pub fn get_device_identity(pool: &DbPool) -> Result<DeviceIdentity> {
+    let conn = pool.get()?;
+    conn.query_row(
+        "SELECT device_id, display_name, role, controller_url, controller_id,
+                auth_token, screen_id, pending_pairing_id, selected_interface,
+                service_port, protocol_version, current_revision
+         FROM device_settings WHERE singleton = 1",
+        [],
+        |row| {
+            let role: String = row.get(2)?;
+            Ok(DeviceIdentity {
+                device_id: row.get(0)?,
+                display_name: row.get(1)?,
+                role: if role == "Player" { DeviceRole::Player } else { DeviceRole::Controller },
+                controller_url: row.get(3)?,
+                controller_id: row.get(4)?,
+                auth_token: row.get(5)?,
+                screen_id: row.get(6)?,
+                pending_pairing_id: row.get(7)?,
+                selected_interface: row.get(8)?,
+                service_port: row.get::<_, i64>(9)? as u16,
+                protocol_version: row.get(10)?,
+                current_revision: row.get(11)?,
+            })
+        },
+    ).map_err(Into::into)
+}

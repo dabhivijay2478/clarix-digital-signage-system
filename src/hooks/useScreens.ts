@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { screensApi, onScheduleChange, lanApi } from '../lib/tauri';
+import { screensApi, onScheduleChange, localNetworkApi } from '../lib/tauri';
 import type { Screen } from '../lib/types';
 
 export function useScreens() {
@@ -17,7 +17,7 @@ export function useScreens() {
       
       // Immediately trigger a status check after fetching screens
       try {
-        const onlineStatus = await lanApi.checkAllOnline();
+        const onlineStatus = await localNetworkApi.checkAllOnline();
         setScreens((prev) =>
           prev.map((s) => {
             const status = onlineStatus.find(([id]) => id === s.id);
@@ -45,7 +45,7 @@ export function useScreens() {
     // Check online status periodically (every 10 seconds)
     const checkStatus = async () => {
       try {
-        const onlineStatus = await lanApi.checkAllOnline();
+        const onlineStatus = await localNetworkApi.checkAllOnline();
         setScreens((prev) =>
           prev.map((s) => {
             const status = onlineStatus.find(([id]) => id === s.id);

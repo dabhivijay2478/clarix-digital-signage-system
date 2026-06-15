@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useScreens } from '../../hooks/useScreens';
-import { usePeers } from '../../hooks/usePeers';
 import { usePlaylists } from '../../hooks/usePlaylists';
 import { useContent } from '../../hooks/useContent';
 import ScreenCard from '../../components/ScreenCard';
@@ -10,7 +9,7 @@ import Modal from '../../components/Modal';
 import { showToast } from '../../components/Toast';
 import type { Screen, PlaylistItem, ContentItem } from '../../lib/types';
 import { customConfirm } from '../../lib/tauri';
-import { Link2, Monitor, Plus, Wifi } from 'lucide-react';
+import { Monitor, Plus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,7 +20,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 export default function ScreensPage() {
   const { screens, loading, addScreen, editScreen, updateOperatingHours, setPower, setBrightness, deleteScreen } = useScreens();
-  const { peers } = usePeers();
   const { playlists, createPlaylist, updateItems } = usePlaylists();
   const { items: contentItems } = useContent();
 
@@ -203,7 +201,7 @@ export default function ScreensPage() {
       showToast("Playlist saved successfully!", "success");
       
       // Auto-sync
-      if (selectedScreen.ip_address) {
+      if (selectedScreen.pairing_status === 'paired') {
         handleSync(selectedScreen.id);
       }
     } catch (err) {
@@ -316,30 +314,19 @@ export default function ScreensPage() {
     const screen = screens.find((s) => s.id === id);
     if (!screen) return;
 
-    // Check online status before running sync (handles custom port matching as well)
-    const ip = screen.ip_address;
-    const isOnline = screen.is_online || (ip ? peers.some(p => p.ip === ip || ip.startsWith(p.ip + ':') || ip === p.ip) : false);
-    if (!isOnline) {
-      const confirmSync = await customConfirm(`Screen "${screen.name}" appears to be offline. Would you like to try syncing anyway?`);
-      if (!confirmSync) return;
+    if (screen.pairing_status !== 'paired') {
+      showToast(`Pair "${screen.name}" from Settings before publishing content.`, 'error');
+      return;
     }
 
     setSyncingScreenIds((prev) => [...prev, id]);
-    showToast(`Syncing database & files to "${screen.name}"...`, 'info');
+    showToast(`Publishing a new revision for "${screen.name}"...`, 'info');
     try {
-      const { lanApi } = await import('../../lib/tauri');
-      await lanApi.syncScreenData(id);
-      showToast(`Screen "${screen.name}" synced successfully!`, 'success');
+      const { localNetworkApi } = await import('../../lib/tauri');
+      const revision = await localNetworkApi.syncScreenData(id);
+      showToast(`Revision ${revision} published. The player will pull it automatically.`, 'success');
     } catch (err) {
-      const errStr = String(err);
-      if (errStr.includes("Failed to connect to screen") || errStr.includes("error sending request") || errStr.includes("ConnectError")) {
-        showToast(
-          `Sync failed: Screen "${screen.name}" (${screen.ip_address || 'No IP'}) is unreachable. Make sure the Screen Player app is running and both devices are on the same Wi-Fi.`,
-          'error'
-        );
-      } else {
-        showToast(`Sync failed: ${err}`, 'error');
-      }
+      showToast(`Publish failed: ${err}`, 'error');
     } finally {
       setSyncingScreenIds((prev) => prev.filter((sid) => sid !== id));
     }
@@ -378,7 +365,7 @@ export default function ScreensPage() {
       );
       showToast(`Screen "${editFormName}" updated`, 'success');
       
-      if (editFormIp || editingScreen.ip_address) {
+      if (editingScreen.pairing_status === 'paired') {
         handleSync(editingScreen.id);
       }
 
@@ -422,7 +409,7 @@ export default function ScreensPage() {
       await updateOperatingHours(hoursScreen.id, payload);
       showToast(`Operating hours for "${hoursScreen.name}" updated`, 'success');
       
-      if (hoursScreen.ip_address) {
+      if (hoursScreen.pairing_status === 'paired') {
         handleSync(hoursScreen.id);
       }
 
@@ -432,13 +419,8 @@ export default function ScreensPage() {
     }
   };
 
-  // Filter out peers that are already registered as screens
-  const unregisteredPeers = peers.filter(
-    (peer) => !screens.some((s) => s.ip_address === peer.ip)
-  );
-
   if (selectedScreenId && selectedScreen) {
-    const isOnline = selectedScreen.is_online || (selectedScreen.ip_address ? peers.some(p => p.ip === selectedScreen.ip_address) : false);
+    const isOnline = selectedScreen.is_online;
     const isSyncing = syncingScreenIds.includes(selectedScreen.id);
 
     return (
@@ -489,11 +471,11 @@ export default function ScreensPage() {
               ✎ Settings
             </button>
             <button 
-              className={`btn ${selectedScreen.ip_address ? 'btn-primary' : 'btn-secondary opacity-50'}`}
-              disabled={!selectedScreen.ip_address || isSyncing}
+              className={`btn ${selectedScreen.pairing_status === 'paired' ? 'btn-primary' : 'btn-secondary opacity-50'}`}
+              disabled={selectedScreen.pairing_status !== 'paired' || isSyncing}
               onClick={() => handleSync(selectedScreen.id)}
             >
-              {isSyncing ? '⚡ Syncing...' : '⚡ Sync'}
+              {isSyncing ? 'Publishing...' : 'Publish Revision'}
             </button>
           </div>
         </div>
@@ -1145,48 +1127,6 @@ export default function ScreensPage() {
         <Button className="w-full sm:w-auto" onClick={() => setShowAdd(true)}><Plus />Add Screen</Button>
       </div>
 
-      {/* Auto-Discovered Network Screen section */}
-      {unregisteredPeers.length > 0 && (
-        <Card className="border-primary/20 bg-primary/[0.04]">
-          <CardHeader>
-            <div className="flex items-start gap-3">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Wifi className="size-5" /></div>
-              <div className="space-y-1">
-                <CardTitle className="flex flex-wrap items-center gap-2">Nearby screens <Badge variant="secondary">{unregisteredPeers.length} found</Badge></CardTitle>
-                <CardDescription>Active SignalOS Players discovered on your local network are ready to link.</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {unregisteredPeers.map((peer) => (
-              <div
-                key={peer.id}
-                className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-background/40 p-4 transition-colors hover:border-primary/30"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{peer.name}</p>
-                  <p className="truncate font-mono text-xs text-muted-foreground">{peer.ip}:{peer.port}</p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={async () => {
-                    try {
-                      await addScreen(peer.name, "Discovered on Wi-Fi", peer.ip);
-                      showToast(`Linked screen "${peer.name}" via Wi-Fi`, 'success');
-                    } catch {
-                      showToast(`Failed to link "${peer.name}"`, 'error');
-                    }
-                  }}
-                >
-                  <Link2 />Link
-                </Button>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
       {loading ? (
         <div aria-busy="true" className="grid-auto">{Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-72 rounded-2xl" />)}</div>
       ) : screens.length === 0 ? (
@@ -1201,12 +1141,10 @@ export default function ScreensPage() {
       ) : (
         <div className="grid-auto stagger">
           {screens.map((screen) => {
-            const isOnline = screen.is_online || (screen.ip_address ? peers.some(p => p.ip === screen.ip_address) : false);
-            const updatedScreen = { ...screen, is_online: isOnline };
             return (
               <ScreenCard
                 key={screen.id}
-                screen={updatedScreen}
+                screen={screen}
                 isSyncing={syncingScreenIds.includes(screen.id)}
                 onTogglePower={setPower}
                 onBrightnessChange={setBrightness}

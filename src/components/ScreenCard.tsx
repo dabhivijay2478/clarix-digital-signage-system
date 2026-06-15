@@ -49,7 +49,9 @@ function ScreenCard({ screen, onTogglePower, onBrightnessChange, onDelete, onEdi
           <TableBody>
             <TableRow><TableCell className="text-muted-foreground">Resolution</TableCell><TableCell className="text-right font-mono">{screen.resolution?.width ?? 1920} × {screen.resolution?.height ?? 1080}</TableCell></TableRow>
             <TableRow><TableCell className="text-muted-foreground">Orientation</TableCell><TableCell className="text-right">{screen.orientation ?? 'Landscape'}</TableCell></TableRow>
-            <TableRow><TableCell className="text-muted-foreground">IP</TableCell><TableCell className="text-right font-mono">{screen.ip_address ?? 'Not assigned'}</TableCell></TableRow>
+            <TableRow><TableCell className="text-muted-foreground">Pairing</TableCell><TableCell className="text-right"><Badge variant={screen.pairing_status === 'paired' ? 'default' : 'outline'}>{screen.pairing_status.replace('_', ' ')}</Badge></TableCell></TableRow>
+            <TableRow><TableCell className="text-muted-foreground">Device</TableCell><TableCell className="max-w-48 truncate text-right font-mono text-xs">{screen.device_id ?? 'Not paired'}</TableCell></TableRow>
+            <TableRow><TableCell className="text-muted-foreground">Revision</TableCell><TableCell className="text-right font-mono">{screen.last_sync_revision}</TableCell></TableRow>
           </TableBody>
         </Table>
         <div className="flex items-center justify-between">
@@ -63,7 +65,7 @@ function ScreenCard({ screen, onTogglePower, onBrightnessChange, onDelete, onEdi
         {isSyncing && <Progress value={undefined} className="animate-pulse" />}
       </CardContent>
       <CardFooter className="flex-col gap-2" onClick={(event) => event.stopPropagation()}>
-        {onSync && <Button className="w-full" disabled={!screen.ip_address || isSyncing} onClick={() => onSync(screen.id)}>{isSyncing ? 'Syncing…' : screen.is_online ? 'Sync to Device' : 'Force Sync (Offline)'}</Button>}
+        {onSync && <Button className="w-full" disabled={screen.pairing_status !== 'paired' || isSyncing} onClick={() => onSync(screen.id)}>{isSyncing ? 'Publishing…' : 'Publish Revision'}</Button>}
         {onManage && <Button variant="link" className="self-end px-0" onClick={() => onManage(screen.id)}>Manage →</Button>}
       </CardFooter>
     </Card>

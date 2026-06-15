@@ -12,7 +12,8 @@ pub async fn get_screens(pool: State<'_, DbPool>) -> Result<Vec<Screen>, String>
             .prepare(
                 "SELECT id, name, location, ip_address, mac_address,
                         resolution_w, resolution_h, brightness, power_on,
-                        orientation, group_id, created_at, operating_hours, playlist_id
+                        orientation, group_id, created_at, operating_hours, playlist_id,
+                        device_id, endpoint, pairing_status, last_seen, last_sync_revision
                  FROM screens ORDER BY name",
             )
             .map_err(|e| e.to_string())?;
@@ -54,6 +55,11 @@ pub async fn get_screens(pool: State<'_, DbPool>) -> Result<Vec<Screen>, String>
                     created_at,
                     operating_hours: Some(operating_hours),
                     playlist_id: row.get(13)?,
+                    device_id: row.get(14)?,
+                    endpoint: row.get(15)?,
+                    pairing_status: row.get(16)?,
+                    last_seen: row.get(17)?,
+                    last_sync_revision: row.get(18)?,
                 })
             })
             .map_err(|e| e.to_string())?;

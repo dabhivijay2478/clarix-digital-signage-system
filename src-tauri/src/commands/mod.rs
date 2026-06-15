@@ -4,3 +4,4 @@ pub mod playlists;
 pub mod schedule;
 pub mod screens;
 pub mod lan;
+pub mod network;

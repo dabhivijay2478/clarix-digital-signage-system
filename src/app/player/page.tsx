@@ -2,9 +2,10 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { screensApi, playlistsApi, contentApi, scheduleApi, analyticsApi, lanApi, customConfirm } from '../../lib/tauri';
+import { screensApi, playlistsApi, contentApi, scheduleApi, analyticsApi, localNetworkApi, customConfirm } from '../../lib/tauri';
 import type { Screen, Playlist, ContentItem, ScheduleSlot, PlaylistItem } from '../../lib/types';
 import { showToast } from '../../components/Toast';
+import { convertFileSrc } from '@tauri-apps/api/core';
 
 export default function PlayerPage() {
   const router = useRouter();
@@ -56,7 +57,7 @@ export default function PlayerPage() {
 
   // Load screen port
   useEffect(() => {
-    lanApi.getServerPort().then(setPort).catch((err) => {
+    localNetworkApi.getServerPort().then(setPort).catch((err) => {
       console.warn('Failed to get server port, fallback to 7420:', err);
     });
   }, []);
@@ -230,9 +231,19 @@ export default function PlayerPage() {
   useEffect(() => {
     if (screenId) {
       resolveActiveSignage();
-      const interval = setInterval(resolveActiveSignage, 3000); // reload config/schedules every 3 seconds
+      const interval = setInterval(resolveActiveSignage, 15000);
       return () => clearInterval(interval);
     }
+  }, [screenId, resolveActiveSignage]);
+
+  // Controller-hosted browser players refresh immediately when a revision is published.
+  useEffect(() => {
+    if (!screenId || typeof window === 'undefined' || !window.location.protocol.startsWith('http')) return;
+    const events = new EventSource('/v1/browser/events');
+    events.addEventListener('revision', () => {
+      void resolveActiveSignage();
+    });
+    return () => events.close();
   }, [screenId, resolveActiveSignage]);
 
   // Derived helper for active items matching schedule
@@ -340,10 +351,13 @@ export default function PlayerPage() {
       return item.url;
     }
     if (item.file_path) {
+      const tauriWindow = window as typeof window & { __TAURI_INTERNALS__?: unknown };
+      if (tauriWindow.__TAURI_INTERNALS__) {
+        return convertFileSrc(item.file_path);
+      }
       // Extract filename
       const filename = item.file_path.split(/[/\\]/).pop() || '';
-      const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-      return `http://${host}:${port}/media/${encodeURIComponent(filename)}`;
+      return `${window.location.origin}/media/${encodeURIComponent(filename)}`;
     }
     return '';
   };
@@ -424,11 +438,10 @@ export default function PlayerPage() {
   if (!screenId) {
     return (
       <div className="w-screen h-screen bg-linear-to-br from-bg-primary via-[#0B0F19] to-bg-secondary flex flex-col items-center justify-center p-8 select-none">
-        {/* Port indicator badge - always visible top-right */}
+        {/* Connection mode indicator */}
         <div className="absolute top-4 right-4 z-50 flex items-center gap-2 bg-white/5 border border-white/10 px-3 py-2 rounded-xl font-mono">
           <div className="w-2 h-2 rounded-full bg-accent-primary animate-pulse" />
-          <span className="text-[11px] text-text-secondary">Port:</span>
-          <span className="text-sm font-bold text-accent-secondary">{port}</span>
+          <span className="text-[11px] text-text-secondary">{port > 0 ? `Controller ${port}` : 'Cached player'}</span>
         </div>
 
         <div className="max-w-md w-full bg-bg-secondary/40 backdrop-blur-2xl border border-white/5 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center animate-fadeIn">
@@ -474,14 +487,14 @@ export default function PlayerPage() {
                     </span>
                     <span className="text-[11px] text-text-secondary">{screen.location || 'No location'}</span>
                   </div>
-                  <span className="text-xs text-text-muted font-mono">{screen.ip_address || 'Same Wi-Fi'}</span>
+                  <span className="text-xs text-text-muted font-mono">{screen.pairing_status}</span>
                 </button>
               ))}
             </div>
           )}
 
           <div className="mt-8 pt-6 border-t border-white/5 w-full flex items-center justify-between text-[11px] text-text-muted">
-            <span>Service Port: {port}</span>
+            <span>{port > 0 ? `Controller-hosted browser player · ${port}` : 'Packaged offline player'}</span>
             <button className="hover:text-white" onClick={() => router.push('/')}>
               ← Back to Main
             </button>
@@ -529,7 +542,7 @@ export default function PlayerPage() {
           <div className="glass-card-static max-w-sm px-6 py-4 mb-8">
             <h2 className="text-sm font-semibold text-white mb-2">Awaiting Content Feed</h2>
             <p className="text-xs text-text-secondary leading-relaxed">
-              No active schedules or playlists resolved at this time. Go to the dashboard, assign a schedule to this screen, and click <strong>Sync to Device</strong>.
+              No active schedules or playlists resolved at this time. Assign content in the controller and publish a new revision.
             </p>
           </div>
 
@@ -539,8 +552,8 @@ export default function PlayerPage() {
               <span className="text-white">Same Wi-Fi Router</span>
             </div>
             <div className="flex gap-4 justify-between">
-              <span>Dynamic Port:</span>
-              <span className="text-white">{port}</span>
+              <span>Connection:</span>
+              <span className="text-white">{port > 0 ? `Controller ${port}` : 'Outbound sync / local cache'}</span>
             </div>
             <div className="flex gap-4 justify-between">
               <span>System Mode:</span>
@@ -614,11 +627,10 @@ export default function PlayerPage() {
         {renderContentItem()}
       </div>
 
-      {/* Port indicator badge - always visible top-right */}
+      {/* Playback status badge */}
       <div className="absolute top-4 right-4 z-50 flex items-center gap-2 bg-black/60 backdrop-blur-md border border-white/10 px-3 py-2 rounded-xl font-mono">
         <div className="w-2 h-2 rounded-full bg-accent-secondary animate-pulse" />
-        <span className="text-[11px] text-text-secondary">Port:</span>
-        <span className="text-sm font-bold text-white">{port}</span>
+        <span className="text-[11px] text-text-secondary">{port > 0 ? 'Connected browser player' : 'Cached packaged player'}</span>
       </div>
 
       {/* Subtle indicator overlay on hover */}

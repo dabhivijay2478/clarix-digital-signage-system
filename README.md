@@ -2,6 +2,8 @@
 
 SignalOS is a cross-platform desktop application for managing **digital signage screens** and **truck fleets** from a single control center. Built with **Tauri v2**, **Next.js 16**, **Tailwind CSS v4**, **Bun**, and a self-contained **SQLite** database — no external servers or Docker needed.
 
+For cross-machine setup, one-time player pairing, firewall guidance, and troubleshooting, see [testing_guide.md](./testing_guide.md). Use packaged players for offline signage or `http://<controller-ip>:7420/player` for a connected-only browser player. The Next.js development server on port `3000` is not a production player endpoint.
+
 > **Package Manager**: This project uses **Bun** (fast, all-in-one JS runtime) instead of npm/pnpm.
 
 ---
@@ -267,7 +269,7 @@ SignalOS includes two main modules accessible from the sidebar:
 | **Frontend** | Next.js 16 with Tailwind CSS v4 (CSS-first config, no `tailwind.config.js`). |
 | **Backend** | Rust with Tauri v2, using `rusqlite` + `r2d2` connection pool. |
 | **State** | Frontend state managed by Zustand with localStorage persistence. |
-| **LAN Discovery** | Screens on the same Wi-Fi are discovered via mDNS (`_signalos._tcp.local`). |
+| **Local Network Discovery** | Controllers on the same Wi-Fi are discovered via mDNS (`_signalos._tcp.local`). |
 | **Permissions** | File system and shell scopes managed in `src-tauri/capabilities/default.json`. |
 
 ---

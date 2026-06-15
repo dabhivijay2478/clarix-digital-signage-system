@@ -1,6 +1,101 @@
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, NaiveTime, Utc};
 
+pub const NETWORK_PROTOCOL_VERSION: &str = "1";
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum DeviceRole {
+    Controller,
+    Player,
+}
+
+impl DeviceRole {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Controller => "Controller",
+            Self::Player => "Player",
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DeviceIdentity {
+    pub device_id: String,
+    pub display_name: String,
+    pub role: DeviceRole,
+    pub controller_url: Option<String>,
+    pub controller_id: Option<String>,
+    pub auth_token: Option<String>,
+    pub screen_id: Option<String>,
+    pub pending_pairing_id: Option<String>,
+    pub selected_interface: Option<String>,
+    pub service_port: u16,
+    pub protocol_version: String,
+    pub current_revision: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PairingRequest {
+    pub id: String,
+    pub code: String,
+    pub device_id: String,
+    pub device_name: String,
+    pub player_kind: String,
+    pub screen_id: Option<String>,
+    pub status: String,
+    pub token: Option<String>,
+    pub controller_id: Option<String>,
+    pub created_at: String,
+    pub expires_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SyncAsset {
+    pub content_id: String,
+    pub sha256: String,
+    pub filename: String,
+    pub size: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SyncManifest {
+    pub revision: i64,
+    pub screen_id: String,
+    pub payload: crate::lan::server::SyncPayload,
+    pub assets: Vec<SyncAsset>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SyncAck {
+    pub revision: i64,
+    pub status: String,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ConnectionDiagnostic {
+    pub role: DeviceRole,
+    pub device_id: String,
+    pub selected_interface: Option<String>,
+    pub local_ip: Option<String>,
+    pub controller_url: Option<String>,
+    pub service_port: Option<u16>,
+    pub discovery_status: String,
+    pub pairing_status: String,
+    pub protocol_version: String,
+    pub last_successful_sync: Option<String>,
+    pub current_revision: i64,
+    pub hints: Vec<String>,
+    pub checks: Vec<DiagnosticCheck>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DiagnosticCheck {
+    pub name: String,
+    pub status: String,
+    pub detail: String,
+}
+
 // ── Screen ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -18,6 +113,11 @@ pub struct Screen {
     pub group_id: Option<String>,
     pub operating_hours: Option<serde_json::Value>,
     pub playlist_id: Option<String>,
+    pub device_id: Option<String>,
+    pub endpoint: Option<String>,
+    pub pairing_status: String,
+    pub last_seen: Option<String>,
+    pub last_sync_revision: i64,
     pub created_at: DateTime<Utc>,
 }
 
@@ -40,6 +140,11 @@ impl Default for Screen {
             group_id: None,
             operating_hours: None,
             playlist_id: None,
+            device_id: None,
+            endpoint: None,
+            pairing_status: "unpaired".to_string(),
+            last_seen: None,
+            last_sync_revision: 0,
             created_at: Utc::now(),
         }
     }

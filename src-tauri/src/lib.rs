@@ -1,6 +1,7 @@
 use tauri::Manager;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use crate::models::DeviceRole;
 
 mod commands;
 mod db;
@@ -52,47 +53,84 @@ pub fn run() {
                 scheduler::run_scheduler_loop(handle, scheduler_clone, pool_clone).await;
             });
 
-            // ── Initialize LAN Discovery ────────────────────────────
-            let lan_discovery = Arc::new(RwLock::new(lan::LanDiscovery::new()));
+            // ── Initialize Local-Network Discovery ─────────────────
+            if let Ok((interface, _)) = lan::resolve_local_network_interface() {
+                if let Ok(conn) = pool.get() {
+                    let _ = conn.execute(
+                        "UPDATE device_settings SET selected_interface = ?1 WHERE singleton = 1",
+                        rusqlite::params![interface],
+                    );
+                }
+            }
+            let identity = db::get_device_identity(&pool).expect("failed to load device identity");
+            let lan_discovery = Arc::new(RwLock::new(lan::LanDiscovery::new(identity.device_id.clone())));
             app.manage(lan_discovery.clone());
 
-            // ── Start LAN HTTP Server ───────────────────────────────
-            let server_pool = pool.clone();
-            let server_app_data = app_data.clone();
-            let server_scheduler = scheduler.clone();
-            let server_port = match tauri::async_runtime::block_on(async {
-                lan::server::start_lan_server(server_pool, server_app_data, server_scheduler, lan_discovery.clone()).await
-            }) {
-                Ok(port) => {
-                    tracing::info!("LAN HTTP server started on port {}", port);
-                    // Write port to public/port.json for dev fallback discovery
-                    let public_port_file = std::path::Path::new("..").join("public").join("port.json");
-                    if let Err(e) = std::fs::write(&public_port_file, format!("{{\"port\": {}}}", port)) {
-                        tracing::debug!("Could not write port.json to public directory: {}", e);
+            let (event_sender, _) = tokio::sync::broadcast::channel(64);
+            let event_bus = lan::server::SyncEventBus(event_sender);
+            app.manage(event_bus.clone());
+            let bundled_browser_assets = app.path().resource_dir()
+                .map(|directory| directory.join("browser-player"))
+                .ok()
+                .filter(|directory| directory.join("player.html").exists())
+                .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../out"));
+
+            // Only a controller accepts inbound traffic. Players connect outward and pull revisions.
+            let server_port = if identity.role == DeviceRole::Controller {
+                match tauri::async_runtime::block_on(lan::server::start_controller_server(
+                    pool.clone(),
+                    app_data.clone(),
+                    bundled_browser_assets,
+                    identity.clone(),
+                    event_bus,
+                )) {
+                    Ok(port) => port,
+                    Err(error) => {
+                        tracing::error!("Controller networking unavailable: {error}");
+                        0
                     }
-                    port
                 }
-                Err(e) => {
-                    tracing::error!("Failed to start LAN HTTP server: {}", e);
-                    7420 // fallback port
-                }
+            } else {
+                0
             };
 
             app.manage(lan::LanServerPort(server_port));
 
             let handle2 = app.handle().clone();
+            let advertised_identity = identity.clone();
+            let discovery_task = lan_discovery.clone();
             tauri::async_runtime::spawn(async move {
-                let lan = lan_discovery.read().await;
+                let lan = discovery_task.read().await;
 
-                // Register self with the dynamically bound server port
-                if let Err(e) = lan.register_self("SignalOS-Device", server_port) {
-                    tracing::warn!("Failed to register mDNS service: {}", e);
+                if server_port > 0 {
+                    if let Err(e) = lan.register_self(&advertised_identity, server_port).await {
+                        tracing::warn!("Failed to register controller discovery service: {}", e);
+                    }
                 }
 
-                // Start discovering LAN peers
                 if let Err(e) = lan.discover_peers(handle2).await {
-                    tracing::warn!("Failed to start peer discovery: {}", e);
+                    tracing::warn!("Failed to start controller discovery: {}", e);
                 }
+            });
+
+            if identity.role == DeviceRole::Controller && server_port > 0 {
+                let refresh_discovery = lan_discovery.clone();
+                let refresh_identity = identity.clone();
+                tauri::async_runtime::spawn(async move {
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                        let lan = refresh_discovery.read().await;
+                        if let Err(error) = lan.refresh_registration(&refresh_identity, server_port).await {
+                            tracing::warn!("Failed to refresh controller discovery endpoint: {error}");
+                        }
+                    }
+                });
+            }
+
+            let player_pool = pool.clone();
+            let player_app_data = app_data.clone();
+            tauri::async_runtime::spawn(async move {
+                lan::server::run_player_sync_loop(player_pool, player_app_data).await;
             });
 
             tracing::info!("SignalOS setup complete");
@@ -125,12 +163,19 @@ pub fn run() {
             commands::analytics::record_analytics_event,
             commands::analytics::get_analytics_summary,
             commands::analytics::get_analytics_timeline,
-            // LAN / Offline
-            commands::lan::get_lan_peers,
+            // Local network / offline
+            commands::lan::get_network_peers,
             commands::lan::check_screen_online,
             commands::lan::check_all_screens_online,
             commands::lan::get_lan_server_port,
             commands::lan::sync_screen_data,
+            // Device networking
+            commands::network::get_device_identity,
+            commands::network::set_device_mode,
+            commands::network::request_player_pairing,
+            commands::network::get_pairing_requests,
+            commands::network::approve_pairing_request,
+            commands::network::get_network_diagnostics,
         ])
         .run(tauri::generate_context!())
         .expect("error running SignalOS");

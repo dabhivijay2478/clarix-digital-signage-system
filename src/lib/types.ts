@@ -14,6 +14,11 @@ export interface Screen {
   group_id: string | null;
   operating_hours?: any;
   playlist_id: string | null;
+  device_id: string | null;
+  endpoint: string | null;
+  pairing_status: string;
+  last_seen: string | null;
+  last_sync_revision: number;
   created_at: string;
 }
 
@@ -115,7 +120,7 @@ export interface AnalyticsTimelineEntry {
   count: number;
 }
 
-// ── LAN Discovery ───────────────────────────────────────────────────────────
+// ── Local Network Discovery ─────────────────────────────────────────────────
 
 export interface PeerScreen {
   id: string;
@@ -123,6 +128,61 @@ export interface PeerScreen {
   ip: string;
   port: number;
   is_controller: boolean;
+  role: string;
+  protocol_version: string;
+}
+
+export type DeviceRole = "Controller" | "Player";
+
+export interface DeviceIdentity {
+  device_id: string;
+  display_name: string;
+  role: DeviceRole;
+  controller_url: string | null;
+  controller_id: string | null;
+  auth_token: string | null;
+  screen_id: string | null;
+  pending_pairing_id: string | null;
+  selected_interface: string | null;
+  service_port: number;
+  protocol_version: string;
+  current_revision: number;
+}
+
+export interface PairingRequest {
+  id: string;
+  code: string;
+  device_id: string;
+  device_name: string;
+  player_kind: string;
+  screen_id: string | null;
+  status: string;
+  token: string | null;
+  controller_id: string | null;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface ConnectionDiagnostic {
+  role: DeviceRole;
+  device_id: string;
+  selected_interface: string | null;
+  local_ip: string | null;
+  controller_url: string | null;
+  service_port: number | null;
+  discovery_status: string;
+  pairing_status: string;
+  protocol_version: string;
+  last_successful_sync: string | null;
+  current_revision: number;
+  hints: string[];
+  checks: DiagnosticCheck[];
+}
+
+export interface DiagnosticCheck {
+  name: string;
+  status: string;
+  detail: string;
 }
 
 // ── Truck Management System ─────────────────────────────────────────────────
