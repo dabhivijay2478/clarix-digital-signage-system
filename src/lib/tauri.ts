@@ -42,15 +42,6 @@ async function getRustPort(): Promise<number> {
   if (!rustPortDiscovery) {
     rustPortDiscovery = (async () => {
       const hostname = window.location.hostname || 'localhost';
-      const ports = Array.from(new Set([
-        ...(!Number.isNaN(storedPort) ? [storedPort] : []),
-        7420,
-        7421,
-        7422,
-        7423,
-        7424,
-        7425,
-      ]));
 
       const probePort = async (port: number): Promise<number> => {
         const controller = new AbortController();
@@ -66,6 +57,34 @@ async function getRustPort(): Promise<number> {
         }
         throw new Error('Service unavailable');
       };
+
+      // Try fetching from /port.json first (useful for dev and cross-machine test forwarding)
+      try {
+        const portRes = await fetch('/port.json');
+        if (portRes.ok) {
+          const data = await portRes.json();
+          if (data && typeof data.port === 'number') {
+            const successPort = await probePort(data.port).catch(() => null);
+            if (successPort !== null) {
+              localStorage.setItem('signalos_rust_server_port', successPort.toString());
+              cachedRustPort = successPort;
+              return successPort;
+            }
+          }
+        }
+      } catch (e) {
+        console.debug('Failed to fetch port.json:', e);
+      }
+
+      const ports = Array.from(new Set([
+        ...(!Number.isNaN(storedPort) ? [storedPort] : []),
+        7420,
+        7421,
+        7422,
+        7423,
+        7424,
+        7425,
+      ]));
 
       // The Next.js window can render before the Rust service finishes startup.
       for (let attempt = 0; attempt < 12; attempt += 1) {

@@ -35,7 +35,11 @@ pub async fn start_lan_server(
                 }
                 port += 1;
                 if port > 7450 {
-                    return Err(anyhow::anyhow!("No free ports available in range 7420-7450"));
+                    // Fall back to port 0 (bind to any available free ephemeral port assigned by the OS)
+                    match TcpListener::bind("0.0.0.0:0").await {
+                        Ok(l) => break l,
+                        Err(err) => return Err(anyhow::anyhow!("Failed to bind to any port, including dynamic port 0: {}", err)),
+                    }
                 }
             }
         }

@@ -65,6 +65,11 @@ pub fn run() {
             }) {
                 Ok(port) => {
                     tracing::info!("LAN HTTP server started on port {}", port);
+                    // Write port to public/port.json for dev fallback discovery
+                    let public_port_file = std::path::Path::new("..").join("public").join("port.json");
+                    if let Err(e) = std::fs::write(&public_port_file, format!("{{\"port\": {}}}", port)) {
+                        tracing::debug!("Could not write port.json to public directory: {}", e);
+                    }
                     port
                 }
                 Err(e) => {
