@@ -65,7 +65,7 @@ function ScreenCard({ screen, onTogglePower, onBrightnessChange, onDelete, onEdi
         {isSyncing && <Progress value={undefined} className="animate-pulse" />}
       </CardContent>
       <CardFooter className="flex-col gap-2" onClick={(event) => event.stopPropagation()}>
-        {onSync && <Button className="w-full" disabled={screen.pairing_status !== 'paired' || isSyncing} onClick={() => onSync(screen.id)}>{isSyncing ? 'Publishing…' : 'Publish Revision'}</Button>}
+        {onSync && <Button className="w-full" disabled={isSyncing} onClick={() => onSync(screen.id)}>{isSyncing ? 'Publishing…' : 'Publish Revision'}</Button>}
         {onManage && <Button variant="link" className="self-end px-0" onClick={() => onManage(screen.id)}>Manage →</Button>}
       </CardFooter>
     </Card>

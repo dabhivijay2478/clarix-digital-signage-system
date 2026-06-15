@@ -50,23 +50,13 @@ pub fn get_lan_server_port(port: State<'_, LanServerPort>) -> u16 {
 
 #[tauri::command]
 pub async fn sync_screen_data(
-    screen_id: String,
+    _screen_id: String,
     pool: State<'_, DbPool>,
     events: State<'_, SyncEventBus>,
 ) -> Result<i64, String> {
     let pool = pool.inner().clone();
     let event_bus = events.inner().clone();
     tokio::task::spawn_blocking(move || {
-        let conn = pool.get().map_err(|error| error.to_string())?;
-        let paired: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM screens WHERE id = ?1 AND pairing_status = 'paired'",
-            params![screen_id],
-            |row| row.get(0),
-        ).map_err(|error| error.to_string())?;
-        if paired == 0 {
-            return Err("Screen must be paired before it can receive revisions".to_string());
-        }
-        drop(conn);
         crate::lan::server::publish_revision(&pool, &event_bus).map_err(|error| error.to_string())
     }).await.map_err(|error| error.to_string())?
 }

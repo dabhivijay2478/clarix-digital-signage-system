@@ -200,10 +200,8 @@ export default function ScreensPage() {
       setHasUnsavedChanges(false);
       showToast("Playlist saved successfully!", "success");
       
-      // Auto-sync
-      if (selectedScreen.pairing_status === 'paired') {
-        handleSync(selectedScreen.id);
-      }
+      // Auto-sync after saving playlist
+      handleSync(selectedScreen.id);
     } catch (err) {
       console.error(err);
       showToast("Failed to save playlist", "error");
@@ -313,11 +311,6 @@ export default function ScreensPage() {
   const handleSync = async (id: string) => {
     const screen = screens.find((s) => s.id === id);
     if (!screen) return;
-
-    if (screen.pairing_status !== 'paired') {
-      showToast(`Pair "${screen.name}" from Settings before publishing content.`, 'error');
-      return;
-    }
 
     setSyncingScreenIds((prev) => [...prev, id]);
     showToast(`Publishing a new revision for "${screen.name}"...`, 'info');
@@ -471,8 +464,8 @@ export default function ScreensPage() {
               ✎ Settings
             </button>
             <button 
-              className={`btn ${selectedScreen.pairing_status === 'paired' ? 'btn-primary' : 'btn-secondary opacity-50'}`}
-              disabled={selectedScreen.pairing_status !== 'paired' || isSyncing}
+              className="btn btn-primary"
+              disabled={isSyncing}
               onClick={() => handleSync(selectedScreen.id)}
             >
               {isSyncing ? 'Publishing...' : 'Publish Revision'}

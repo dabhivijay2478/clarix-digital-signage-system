@@ -58,6 +58,13 @@ pub fn init_db(app_data_dir: &str) -> Result<DbPool> {
         )?;
     }
 
+    // Reset stale ports left by old port-scanning fallback logic.
+    // The canonical default is 7420; runtime overrides use SIGNALOS_PORT env var.
+    let _ = conn.execute(
+        "UPDATE device_settings SET service_port = 7420 WHERE singleton = 1 AND service_port != 7420",
+        [],
+    );
+
     tracing::info!("SQLite Database initialized successfully with WAL mode");
     Ok(pool)
 }
