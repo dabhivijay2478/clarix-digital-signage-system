@@ -11,6 +11,7 @@ import {
   Monitor,
   PlaySquare,
   Settings,
+  Truck,
 } from 'lucide-react'
 import { usePeers } from '@/hooks/usePeers'
 import { APP_VERSION } from '@/lib/constants'
@@ -28,6 +29,7 @@ const navItems = [
   { href: '/screens', label: 'Screens', icon: Monitor },
   { href: '/content', label: 'Content', icon: PlaySquare },
   { href: '/live-data', label: 'Live Data', icon: Database },
+  { href: '/trucks', label: 'Fleet', icon: Truck },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
 

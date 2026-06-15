@@ -124,3 +124,74 @@ export interface PeerScreen {
   port: number;
   is_controller: boolean;
 }
+
+// ── Truck Management System ─────────────────────────────────────────────────
+
+export interface Truck {
+  id: string;
+  registration_number: string;
+  model: string;
+  make: string;
+  year: number;
+  status: TruckStatus;
+  driver_id: string | null;
+  fuel_type: FuelType;
+  odometer: number;
+  insurance_expiry: string;
+  fitness_expiry: string;
+  notes: string;
+  created_at: string;
+}
+
+export type TruckStatus = "Available" | "On Trip" | "Maintenance" | "Inactive";
+export type FuelType = "Diesel" | "Petrol" | "CNG" | "Electric" | "Hybrid";
+
+export interface Driver {
+  id: string;
+  name: string;
+  phone: string;
+  license_number: string;
+  license_expiry: string;
+  status: DriverStatus;
+  assigned_truck_id: string | null;
+  created_at: string;
+}
+
+export type DriverStatus = "Active" | "On Leave" | "Inactive";
+
+export interface Trip {
+  id: string;
+  truck_id: string;
+  driver_id: string;
+  origin: string;
+  destination: string;
+  distance_km: number;
+  start_time: string;
+  end_time: string | null;
+  status: TripStatus;
+  fuel_consumed: number | null;
+  notes: string;
+  created_at: string;
+}
+
+export type TripStatus = "Planned" | "In Progress" | "Completed" | "Cancelled";
+
+export interface MaintenanceRecord {
+  id: string;
+  truck_id: string;
+  type: MaintenanceType;
+  description: string;
+  cost: number;
+  date: string;
+  next_due_date: string | null;
+  odometer_at_service: number;
+  created_at: string;
+}
+
+export type MaintenanceType =
+  | "Oil Change"
+  | "Tire Replacement"
+  | "Brake Service"
+  | "Engine Repair"
+  | "General Service"
+  | "Other";
