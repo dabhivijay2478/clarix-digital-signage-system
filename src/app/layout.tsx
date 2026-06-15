@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 export const metadata: Metadata = {
   title: "SignalOS — Digital Signage Management",
   description:
-    "Cross-platform digital signage management desktop application. Control screens, schedule content, manage playlists, and monitor analytics.",
+    "Cross-platform digital signage management desktop application. Control screens, schedule content, manage playlists, and display live data.",
 };
 
 export default function RootLayout({

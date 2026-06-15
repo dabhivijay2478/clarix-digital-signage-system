@@ -3,9 +3,9 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  BarChart3,
   ChevronLeft,
   ChevronRight,
+  Database,
   LayoutDashboard,
   Menu,
   Monitor,
@@ -27,7 +27,7 @@ const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/screens', label: 'Screens', icon: Monitor },
   { href: '/content', label: 'Content', icon: PlaySquare },
-  { href: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { href: '/live-data', label: 'Live Data', icon: Database },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
@@ -42,7 +42,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
     <div className={cn('flex h-18 items-center gap-3 px-5', !compact && 'px-6')}>
       <Avatar className="size-9 rounded-xl shadow-lg shadow-primary/15">
         {appIcon && <AvatarImage src={appIcon} alt="" />}
-        <AvatarFallback className="rounded-xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 font-bold text-white">
+        <AvatarFallback className="rounded-xl bg-gradient-to-br from-primary via-primary/80 to-secondary font-bold text-primary-foreground">
           {appName.charAt(0).toUpperCase()}
         </AvatarFallback>
       </Avatar>

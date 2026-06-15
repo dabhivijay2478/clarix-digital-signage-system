@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePeers } from '@/hooks/usePeers'
-import { analyticsApi, playlistsApi, scheduleApi, screensApi } from '@/lib/tauri'
+import { contentApi, playlistsApi, scheduleApi, screensApi } from '@/lib/tauri'
 import type { ScheduleSlot } from '@/lib/types'
 
 const ScheduleTimeline = dynamic(() => import('@/components/ScheduleTimeline'), {
@@ -27,7 +27,7 @@ export default function DashboardPage() {
   const [screensCount, setScreensCount] = useState(0)
   const [playlistsCount, setPlaylistsCount] = useState(0)
   const [uptime, setUptime] = useState('0%')
-  const [impressions, setImpressions] = useState('0')
+  const [liveDataCount, setLiveDataCount] = useState(0)
   const [scheduleSlots, setScheduleSlots] = useState<ScheduleSlot[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -41,11 +41,12 @@ export default function DashboardPage() {
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
-        const [screens, playlists, schedules, summary] = await Promise.all([screensApi.getAll(), playlistsApi.getAll(), scheduleApi.getAll(), analyticsApi.getSummary()])
+        const [screens, playlists, schedules, content] = await Promise.all([screensApi.getAll(), playlistsApi.getAll(), scheduleApi.getAll(), contentApi.getAll()])
         setScreensCount(screens.length)
         setPlaylistsCount(playlists.length)
-        setUptime(`${summary.uptime_pct.toFixed(1)}%`)
-        setImpressions(summary.impressions >= 1000 ? `${(summary.impressions / 1000).toFixed(1)}K` : String(summary.impressions))
+        const onlineScreens = screens.filter((screen) => screen.is_online).length
+        setUptime(screens.length ? `${((onlineScreens / screens.length) * 100).toFixed(1)}%` : '0%')
+        setLiveDataCount(content.filter((item) => item.tags.includes('live-data')).length)
         setScheduleSlots(schedules)
       } catch (error) {
         console.error('Failed to load dashboard data:', error)
@@ -91,7 +92,7 @@ export default function DashboardPage() {
             <StatCard icon="▣" value={screensCount} label="Active Screens" />
             <StatCard icon="☰" value={playlistsCount} label="Playlists" color="info" />
             <StatCard icon="◔" value={uptime} label="Uptime" color="success" />
-            <StatCard icon="◉" value={impressions} label="Impressions" color="warning" />
+            <StatCard icon="◉" value={liveDataCount} label="Live Data" color="warning" />
           </div>
           <ScheduleTimeline slots={scheduleSlots} />
         </>
@@ -103,12 +104,13 @@ export default function DashboardPage() {
           <CardContent className="grid gap-3 sm:grid-cols-2">
             <Button className="h-14 justify-start px-4" onClick={() => router.push('/screens')}><span className="flex size-8 items-center justify-center rounded-lg bg-white/10"><Monitor /></span>Add a screen</Button>
             <Button className="h-14 justify-start px-4" variant="outline" onClick={() => router.push('/content')}><span className="flex size-8 items-center justify-center rounded-lg bg-muted"><PlaySquare /></span>Upload content</Button>
+            <Button className="h-14 justify-start px-4" variant="outline" onClick={() => router.push('/live-data')}><span className="flex size-8 items-center justify-center rounded-lg bg-muted"><Network /></span>Add live data</Button>
             <Button className="h-14 justify-start px-4" variant="outline" onClick={() => router.push('/playlists')}><span className="flex size-8 items-center justify-center rounded-lg bg-muted"><Rows3 /></span>Create playlist</Button>
             <Tooltip><TooltipTrigger asChild><Button className="h-14 justify-start px-4" variant="destructive" onClick={handleEmergencyStop}><span className="flex size-8 items-center justify-center rounded-lg bg-black/10"><CircleStop /></span>Emergency stop</Button></TooltipTrigger><TooltipContent>Immediately powers off every registered screen</TooltipContent></Tooltip>
           </CardContent>
         </Card>
         <Card className="overflow-hidden">
-          <CardHeader className="flex flex-row items-center justify-between border-b border-border/50 pb-5"><div><CardTitle>Network Status</CardTitle><p className="mt-1 text-sm text-muted-foreground">Discovery and sync health.</p></div><Network className="size-5 text-blue-400" /></CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between border-b border-border/50 pb-5"><div><CardTitle>Network Status</CardTitle><p className="mt-1 text-sm text-muted-foreground">Discovery and sync health.</p></div><Network className="size-5 text-chart-2" /></CardHeader>
           <CardContent>
             <Table><TableBody>
               <TableRow><TableCell className="text-muted-foreground">Nearby Wi-Fi Devices</TableCell><TableCell className="text-right font-bold">{peerCount}</TableCell></TableRow>

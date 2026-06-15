@@ -440,7 +440,7 @@ export default function ScreensPage() {
                 <span 
                   className={`w-2.5 h-2.5 rounded-full ${
                     isSyncing
-                      ? 'bg-indigo-400 animate-ping'
+                      ? 'bg-primary animate-ping'
                       : isOnline 
                       ? 'bg-status-success shadow-[0_0_8px_rgba(34,197,94,0.4)] animate-pulse' 
                       : 'bg-text-muted'
@@ -449,7 +449,7 @@ export default function ScreensPage() {
                     width: '10px',
                     height: '10px',
                     borderRadius: '50%',
-                    backgroundColor: isSyncing ? '#818cf8' : isOnline ? 'var(--status-success)' : 'var(--text-muted)'
+                    backgroundColor: isSyncing ? 'var(--primary)' : isOnline ? 'var(--status-success)' : 'var(--text-muted)'
                   }}
                 />
                 <span className="text-[10px] uppercase font-bold text-text-secondary">
@@ -484,13 +484,13 @@ export default function ScreensPage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            background: 'rgba(99, 102, 241, 0.15)',
-            border: '1px solid rgba(99, 102, 241, 0.3)',
+            background: 'color-mix(in srgb, var(--primary) 15%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--primary) 30%, transparent)',
             padding: '16px 24px',
             borderRadius: '12px',
             marginBottom: '24px',
             color: 'white',
-            boxShadow: '0 4px 20px rgba(99, 102, 241, 0.1)',
+            boxShadow: '0 4px 20px var(--accent-glow)',
             animation: 'fadeIn 0.2s ease-out'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>

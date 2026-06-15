@@ -425,7 +425,7 @@ export default function PlayerPage() {
       <div className="w-screen h-screen bg-linear-to-br from-bg-primary via-[#0B0F19] to-bg-secondary flex flex-col items-center justify-center p-8 select-none">
         <div className="max-w-md w-full bg-bg-secondary/40 backdrop-blur-2xl border border-white/5 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center animate-fadeIn">
           {/* Logo anim */}
-          <div className="w-16 h-16 rounded-2xl bg-linear-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center font-bold text-white shadow-[0_0_25px_rgba(99,102,241,0.5)] mb-6 animate-pulse">
+          <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-linear-to-br from-primary via-primary/80 to-secondary font-bold text-primary-foreground shadow-[0_0_25px_var(--accent-glow)] animate-pulse">
             <span className="text-2xl">S</span>
           </div>
 
@@ -493,8 +493,8 @@ export default function PlayerPage() {
     return (
       <div className="w-screen h-screen bg-black flex flex-col items-center justify-center p-8 select-none font-sans relative overflow-hidden">
         {/* Modern glowing background lines */}
-        <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-purple-500/10 rounded-full blur-[120px] pointer-events-none" />
+        <div className="pointer-events-none absolute left-1/4 top-1/4 h-[500px] w-[500px] rounded-full bg-primary/10 blur-[120px]" />
+        <div className="pointer-events-none absolute bottom-1/4 right-1/4 h-[500px] w-[500px] rounded-full bg-secondary/10 blur-[120px]" />
 
         <div className="relative max-w-lg w-full flex flex-col items-center text-center animate-fadeIn z-10">
           {/* Pulsing screen icon */}

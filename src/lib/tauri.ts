@@ -16,53 +16,77 @@ import type {
 // Tauri APIs are only available in the browser (WebView), not during SSG build.
 
 let cachedRustPort: number | null = null;
+let rustPortDiscovery: Promise<number> | null = null;
+
+function isTauriRuntime(): boolean {
+  if (typeof window === 'undefined') return false;
+  const globalRuntime = globalThis as typeof globalThis & { isTauri?: boolean };
+  const tauriWindow = window as typeof window & {
+    __TAURI__?: unknown;
+    __TAURI_IPC__?: unknown;
+    __TAURI_INTERNALS__?: unknown;
+  };
+  return Boolean(globalRuntime.isTauri || tauriWindow.__TAURI__ || tauriWindow.__TAURI_IPC__ || tauriWindow.__TAURI_INTERNALS__);
+}
+
+const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 async function getRustPort(): Promise<number> {
   if (cachedRustPort !== null) return cachedRustPort;
   if (typeof window === 'undefined') return 7420;
 
-  // Check localStorage first
+  // Prefer the last successful port, but verify it before using it.
   const stored = localStorage.getItem('signalos_rust_server_port');
-  if (stored) {
-    const p = parseInt(stored, 10);
-    if (!isNaN(p)) {
-      cachedRustPort = p;
-      return p;
-    }
-  }
+  const storedPort = stored ? parseInt(stored, 10) : NaN;
 
-  // Scan ports 7420 to 7425
-  const hostname = window.location.hostname || 'localhost';
-  const ports = [7420, 7421, 7422, 7423, 7424, 7425];
-  
-  const probePort = async (p: number): Promise<number> => {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 800);
-    try {
-      const res = await fetch(`http://${hostname}:${p}/status`, { 
-        signal: controller.signal,
-        mode: 'cors'
-      });
-      clearTimeout(timeoutId);
-      if (res.ok) {
-        return p;
+  if (!rustPortDiscovery) {
+    rustPortDiscovery = (async () => {
+      const hostname = window.location.hostname || 'localhost';
+      const ports = Array.from(new Set([
+        ...(!Number.isNaN(storedPort) ? [storedPort] : []),
+        7420,
+        7421,
+        7422,
+        7423,
+        7424,
+        7425,
+      ]));
+
+      const probePort = async (port: number): Promise<number> => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 650);
+        try {
+          const response = await fetch(`http://${hostname}:${port}/status`, {
+            signal: controller.signal,
+            mode: 'cors',
+          });
+          if (response.ok) return port;
+        } finally {
+          clearTimeout(timeoutId);
+        }
+        throw new Error('Service unavailable');
+      };
+
+      // The Next.js window can render before the Rust service finishes startup.
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        try {
+          const successfulPort = await Promise.any(ports.map(probePort));
+          localStorage.setItem('signalos_rust_server_port', successfulPort.toString());
+          cachedRustPort = successfulPort;
+          return successfulPort;
+        } catch {
+          if (attempt < 11) await wait(400);
+        }
       }
-    } catch (e) {
-      // ignore
-    }
-    throw new Error('Not online');
-  };
 
-  try {
-    // Return first successful port
-    const successfulPort = await Promise.any(ports.map(probePort));
-    localStorage.setItem('signalos_rust_server_port', successfulPort.toString());
-    cachedRustPort = successfulPort;
-    return successfulPort;
-  } catch (e) {
-    console.warn('Failed to auto-detect LAN Rust server, using fallback port 7420');
-    return 7420;
+      console.warn('SignalOS service was not detected; using default port 7420');
+      return 7420;
+    })().finally(() => {
+      rustPortDiscovery = null;
+    });
   }
+
+  return rustPortDiscovery;
 }
 
 async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -70,13 +94,11 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
     throw new Error('Tauri invoke is only available in the browser');
   }
 
-  const isTauri = (window as any).__TAURI_IPC__ !== undefined || (window as any).__TAURI__ !== undefined;
-
-  if (isTauri) {
+  if (isTauriRuntime()) {
     const { invoke } = await import('@tauri-apps/api/core');
     return invoke<T>(cmd, args);
   } else {
-    // Fallback: Fetch from Rust LAN server HTTP endpoints
+    // Browser fallback: fetch from the local SignalOS HTTP service.
     const port = await getRustPort();
     const hostname = window.location.hostname || 'localhost';
     const baseUrl = `http://${hostname}:${port}`;
@@ -290,8 +312,7 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
 function tauriListen(event: string, handler: (payload: unknown) => void): () => void {
   if (typeof window === 'undefined') return () => {};
   
-  const isTauri = (window as any).__TAURI_IPC__ !== undefined || (window as any).__TAURI__ !== undefined;
-  if (!isTauri) {
+  if (!isTauriRuntime()) {
     // Event listeners are not supported outside of Tauri and are no-ops
     return () => {};
   }
@@ -478,11 +499,11 @@ export const analyticsApi = {
     }),
 };
 
-// ── LAN / Offline API ───────────────────────────────────────────────────────
-// All screen communication is over LAN — no internet required.
+// ── Same-router screen communication API ───────────────────────────────────
+// Screens discover and sync with each other while connected to the same router.
 
 export const lanApi = {
-  /** Returns all SignalOS screens discovered via mDNS on the LAN. */
+  /** Returns all SignalOS screens discovered via mDNS on the same router. */
   getPeers: () => tauriInvoke<PeerScreen[]>('get_lan_peers'),
 
   /** Probes a specific IP address to check if the screen is reachable. */
@@ -493,10 +514,10 @@ export const lanApi = {
   checkAllOnline: () =>
     tauriInvoke<[string, boolean][]>('check_all_screens_online'),
 
-  /** Returns the active port of the local HTTP LAN server. */
+  /** Returns the active port of the local SignalOS HTTP service. */
   getServerPort: () => tauriInvoke<number>('get_lan_server_port'),
 
-  /** Syncs all playlists, schedules, and assets to a screen on the LAN. */
+  /** Syncs all playlists, schedules, and assets to a screen on the same router. */
   syncScreenData: (screenId: string) =>
     tauriInvoke<void>('sync_screen_data', { screenId }),
 };

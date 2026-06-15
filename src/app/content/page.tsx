@@ -68,7 +68,7 @@ export default function ContentPage() {
     }
 
     if (isWebType && !formUrl.trim() && !selectedFile) {
-      showToast('Please enter a WebApp URL or upload a local document (HTML, PDF, TXT, Excel)', 'warning');
+      showToast('Please enter a WebApp URL or upload a local HTML/PDF document', 'warning');
       return;
     }
 
@@ -185,12 +185,12 @@ export default function ContentPage() {
           {isUploadType && (
             <div className="space-y-2">
               <Label>
-                {formType === 'WebApp' ? 'Local Web/Document File (HTML, PDF, XLS, TXT, ZIP - Optional)' : 'Media File (Image/Video/Audio) *'}
+                {formType === 'WebApp' ? 'Local Web/Document File (HTML, PDF, TXT, ZIP - Optional)' : 'Media File (Image/Video/Audio) *'}
               </Label>
               <div className="relative cursor-pointer rounded-xl border border-dashed border-border bg-muted/20 p-6 text-center transition-colors hover:border-primary/50 hover:bg-primary/5">
                 <input
                   type="file"
-                  accept="image/*,video/*,audio/*,.pdf,.html,.htm,.xhtml,.txt,.xls,.xlsx,.zip,.tar,.ar,.xml,.rss"
+                  accept="image/*,video/*,audio/*,.pdf,.html,.htm,.xhtml,.txt,.zip,.tar,.ar,.xml,.rss"
                   onChange={handleFileChange}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
@@ -210,7 +210,7 @@ export default function ContentPage() {
                       <p className="text-sm font-semibold text-foreground">Click or drag file here</p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {formType === 'WebApp' 
-                          ? 'Supports HTML, PDF, TXT, Excel (XLS/XLSX), XML/RSS, ZIP/TAR' 
+                          ? 'Supports HTML, PDF, TXT, XML/RSS, ZIP/TAR. Use Live Data for spreadsheets.'
                           : 'Supports PNG, JPG, JPEG, BMP, WebP, SVG, MP4, AVI, MOV, MP3, WAV'}
                       </p>
                     </div>

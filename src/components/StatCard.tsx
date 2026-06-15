@@ -18,7 +18,7 @@ const colors = {
   success: 'text-green-400',
   warning: 'text-amber-400',
   error: 'text-red-400',
-  info: 'text-blue-400',
+  info: 'text-chart-2',
 }
 
 function StatCard({ icon, value, label, trend, color = 'accent' }: StatCardProps) {
@@ -39,7 +39,7 @@ function StatCard({ icon, value, label, trend, color = 'accent' }: StatCardProps
 
   return (
     <Card className="group relative min-h-36 overflow-hidden transition-all duration-200 hover:-translate-y-1 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5">
-      <div className={cn('absolute -right-10 -top-10 size-28 rounded-full opacity-10 blur-2xl', color === 'success' ? 'bg-green-400' : color === 'warning' ? 'bg-amber-400' : color === 'info' ? 'bg-blue-400' : color === 'error' ? 'bg-red-400' : 'bg-primary')} />
+      <div className={cn('absolute -right-10 -top-10 size-28 rounded-full opacity-10 blur-2xl', color === 'success' ? 'bg-green-400' : color === 'warning' ? 'bg-chart-1' : color === 'info' ? 'bg-chart-2' : color === 'error' ? 'bg-red-400' : 'bg-primary')} />
       <CardHeader className="relative flex flex-row items-center justify-between pb-2">
         <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</span>
         <span className={cn('flex size-10 items-center justify-center rounded-xl border border-border/60 bg-muted/70 text-lg transition-transform group-hover:scale-105', colors[color])}>{icon}</span>

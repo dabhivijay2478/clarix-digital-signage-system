@@ -17,7 +17,7 @@ interface ContentCardProps {
 const typeIcons: Record<string, string> = { Video: '🎞️', Image: '🖼️', WebApp: '🌐', Ad: '📢', Slideshow: '🎚️' }
 const typeStyles: Record<string, string> = {
   Ad: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
-  Slideshow: 'border-purple-500/30 bg-purple-500/10 text-purple-300',
+  Slideshow: 'border-primary/30 bg-primary/10 text-primary',
 }
 
 function ContentCard({ item, onDelete }: ContentCardProps) {

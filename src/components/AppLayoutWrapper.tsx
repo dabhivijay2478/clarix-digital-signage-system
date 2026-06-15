@@ -8,7 +8,10 @@ import { useBrandingStore, useSidebarStore } from '@/store/ui'
 
 export default function AppLayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const isPlayer = pathname === '/player' || pathname?.startsWith('/player/')
+  const isPresentation = pathname === '/player'
+    || pathname?.startsWith('/player/')
+    || pathname === '/data-view'
+    || pathname?.startsWith('/data-view/')
   const { isCollapsed, toggle } = useSidebarStore()
   const { appName, customFavicon } = useBrandingStore()
 
@@ -25,7 +28,7 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
     }
   }, [appName, customFavicon])
 
-  if (isPlayer) {
+  if (isPresentation) {
     return <div className="h-screen w-screen select-none overflow-hidden bg-black">{children}</div>
   }
 

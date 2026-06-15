@@ -38,7 +38,7 @@ function ScreenCard({ screen, onTogglePower, onBrightnessChange, onDelete, onEdi
         <CardTitle className="pr-20">{screen.name}</CardTitle>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Tooltip>
-            <TooltipTrigger asChild><span className={cn('size-2 rounded-full', isSyncing ? 'animate-pulse bg-indigo-400' : screen.is_online ? 'animate-pulse bg-green-500' : 'bg-zinc-600')} /></TooltipTrigger>
+            <TooltipTrigger asChild><span className={cn('size-2 rounded-full', isSyncing ? 'animate-pulse bg-primary' : screen.is_online ? 'animate-pulse bg-green-500' : 'bg-zinc-600')} /></TooltipTrigger>
             <TooltipContent>{status}</TooltipContent>
           </Tooltip>
           {status} · {screen.location || 'No location set'}
