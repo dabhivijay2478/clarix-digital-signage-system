@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { MonitorPlay, Palette, Radio, RefreshCw, Server, Settings2, ShieldCheck, Wifi } from 'lucide-react'
+import { MonitorPlay, Palette, Radio, RefreshCw, Server, Settings2, ShieldCheck, Upload, Wifi } from 'lucide-react'
 import { SettingsRow, SettingsSection } from '@/components/SettingsSection'
 import { showToast } from '@/components/Toast'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -37,6 +37,8 @@ export default function SettingsPage() {
   const [activePairing, setActivePairing] = useState<PairingRequest | null>(null)
   const [pairingSelections, setPairingSelections] = useState<Record<string, string>>({})
   const [discoveredControllers, setDiscoveredControllers] = useState<PeerScreen[]>([])
+  const [iconFileName, setIconFileName] = useState('')
+  const [faviconFileName, setFaviconFileName] = useState('')
 
   const loadNetworkState = useCallback(async () => {
     try {
@@ -69,6 +71,11 @@ export default function SettingsPage() {
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>, type: 'icon' | 'favicon') => {
     const file = event.target.files?.[0]
     if (!file) return
+    if (type === 'icon') {
+      setIconFileName(file.name)
+    } else {
+      setFaviconFileName(file.name)
+    }
     const reader = new FileReader()
     reader.onloadend = () => type === 'icon' ? setCustomAppIcon(reader.result as string) : setCustomFavicon(reader.result as string)
     reader.readAsDataURL(file)
@@ -83,6 +90,8 @@ export default function SettingsPage() {
     setCustomAppName('SignalOS')
     setCustomAppIcon(null)
     setCustomFavicon(null)
+    setIconFileName('')
+    setFaviconFileName('')
     branding.save('SignalOS', null, null)
     showToast('Branding reset to system defaults', 'success')
   }
@@ -141,7 +150,7 @@ export default function SettingsPage() {
           </Card>
         </div>
         {identity?.role === 'Player' && (
-          <Card className="mt-4 border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-5">
+          <Card className="mt-4 border-primary/20 bg-linear-to-r from-primary/10 via-primary/5 to-transparent p-5">
             <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
               <div><h3 className="font-semibold">One-time Pairing</h3><p className="mt-1 text-sm text-muted-foreground">Send a request, then approve it on the controller and assign this device to a screen.</p></div>
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row"><Button variant="outline" onClick={handlePairingRequest}><ShieldCheck />Request Pairing</Button><Button onClick={() => router.push('/player')}><MonitorPlay />Launch Player</Button></div>
@@ -184,7 +193,37 @@ export default function SettingsPage() {
           <div className="grid gap-4 md:grid-cols-2">
             {(['icon', 'favicon'] as const).map((type) => {
               const image = type === 'icon' ? customAppIcon : customFavicon
-              return <div key={type} className="space-y-2"><Label htmlFor={`${type}-upload`}>{type === 'icon' ? 'App Icon' : 'Favicon'}</Label><div className="flex min-w-0 items-center gap-3 rounded-xl border border-dashed border-border bg-muted/20 p-3"><Avatar className="size-12 shrink-0 rounded-xl">{image && <AvatarImage src={image} alt="" />}<AvatarFallback className="rounded-xl">{type === 'icon' ? 'S' : 'F'}</AvatarFallback></Avatar><Input className="min-w-0 file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1 file:text-xs" id={`${type}-upload`} type="file" accept="image/*" onChange={(event) => handleImageUpload(event, type)} /></div></div>
+              const fileName = type === 'icon' ? iconFileName : faviconFileName
+              return (
+                <div key={type} className="space-y-2">
+                  <Label htmlFor={`${type}-upload`}>{type === 'icon' ? 'App Icon' : 'Favicon'}</Label>
+                  <div className="flex min-w-0 items-center gap-3 rounded-xl border border-dashed border-border bg-muted/20 p-3">
+                    <Avatar className="size-12 shrink-0 rounded-xl border border-border bg-card">
+                      {image && <AvatarImage src={image} alt="" />}
+                      <AvatarFallback className="rounded-xl">{type === 'icon' ? 'S' : 'F'}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+                      <label
+                        htmlFor={`${type}-upload`}
+                        className="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-input bg-background px-3.5 text-xs font-semibold text-foreground shadow-xs transition-all hover:bg-muted active:scale-98"
+                      >
+                        <Upload className="size-3.5 text-muted-foreground" />
+                        Choose Image
+                      </label>
+                      <input
+                        id={`${type}-upload`}
+                        type="file"
+                        accept="image/*"
+                        className="sr-only"
+                        onChange={(event) => handleImageUpload(event, type)}
+                      />
+                      <span className="truncate text-xs text-muted-foreground">
+                        {fileName ? fileName : image ? 'Using custom image' : 'No file selected'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )
             })}
           </div>
           <div className="flex flex-col gap-3 sm:flex-row"><Button onClick={handleSaveBranding}>Save Branding Preferences</Button><Button variant="outline" onClick={handleResetBranding}>Reset to Default</Button></div>
