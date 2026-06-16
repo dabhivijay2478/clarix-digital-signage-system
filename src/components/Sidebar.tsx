@@ -44,7 +44,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
     <div className={cn('flex h-18 items-center gap-3 px-5', !compact && 'px-6')}>
       <Avatar className="size-9 rounded-xl shadow-lg shadow-primary/15">
         {appIcon && <AvatarImage src={appIcon} alt="" />}
-        <AvatarFallback className="rounded-xl bg-gradient-to-br from-primary via-primary/80 to-secondary font-bold text-primary-foreground">
+        <AvatarFallback className="rounded-xl bg-linear-to-br from-primary via-primary/80 to-secondary font-bold text-primary-foreground">
           {appName.charAt(0).toUpperCase()}
         </AvatarFallback>
       </Avatar>
@@ -69,14 +69,13 @@ function NavLinks({ compact = false, mobile = false }: { compact?: boolean; mobi
             asChild
             variant="ghost"
             className={cn(
-              'relative h-11 w-full justify-start rounded-xl text-muted-foreground hover:bg-white/[0.06]',
+              'relative h-11 w-full justify-start rounded-xl text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors duration-200',
               compact && 'justify-center px-0',
-              isActive && 'bg-primary/12 text-foreground shadow-sm hover:bg-primary/15'
+              isActive && 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
             )}
           >
-            <Link href={item.href} aria-label={item.label}>
-              {isActive && <span className="absolute inset-y-2 left-0 w-0.5 rounded-r-full bg-primary" />}
-              <item.icon className={cn('size-4.5', isActive && 'text-primary')} />
+            <Link href={item.href} aria-label={item.label} className="flex items-center gap-3 w-full h-full">
+              <item.icon className="size-4.5 shrink-0" />
               {!compact && <span>{item.label}</span>}
             </Link>
           </Button>
