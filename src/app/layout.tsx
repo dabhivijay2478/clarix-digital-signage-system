@@ -3,6 +3,7 @@ import "./globals.css";
 import AppLayoutWrapper from "../components/AppLayoutWrapper";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ThemeProvider } from "../components/ThemeProvider";
 
 export const metadata: Metadata = {
   title: "SignalOS — Digital Signage Management",
@@ -16,7 +17,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
@@ -26,10 +27,12 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <TooltipProvider>
-          <AppLayoutWrapper>{children}</AppLayoutWrapper>
-          <Toaster position="top-right" theme="dark" richColors />
-        </TooltipProvider>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+          <TooltipProvider>
+            <AppLayoutWrapper>{children}</AppLayoutWrapper>
+            <Toaster position="top-right" theme="dark" richColors />
+          </TooltipProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

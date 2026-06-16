@@ -1,10 +1,13 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
+import { Sun, Moon } from 'lucide-react'
+import { useTheme } from 'next-themes'
 import Sidebar, { MobileSidebar } from './Sidebar'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useBrandingStore, useSidebarStore } from '@/store/ui'
+import { Button } from '@/components/ui/button'
 
 export default function AppLayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -14,6 +17,12 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
     || pathname?.startsWith('/data-view/')
   const { isCollapsed, toggle } = useSidebarStore()
   const { appName, customFavicon } = useBrandingStore()
+  const { resolvedTheme, setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     document.title = `${appName} — Digital Signage Management`
@@ -34,6 +43,27 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {/* Floating Theme Switcher */}
+      <div className="fixed top-4 right-4 z-50">
+        {mounted ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-9 rounded-xl border border-border bg-card shadow-sm hover:bg-muted"
+            onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+            aria-label="Toggle theme"
+          >
+            {resolvedTheme === 'dark' ? (
+              <Sun className="size-4 text-amber-500 transition-transform hover:scale-110" />
+            ) : (
+              <Moon className="size-4 text-indigo-500 transition-transform hover:scale-110" />
+            )}
+          </Button>
+        ) : (
+          <div className="size-9 rounded-xl border border-border bg-card shadow-sm animate-pulse" />
+        )}
+      </div>
+
       <Sidebar isCollapsed={isCollapsed} onToggle={toggle} />
       <MobileSidebar />
       <main
