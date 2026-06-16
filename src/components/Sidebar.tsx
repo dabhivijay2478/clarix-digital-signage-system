@@ -74,7 +74,11 @@ function NavLinks({ compact = false, mobile = false }: { compact?: boolean; mobi
               isActive && 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
             )}
           >
-            <Link href={item.href} aria-label={item.label} className="flex items-center gap-3 w-full h-full">
+            <Link
+              href={item.href}
+              aria-label={item.label}
+              className={cn('flex items-center w-full h-full', compact ? 'justify-center' : 'gap-3')}
+            >
               <item.icon className="size-4.5 shrink-0" />
               {!compact && <span>{item.label}</span>}
             </Link>
@@ -83,10 +87,12 @@ function NavLinks({ compact = false, mobile = false }: { compact?: boolean; mobi
         if (mobile) return <SheetClose key={item.href} asChild>{link}</SheetClose>
         if (!compact) return <div key={item.href}>{link}</div>
         return (
-          <Tooltip key={item.href}>
-            <TooltipTrigger asChild>{link}</TooltipTrigger>
-            <TooltipContent side="right">{item.label}</TooltipContent>
-          </Tooltip>
+          <div key={item.href}>
+            <Tooltip>
+              <TooltipTrigger asChild>{link}</TooltipTrigger>
+              <TooltipContent side="right">{item.label}</TooltipContent>
+            </Tooltip>
+          </div>
         )
       })}
     </nav>
