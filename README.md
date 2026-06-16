@@ -1,6 +1,6 @@
-# SignalOS — Digital Signage + Fleet Management Desktop App
+# Clarix — Digital Signage + Fleet Management Desktop App
 
-SignalOS is a cross-platform desktop application for managing **digital signage screens** and **truck fleets** from a single control center. Built with **Tauri v2**, **Next.js 16**, **Tailwind CSS v4**, **Bun**, and a self-contained **SQLite** database — no external servers or Docker needed.
+Clarix is a cross-platform desktop application for managing **digital signage screens** and **truck fleets** from a single control center. Built with **Tauri v2**, **Next.js 16**, **Tailwind CSS v4**, **Bun**, and a self-contained **SQLite** database — no external servers or Docker needed.
 
 For cross-machine setup, one-time player pairing, firewall guidance, and troubleshooting, see [testing_guide.md](./testing_guide.md). Use packaged players for offline signage or `http://<controller-ip>:7420/player` for a connected-only browser player. The Next.js development server on port `3000` is not a production player endpoint.
 
@@ -10,7 +10,7 @@ For cross-machine setup, one-time player pairing, firewall guidance, and trouble
 
 ## 📋 What You Need Before Starting
 
-Before you install SignalOS, make sure you have these tools installed on your computer. Follow the guide for your operating system (Windows or macOS).
+Before you install Clarix, make sure you have these tools installed on your computer. Follow the guide for your operating system (Windows or macOS).
 
 ### ✅ Prerequisites Checklist
 
@@ -73,10 +73,10 @@ rustc --version
 cd ~/Desktop
 
 # Clone the repository
-git clone https://github.com/dabhivijay2478/digital-signage-system.git
+git clone https://github.com/dabhivijay2478/clarix-digital-signage-system.git
 
 # Go into the project folder
-cd digital-signage-system
+cd clarix-digital-signage-system
 ```
 
 > ⚠️ Replace `YOUR_USERNAME` with the actual GitHub username or organization.
@@ -111,7 +111,7 @@ bun install
 bun tauri dev
 ```
 
-The SignalOS window will open automatically. Subsequent launches are much faster.
+The Clarix window will open automatically. Subsequent launches are much faster.
 
 ---
 
@@ -222,10 +222,10 @@ bun tauri build
 
 | Platform | File | Path |
 |----------|------|------|
-| **macOS** | App Bundle | `src-tauri/target/release/bundle/macos/SignalOS.app` |
-| **macOS** | DMG Installer | `src-tauri/target/release/bundle/dmg/SignalOS_0.1.0_aarch64.dmg` |
-| **Windows** | MSI Installer | `src-tauri/target/release/bundle/msi/SignalOS_0.1.0_x64_en-US.msi` |
-| **Windows** | NSIS Installer | `src-tauri/target/release/bundle/nsis/SignalOS_0.1.0_x64-setup.exe` |
+| **macOS** | App Bundle | `src-tauri/target/release/bundle/macos/Clarix.app` |
+| **macOS** | DMG Installer | `src-tauri/target/release/bundle/dmg/Clarix_0.1.0_aarch64.dmg` |
+| **Windows** | MSI Installer | `src-tauri/target/release/bundle/msi/Clarix_0.1.0_x64_en-US.msi` |
+| **Windows** | NSIS Installer | `src-tauri/target/release/bundle/nsis/Clarix_0.1.0_x64-setup.exe` |
 
 > **To build for Windows:** You must run `npx tauri build` on a Windows machine.  
 > **To build for macOS:** You must run `npx tauri build` on a macOS machine.  
@@ -233,7 +233,7 @@ bun tauri build
 
 ### Sharing the App
 
-- **macOS users**: Send them the `.dmg` file. They double-click it, drag SignalOS to Applications, done.
+- **macOS users**: Send them the `.dmg` file. They double-click it, drag Clarix to Applications, done.
 - **Windows users**: Send them the `.msi` or `.exe` file. They double-click it and follow the installer.
 
 No Docker, no databases to install, no servers to configure — it just works.
@@ -242,7 +242,7 @@ No Docker, no databases to install, no servers to configure — it just works.
 
 ## 🧩 Modules
 
-SignalOS includes two main modules accessible from the sidebar:
+Clarix includes two main modules accessible from the sidebar:
 
 ### 📺 Digital Signage
 - **Dashboard** — Live overview of your signage network
@@ -264,12 +264,12 @@ SignalOS includes two main modules accessible from the sidebar:
 
 | Item | Details |
 |------|---------|
-| **Database** | Local SQLite (`signalos.db`) — auto-created on first launch in user's app data folder. Runs in WAL mode with 5000ms busy timeout. |
+| **Database** | Local SQLite (`clarix.db`) — auto-created on first launch in user's app data folder. Runs in WAL mode with 5000ms busy timeout. |
 | **Migrations** | Database schema is initialized and migrated automatically on startup. |
 | **Frontend** | Next.js 16 with Tailwind CSS v4 (CSS-first config, no `tailwind.config.js`). |
 | **Backend** | Rust with Tauri v2, using `rusqlite` + `r2d2` connection pool. |
 | **State** | Frontend state managed by Zustand with localStorage persistence. |
-| **Local Network Discovery** | Controllers on the same Wi-Fi are discovered via mDNS (`_signalos._tcp.local`). |
+| **Local Network Discovery** | Controllers on the same Wi-Fi are discovered via mDNS (`_clarix._tcp.local`). |
 | **Permissions** | File system and shell scopes managed in `src-tauri/capabilities/default.json`. |
 
 ---
