@@ -10,6 +10,7 @@ import {
   Menu,
   Monitor,
   PlaySquare,
+  Server,
   Settings,
   Truck,
 } from 'lucide-react'
@@ -29,6 +30,7 @@ const navItems = [
   { href: '/screens', label: 'Screens', icon: Monitor },
   { href: '/content', label: 'Content', icon: PlaySquare },
   { href: '/live-data', label: 'Live Data', icon: Database },
+  { href: '/database', label: 'Database', icon: Server },
   { href: '/trucks', label: 'Fleet', icon: Truck },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]

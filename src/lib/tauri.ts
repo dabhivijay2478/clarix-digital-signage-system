@@ -84,6 +84,16 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
         return [] as T;
       case 'check_screen_online':
         return false as T;
+      case 'get_db_tables':
+        return ['screens', 'content_items', 'playlists', 'playlist_items', 'schedule_slots', 'analytics_events', 'device_settings', 'pairing_requests', 'player_heartbeats', 'asset_checksums'] as unknown as T;
+      case 'get_db_table_data':
+        return { columns: ['id', 'name', 'location'], rows: [{ id: '1', name: 'Main Lobby', location: 'Floor 1' }] } as unknown as T;
+      case 'export_db_table_to_csv':
+        return 'id,name,location\n1,Main Lobby,Floor 1' as unknown as T;
+      case 'backup_content_library_to_zip':
+        return undefined as T;
+      case 'save_text_file':
+        return undefined as T;
       default:
         throw new Error('Controller administration is available only in the packaged SignalOS desktop app.');
     }
@@ -325,6 +335,19 @@ export const networkApi = {
   approvePairing: (requestId: string, screenId: string) =>
     tauriInvoke<void>('approve_pairing_request', { requestId, screenId }),
   getDiagnostics: () => tauriInvoke<ConnectionDiagnostic>('get_network_diagnostics'),
+};
+
+export interface TableData {
+  columns: string[];
+  rows: Record<string, any>[];
+}
+
+export const databaseApi = {
+  getTables: () => tauriInvoke<string[]>('get_db_tables'),
+  getTableData: (tableName: string) => tauriInvoke<TableData>('get_db_table_data', { tableName }),
+  exportTableToCsv: (tableName: string) => tauriInvoke<string>('export_db_table_to_csv', { tableName }),
+  backupContentLibraryToZip: (savePath: string) => tauriInvoke<void>('backup_content_library_to_zip', { savePath }),
+  saveTextFile: (path: string, content: string) => tauriInvoke<void>('save_text_file', { path, content }),
 };
 
 // ── Event Listeners ─────────────────────────────────────────────────────────

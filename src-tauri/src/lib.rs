@@ -176,6 +176,12 @@ pub fn run() {
             commands::network::get_pairing_requests,
             commands::network::approve_pairing_request,
             commands::network::get_network_diagnostics,
+            // Database viewer & backups
+            commands::database::get_db_tables,
+            commands::database::get_db_table_data,
+            commands::database::export_db_table_to_csv,
+            commands::database::backup_content_library_to_zip,
+            commands::database::save_text_file,
         ])
         .run(tauri::generate_context!())
         .expect("error running SignalOS");
