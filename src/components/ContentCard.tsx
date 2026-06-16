@@ -25,8 +25,8 @@ function ContentCard({ item, onDelete }: ContentCardProps) {
   const variant = content_type === 'Image' ? 'secondary' : content_type === 'Video' ? 'default' : 'outline'
 
   return (
-    <Card className="group relative flex h-full flex-col overflow-hidden border-zinc-800/80 bg-zinc-900/60 transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-700">
-      <div className="relative flex aspect-video items-center justify-center border-b border-border bg-muted text-3xl after:absolute after:inset-0 after:bg-gradient-to-t after:from-background/80 after:to-transparent after:opacity-0 after:transition-opacity group-hover:after:opacity-100">
+    <Card className="group relative flex h-full flex-col overflow-hidden border-border bg-card transition-all duration-200 hover:-translate-y-0.5 hover:border-border/80 shadow-xs">
+      <div className="relative flex aspect-video items-center justify-center border-b border-border bg-muted text-3xl after:absolute after:inset-0 after:bg-linear-to-t after:from-background/80 after:to-transparent after:opacity-0 after:transition-opacity group-hover:after:opacity-100">
         <span className="select-none">{typeIcons[content_type] || '❓'}</span>
       </div>
       <Tooltip>

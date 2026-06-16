@@ -31,12 +31,16 @@ export const useSidebarStore = create<SidebarState>()(
 export const useBrandingStore = create<BrandingState>()(
   persist(
     (set, get) => ({
-      appName: 'SignalOS',
-      appIcon: null,
-      customFavicon: null,
+      appName: process.env.NEXT_PUBLIC_APP_NAME || 'MG Enterprise',
+      appIcon: process.env.NEXT_PUBLIC_APP_ICON || null,
+      customFavicon: process.env.NEXT_PUBLIC_CUSTOM_FAVICON || null,
       load: () => set({ ...get() }),
       save: (appName, appIcon, customFavicon) =>
-        set({ appName: appName || 'SignalOS', appIcon, customFavicon }),
+        set({
+          appName: appName || process.env.NEXT_PUBLIC_APP_NAME || 'MG Enterprise',
+          appIcon: appIcon || process.env.NEXT_PUBLIC_APP_ICON || null,
+          customFavicon: customFavicon || process.env.NEXT_PUBLIC_CUSTOM_FAVICON || null,
+        }),
     }),
     {
       name: 'signalos-branding',
@@ -45,6 +49,16 @@ export const useBrandingStore = create<BrandingState>()(
         appIcon,
         customFavicon,
       }),
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState as Partial<BrandingState>) || {}
+        return {
+          ...currentState,
+          ...persisted,
+          appName: process.env.NEXT_PUBLIC_APP_NAME || persisted.appName || 'MG Enterprise',
+          appIcon: process.env.NEXT_PUBLIC_APP_ICON || persisted.appIcon || null,
+          customFavicon: process.env.NEXT_PUBLIC_CUSTOM_FAVICON || persisted.customFavicon || null,
+        }
+      },
     }
   )
 )

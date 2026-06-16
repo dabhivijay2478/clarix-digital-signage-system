@@ -29,7 +29,7 @@ interface ScreenCardProps {
 function ScreenCard({ screen, onTogglePower, onBrightnessChange, onDelete, onEdit, onSync, onManage, isSyncing = false }: ScreenCardProps) {
   const status = isSyncing ? 'Syncing' : screen.is_online ? 'Online' : 'Offline'
   return (
-    <Card className="group cursor-pointer border-zinc-800/80 bg-zinc-900/60 transition-colors hover:border-zinc-700" onClick={() => onManage?.(screen.id)}>
+    <Card className="group cursor-pointer border-border bg-card transition-colors hover:border-border/80 shadow-xs" onClick={() => onManage?.(screen.id)}>
       <CardHeader className="relative">
         <div className="absolute right-4 top-4 flex gap-1" onClick={(event) => event.stopPropagation()}>
           {onEdit && <Button aria-label="Edit screen" variant="ghost" size="icon-sm" onClick={() => onEdit(screen)}><Pencil /></Button>}
@@ -38,7 +38,7 @@ function ScreenCard({ screen, onTogglePower, onBrightnessChange, onDelete, onEdi
         <CardTitle className="pr-20">{screen.name}</CardTitle>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Tooltip>
-            <TooltipTrigger asChild><span className={cn('size-2 rounded-full', isSyncing ? 'animate-pulse bg-primary' : screen.is_online ? 'animate-pulse bg-green-500' : 'bg-zinc-600')} /></TooltipTrigger>
+            <TooltipTrigger asChild><span className={cn('size-2 rounded-full', isSyncing ? 'animate-pulse bg-primary' : screen.is_online ? 'animate-pulse bg-green-500' : 'bg-muted-foreground/60')} /></TooltipTrigger>
             <TooltipContent>{status}</TooltipContent>
           </Tooltip>
           {status} · {screen.location || 'No location set'}

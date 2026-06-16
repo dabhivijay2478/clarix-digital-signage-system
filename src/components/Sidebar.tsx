@@ -61,7 +61,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
 function NavLinks({ compact = false, mobile = false }: { compact?: boolean; mobile?: boolean }) {
   const pathname = usePathname()
   return (
-    <nav className="flex flex-1 flex-col gap-1.5 overflow-y-auto p-3">
+    <nav className="flex flex-1 flex-col gap-1.5 overflow-y-auto p-3 scrollbar-none">
       {navItems.map((item) => {
         const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
         const link = (
