@@ -1,7 +1,31 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Archive, Download, RefreshCw, Search, Server, ShieldAlert, Table } from 'lucide-react'
+import {
+  Archive,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Eye,
+  RefreshCw,
+  Search,
+  Server,
+  ShieldAlert,
+  Table,
+} from 'lucide-react'
+import {
+  useReactTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+  flexRender,
+  type SortingState,
+  type VisibilityState,
+} from '@tanstack/react-table'
 import { showToast } from '@/components/Toast'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,6 +33,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table as UiTable, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { databaseApi } from '@/lib/tauri'
 
 const tablesMetadata: Record<string, { label: string; desc: string }> = {
@@ -29,9 +59,12 @@ export default function DatabasePage() {
   const [selectedTable, setSelectedTable] = useState<string>('screens')
   const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, any>[] }>({ columns: [], rows: [] })
   const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [pageSize, setPageSize] = useState<number>(25)
-  const [currentPage, setCurrentPage] = useState<number>(1)
+
+  // TanStack table state
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [globalFilter, setGlobalFilter] = useState('')
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+  const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 25 })
 
   // Fetch all table names on mount
   useEffect(() => {
@@ -57,7 +90,10 @@ export default function DatabasePage() {
     try {
       const data = await databaseApi.getTableData(selectedTable)
       setTableData(data)
-      setCurrentPage(1)
+      setSorting([])
+      setGlobalFilter('')
+      setColumnVisibility({})
+      setPagination({ pageIndex: 0, pageSize: 25 })
     } catch (err) {
       console.error(`Failed to fetch data for table ${selectedTable}:`, err)
       showToast(`Failed to load data for ${selectedTable}`, 'error')
@@ -72,25 +108,57 @@ export default function DatabasePage() {
     }
   }, [selectedTable])
 
-  // Filter rows based on search query
-  const filteredRows = useMemo(() => {
-    if (!searchQuery) return tableData.rows
+  // Construct columns definition dynamically for TanStack Table
+  const columns = useMemo(() => {
+    return tableData.columns.map((colName) => ({
+      accessorKey: colName,
+      header: ({ column }: any) => {
+        const isSorted = column.getIsSorted()
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+            className="-ml-3 h-8 text-[11px] font-bold uppercase tracking-wider hover:bg-muted/40"
+          >
+            {colName.replace(/_/g, ' ')}
+            {isSorted === 'asc' ? (
+              <ArrowUp className="ml-2 size-3 text-primary" />
+            ) : isSorted === 'desc' ? (
+              <ArrowDown className="ml-2 size-3 text-primary" />
+            ) : (
+              <ArrowUpDown className="ml-2 size-3 text-muted-foreground/60" />
+            )}
+          </Button>
+        )
+      },
+      cell: ({ row }: any) => {
+        const val = row.getValue(colName)
+        if (val === null || val === undefined) return <span className="text-muted-foreground/40">-</span>
+        if (typeof val === 'object') return <span className="font-mono text-[10px] text-muted-foreground">{JSON.stringify(val)}</span>
+        return <span className="font-mono text-[11px] text-muted-foreground">{String(val)}</span>
+      },
+    }))
+  }, [tableData.columns])
 
-    const query = searchQuery.toLowerCase().trim()
-    return tableData.rows.filter((row) =>
-      Object.values(row).some((val) => {
-        if (val === null || val === undefined) return false
-        return String(val).toLowerCase().includes(query)
-      })
-    )
-  }, [tableData.rows, searchQuery])
-
-  // Pagination calculations
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize))
-  const paginatedRows = useMemo(() => {
-    const start = (currentPage - 1) * pageSize
-    return filteredRows.slice(start, start + pageSize)
-  }, [filteredRows, currentPage, pageSize])
+  // Instantiate the TanStack Table instance
+  const table = useReactTable({
+    data: tableData.rows,
+    columns,
+    state: {
+      sorting,
+      globalFilter,
+      columnVisibility,
+      pagination,
+    },
+    onSortingChange: setSorting,
+    onGlobalFilterChange: setGlobalFilter,
+    onColumnVisibilityChange: setColumnVisibility,
+    onPaginationChange: setPagination,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+  })
 
   // Helper to check if Tauri runtime is active
   const isTauriRuntime = () => {
@@ -99,9 +167,10 @@ export default function DatabasePage() {
     return Boolean(tauriWindow.__TAURI__ || tauriWindow.__TAURI_IPC__ || tauriWindow.__TAURI_INTERNALS__)
   }
 
-  // Export Table to CSV
+  // Export Table to CSV (maintaining the active filtered and sorted state)
   const handleExportCSV = async () => {
-    if (filteredRows.length === 0) {
+    const rowsToExport = table.getFilteredRowModel().rows.map((r) => r.original)
+    if (rowsToExport.length === 0) {
       showToast('No data rows to export', 'info')
       return
     }
@@ -109,7 +178,7 @@ export default function DatabasePage() {
     try {
       // Create CSV format
       const headerLine = tableData.columns.map(col => `"${col.replace(/"/g, '""')}"`).join(',')
-      const rowLines = filteredRows.map(row => 
+      const rowLines = rowsToExport.map(row => 
         tableData.columns.map(col => {
           const val = row[col]
           const valStr = val === null || val === undefined ? '' : String(val)
@@ -229,7 +298,7 @@ export default function DatabasePage() {
                 {tablesMetadata[selectedTable]?.label || selectedTable} Data
               </CardTitle>
               <p className="mt-1 text-xs text-muted-foreground">
-                Showing {filteredRows.length} total rows in database.
+                Showing {table.getFilteredRowModel().rows.length} of {tableData.rows.length} total rows.
               </p>
             </div>
             <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
@@ -237,11 +306,38 @@ export default function DatabasePage() {
                 <Search className="absolute top-2.5 left-2.5 size-4 text-muted-foreground/80" />
                 <Input
                   placeholder="Search rows..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  value={globalFilter ?? ''}
+                  onChange={(e) => setGlobalFilter(e.target.value)}
                   className="h-9 pl-9 text-xs"
                 />
               </div>
+
+              {/* Column Selection Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 text-xs font-semibold gap-1.5">
+                    <Eye className="size-4" /> Columns
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48 bg-card/95 backdrop-blur-xl border-border/70 max-h-[300px] overflow-y-auto">
+                  {table
+                    .getAllColumns()
+                    .filter((column) => column.getCanHide())
+                    .map((column) => {
+                      return (
+                        <DropdownMenuCheckboxItem
+                          key={column.id}
+                          className="capitalize text-xs"
+                          checked={column.getIsVisible()}
+                          onCheckedChange={(value) => column.toggleVisibility(!!value)}
+                        >
+                          {column.id.replace(/_/g, ' ')}
+                        </DropdownMenuCheckboxItem>
+                      )
+                    })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               <Button size="sm" className="h-9 px-4 text-xs font-semibold" onClick={handleExportCSV}>
                 <Download className="size-4" /> Export CSV
               </Button>
@@ -259,7 +355,7 @@ export default function DatabasePage() {
                 <p className="mt-2 text-sm font-semibold">No schema found</p>
                 <p className="max-w-xs text-xs text-muted-foreground">This table does not contain any defined columns or records.</p>
               </div>
-            ) : paginatedRows.length === 0 ? (
+            ) : table.getRowModel().rows.length === 0 ? (
               <div className="flex flex-1 flex-col items-center justify-center py-20 text-center text-muted-foreground">
                 <Search className="size-10 text-muted-foreground/40" />
                 <p className="mt-2 text-sm font-semibold">No records match filters</p>
@@ -269,33 +365,29 @@ export default function DatabasePage() {
               <div className="overflow-x-auto">
                 <UiTable>
                   <TableHeader>
-                    <TableRow className="bg-muted/10">
-                      {tableData.columns.map((col) => (
-                        <TableHead key={col} className="h-10 text-xs font-bold uppercase tracking-wider text-foreground">
-                          {col}
-                        </TableHead>
-                      ))}
-                    </TableRow>
+                    {table.getHeaderGroups().map((headerGroup) => (
+                      <TableRow key={headerGroup.id} className="bg-muted/10 border-b border-border/50">
+                        {headerGroup.headers.map((header) => (
+                          <TableHead key={header.id} className="py-2 h-10">
+                            {header.isPlaceholder
+                              ? null
+                              : flexRender(
+                                  header.column.columnDef.header,
+                                  header.getContext()
+                                )}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    ))}
                   </TableHeader>
                   <TableBody>
-                    {paginatedRows.map((row, rIdx) => (
-                      <TableRow key={rIdx} className="hover:bg-muted/10">
-                        {tableData.columns.map((col) => {
-                          const val = row[col]
-                          let displayVal = ''
-                          if (val === null || val === undefined) {
-                            displayVal = '-'
-                          } else if (typeof val === 'object') {
-                            displayVal = JSON.stringify(val)
-                          } else {
-                            displayVal = String(val)
-                          }
-                          return (
-                            <TableCell key={col} className="max-w-[240px] truncate py-2.5 font-mono text-xs text-muted-foreground">
-                              {displayVal}
-                            </TableCell>
-                          )
-                        })}
+                    {table.getRowModel().rows.map((row) => (
+                      <TableRow key={row.id} className="hover:bg-muted/10 border-b border-border/50">
+                        {row.getVisibleCells().map((cell) => (
+                          <TableCell key={cell.id} className="max-w-[280px] truncate py-2.5 text-xs text-muted-foreground">
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </TableCell>
+                        ))}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -304,43 +396,53 @@ export default function DatabasePage() {
             )}
 
             {/* Pagination Controls */}
-            {!loading && filteredRows.length > 0 && (
+            {!loading && tableData.rows.length > 0 && (
               <div className="flex flex-col gap-4 items-center justify-between border-t border-border/50 p-4 sm:flex-row">
                 <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
                   <span>Rows per page:</span>
-                  <Select value={String(pageSize)} onValueChange={(val) => { setPageSize(Number(val)); setCurrentPage(1); }}>
+                  <Select
+                    value={String(table.getState().pagination.pageSize)}
+                    onValueChange={(val) => table.setPageSize(Number(val))}
+                  >
                     <SelectTrigger className="h-8 w-18 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-card">
                       {[10, 25, 50, 100].map(size => <SelectItem key={size} value={String(size)}>{size}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   <span className="hidden sm:inline">
-                    Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, filteredRows.length)} of {filteredRows.length} rows
+                    Showing {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1} to{' '}
+                    {Math.min(
+                      (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
+                      table.getFilteredRowModel().rows.length
+                    )}{' '}
+                    of {table.getFilteredRowModel().rows.length} rows
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
-                    size="sm"
-                    className="h-8 px-3 text-xs"
-                    disabled={currentPage === 1}
-                    onClick={() => setCurrentPage((c) => Math.max(1, c - 1))}
+                    size="icon"
+                    className="size-8 rounded-lg"
+                    disabled={!table.getCanPreviousPage()}
+                    onClick={() => table.previousPage()}
+                    aria-label="Previous page"
                   >
-                    Previous
+                    <ChevronLeft className="size-4" />
                   </Button>
                   <div className="flex items-center gap-1.5 text-xs">
-                    <span className="font-semibold">{currentPage}</span>
+                    <span className="font-semibold">{table.getState().pagination.pageIndex + 1}</span>
                     <span className="text-muted-foreground">/</span>
-                    <span className="text-muted-foreground">{totalPages}</span>
+                    <span className="text-muted-foreground">{table.getPageCount()}</span>
                   </div>
                   <Button
                     variant="outline"
-                    size="sm"
-                    className="h-8 px-3 text-xs"
-                    disabled={currentPage === totalPages}
-                    onClick={() => setCurrentPage((c) => Math.min(totalPages, c + 1))}
+                    size="icon"
+                    className="size-8 rounded-lg"
+                    disabled={!table.getCanNextPage()}
+                    onClick={() => table.nextPage()}
+                    aria-label="Next page"
                   >
-                    Next
+                    <ChevronRight className="size-4" />
                   </Button>
                 </div>
               </div>
