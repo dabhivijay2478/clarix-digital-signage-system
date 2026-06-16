@@ -190,9 +190,11 @@ export default function DatabasePage() {
       if (isTauriRuntime()) {
         const { invoke } = await import('@tauri-apps/api/core')
         const savePath = await invoke<string | null>('plugin:dialog|save', {
-          title: 'Export Table as CSV',
-          defaultPath: `${selectedTable}_export.csv`,
-          filters: [{ name: 'CSV', extensions: ['csv'] }]
+          options: {
+            title: 'Export Table as CSV',
+            defaultPath: `${selectedTable}_export.csv`,
+            filters: [{ name: 'CSV', extensions: ['csv'] }]
+          }
         })
 
         if (savePath) {
@@ -224,9 +226,11 @@ export default function DatabasePage() {
       if (isTauriRuntime()) {
         const { invoke } = await import('@tauri-apps/api/core')
         const savePath = await invoke<string | null>('plugin:dialog|save', {
-          title: 'Backup Content Library as ZIP',
-          defaultPath: 'signalos_content_library_backup.zip',
-          filters: [{ name: 'ZIP Archive', extensions: ['zip'] }]
+          options: {
+            title: 'Backup Content Library as ZIP',
+            defaultPath: 'signalos_content_library_backup.zip',
+            filters: [{ name: 'ZIP Archive', extensions: ['zip'] }]
+          }
         })
 
         if (savePath) {
