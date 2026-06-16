@@ -1,12 +1,12 @@
 [package]
-name = "signalos"
+name = "clarix"
 version = "0.1.0"
-description = "SignalOS — Digital Signage Management Desktop App"
-authors = ["SignalOS Team"]
+description = "Clarix — Digital Signage Management Desktop App"
+authors = ["Clarix Team"]
 edition = "2021"
 
 [lib]
-name = "signalos_lib"
+name = "clarix_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [dependencies]

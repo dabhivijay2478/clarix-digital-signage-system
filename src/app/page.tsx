@@ -115,7 +115,7 @@ export default function DashboardPage() {
             <Table><TableBody>
               <TableRow><TableCell className="text-muted-foreground">Nearby Wi-Fi Devices</TableCell><TableCell className="text-right font-bold">{peerCount}</TableCell></TableRow>
               <TableRow><TableCell className="text-muted-foreground">Discovery</TableCell><TableCell className="text-right"><Badge className="bg-green-600">Active</Badge></TableCell></TableRow>
-              <TableRow><TableCell className="text-muted-foreground">Service</TableCell><TableCell className="text-right"><code className="rounded bg-muted px-1 font-mono text-xs">_signalos._tcp.local</code></TableCell></TableRow>
+              <TableRow><TableCell className="text-muted-foreground">Service</TableCell><TableCell className="text-right"><code className="rounded bg-muted px-1 font-mono text-xs">_clarix._tcp.local</code></TableCell></TableRow>
               <TableRow><TableCell className="text-muted-foreground">Sync Mode</TableCell><TableCell className="text-right font-medium">mDNS + TCP</TableCell></TableRow>
             </TableBody></Table>
           </CardContent>

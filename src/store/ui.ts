@@ -24,26 +24,26 @@ export const useSidebarStore = create<SidebarState>()(
       toggle: () => set((state) => ({ isCollapsed: !state.isCollapsed })),
       setCollapsed: (isCollapsed) => set({ isCollapsed }),
     }),
-    { name: 'signalos-sidebar' }
+    { name: 'clarix-sidebar' }
   )
 )
 
 export const useBrandingStore = create<BrandingState>()(
   persist(
     (set, get) => ({
-      appName: process.env.NEXT_PUBLIC_APP_NAME || 'MG Enterprise',
+      appName: process.env.NEXT_PUBLIC_APP_NAME || 'Clarix',
       appIcon: process.env.NEXT_PUBLIC_APP_ICON || null,
       customFavicon: process.env.NEXT_PUBLIC_CUSTOM_FAVICON || null,
       load: () => set({ ...get() }),
       save: (appName, appIcon, customFavicon) =>
         set({
-          appName: appName || process.env.NEXT_PUBLIC_APP_NAME || 'MG Enterprise',
+          appName: appName || process.env.NEXT_PUBLIC_APP_NAME || 'Clarix',
           appIcon: appIcon || process.env.NEXT_PUBLIC_APP_ICON || null,
           customFavicon: customFavicon || process.env.NEXT_PUBLIC_CUSTOM_FAVICON || null,
         }),
     }),
     {
-      name: 'signalos-branding',
+      name: 'clarix-branding',
       partialize: ({ appName, appIcon, customFavicon }) => ({
         appName,
         appIcon,
@@ -54,7 +54,7 @@ export const useBrandingStore = create<BrandingState>()(
         return {
           ...currentState,
           ...persisted,
-          appName: process.env.NEXT_PUBLIC_APP_NAME || persisted.appName || 'MG Enterprise',
+          appName: process.env.NEXT_PUBLIC_APP_NAME || persisted.appName || 'Clarix',
           appIcon: process.env.NEXT_PUBLIC_APP_ICON || persisted.appIcon || null,
           customFavicon: process.env.NEXT_PUBLIC_CUSTOM_FAVICON || persisted.customFavicon || null,
         }

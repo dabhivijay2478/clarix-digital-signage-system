@@ -6,7 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "../components/ThemeProvider";
 
 export const metadata: Metadata = {
-  title: `${process.env.NEXT_PUBLIC_APP_NAME || "MG Enterprise"} — Digital Signage Management`,
+  title: `${process.env.NEXT_PUBLIC_APP_NAME || "Clarix"} — Digital Signage Management`,
   description:
     "Cross-platform digital signage management desktop application. Control screens, schedule content, manage playlists, and display live data.",
 };

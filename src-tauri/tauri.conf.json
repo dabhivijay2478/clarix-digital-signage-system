@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "SignalOS",
+  "productName": "Clarix",
   "version": "0.1.0",
-  "identifier": "com.signalos.app",
+  "identifier": "com.clarix.app",
   "build": {
     "frontendDist": "../out",
     "devUrl": "http://localhost:3000",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "SignalOS",
+        "title": "Clarix",
         "width": 1280,
         "height": 800,
         "minWidth": 1024,

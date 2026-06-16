@@ -14,7 +14,7 @@ pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "signalos_lib=info".into()),
+                .unwrap_or_else(|_| "clarix_lib=info".into()),
         )
         .init();
 
@@ -31,7 +31,7 @@ pub fn run() {
                 .to_string_lossy()
                 .to_string();
 
-            tracing::info!("SignalOS starting — data dir: {}", app_data);
+            tracing::info!("Clarix starting — data dir: {}", app_data);
 
             // ── Initialize Database ─────────────────────────────────
             let app_data_clone = app_data.clone();
@@ -133,7 +133,7 @@ pub fn run() {
                 lan::server::run_player_sync_loop(player_pool, player_app_data).await;
             });
 
-            tracing::info!("SignalOS setup complete");
+            tracing::info!("Clarix setup complete");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -184,5 +184,5 @@ pub fn run() {
             commands::database::save_text_file,
         ])
         .run(tauri::generate_context!())
-        .expect("error running SignalOS");
+        .expect("error running Clarix");
 }

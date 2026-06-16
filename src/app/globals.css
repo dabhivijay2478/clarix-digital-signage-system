@@ -58,7 +58,7 @@
   --tracking-normal: 0rem;
   --spacing: 0.25rem;
 
-  /* SignalOS mapped custom properties */
+  /* Clarix mapped custom properties */
   --bg-primary: var(--background);
   --bg-secondary: var(--card);
   --bg-tertiary: var(--muted);
@@ -247,7 +247,7 @@
   --tracking-wider: calc(var(--tracking-normal) + 0.05em);
   --tracking-widest: calc(var(--tracking-normal) + 0.1em);
 
-  /* Custom SignalOS design tokens mapped to Tailwind colors */
+  /* Custom Clarix design tokens mapped to Tailwind colors */
   --color-bg-primary: var(--bg-primary);
   --color-bg-secondary: var(--bg-secondary);
   --color-bg-tertiary: var(--bg-tertiary);

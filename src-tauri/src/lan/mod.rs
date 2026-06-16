@@ -7,7 +7,7 @@ use crate::models::{DeviceIdentity, DeviceRole};
 
 pub mod server;
 
-const SERVICE_TYPE: &str = "_signalos._tcp.local.";
+const SERVICE_TYPE: &str = "_clarix._tcp.local.";
 
 /// Resolve the local private IP address.
 /// Instead of using local_ip_address::local_ip() which can connect to 8.8.8.8 and return public WAN/NAT IPs
@@ -143,7 +143,7 @@ impl LanDiscovery {
         };
 
         let suffix = identity.device_id.chars().take(8).collect::<String>();
-        let instance_name = format!("SignalOS-{}", suffix);
+        let instance_name = format!("Clarix-{}", suffix);
         let properties = [
             ("device_id", identity.device_id.as_str()),
             ("role", identity.role.as_str()),

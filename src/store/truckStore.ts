@@ -127,7 +127,7 @@ export const useTruckStore = create<TruckStore>()(
       },
     }),
     {
-      name: 'signalos-truck-management',
+      name: 'clarix-truck-management',
     }
   )
 )

@@ -72,14 +72,15 @@ pub async fn start_controller_server(
     mut identity: DeviceIdentity,
     events: SyncEventBus,
 ) -> anyhow::Result<u16> {
-    let port = std::env::var("SIGNALOS_PORT")
+    let port = std::env::var("CLARIX_PORT")
         .ok()
+        .or_else(|| std::env::var("SIGNALOS_PORT").ok())
         .and_then(|value| value.parse::<u16>().ok())
         .unwrap_or(identity.service_port);
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
         .await
         .map_err(|error| anyhow::anyhow!(
-            "Controller port {port} is unavailable. Close the conflicting application or configure SIGNALOS_PORT: {error}"
+            "Controller port {port} is unavailable. Close the conflicting application or configure CLARIX_PORT: {error}"
         ))?;
     identity.service_port = port;
     if let Ok(conn) = pool.get() {
@@ -118,7 +119,7 @@ pub async fn start_controller_server(
         .fallback_service(ServeDir::new(browser_assets_dir))
         .with_state(state);
 
-    tracing::info!("SignalOS controller listening on fixed port {port}");
+    tracing::info!("Clarix controller listening on fixed port {port}");
     tokio::spawn(async move {
         if let Err(error) = axum::serve(listener, router).await {
             tracing::error!("Controller server stopped: {error}");
@@ -688,8 +689,8 @@ mod tests {
     #[test]
     fn produces_stable_sha256_asset_ids() {
         assert_eq!(
-            sha256_bytes(b"SignalOS"),
-            "5803e439e3dafbeeb433a30cfd81ec152069d1f8285cb4651a3aad9d6dff7204"
+            sha256_bytes(b"Clarix"),
+            "67edb3256a391b87d36dc613f3e0b7871d0bc0e60e1328305820735acf46e36b"
         );
     }
 

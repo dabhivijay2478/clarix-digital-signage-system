@@ -11,7 +11,18 @@ pub fn init_db(app_data_dir: &str) -> Result<DbPool> {
     // Ensure the app data directory exists
     std::fs::create_dir_all(app_data_dir)?;
 
-    let db_path = Path::new(app_data_dir).join("signalos.db");
+    let mut db_path = Path::new(app_data_dir).join("clarix.db");
+    if !db_path.exists() {
+        let old_path = Path::new(app_data_dir).join("signalos.db");
+        if old_path.exists() {
+            if let Err(e) = std::fs::rename(&old_path, &db_path) {
+                tracing::warn!("Failed to rename old database from {} to {}: {}", old_path.display(), db_path.display(), e);
+                db_path = old_path;
+            } else {
+                tracing::info!("Successfully migrated database from signalos.db to clarix.db");
+            }
+        }
+    }
     tracing::info!("Initializing SQLite database at: {}", db_path.display());
 
     let manager = SqliteConnectionManager::file(db_path);
@@ -59,7 +70,7 @@ pub fn init_db(app_data_dir: &str) -> Result<DbPool> {
     }
 
     // Reset stale ports left by old port-scanning fallback logic.
-    // The canonical default is 7420; runtime overrides use SIGNALOS_PORT env var.
+    // The canonical default is 7420; runtime overrides use CLARIX_PORT or SIGNALOS_PORT env var.
     let _ = conn.execute(
         "UPDATE device_settings SET service_port = 7420 WHERE singleton = 1 AND service_port != 7420",
         [],

@@ -29,7 +29,7 @@ function isTauriRuntime(): boolean {
   return Boolean(globalRuntime.isTauri || tauriWindow.__TAURI__ || tauriWindow.__TAURI_IPC__ || tauriWindow.__TAURI_INTERNALS__);
 }
 
-const browserControllerPort = process.env.NEXT_PUBLIC_SIGNALOS_CONTROLLER_PORT ?? '7420';
+const browserControllerPort = process.env.NEXT_PUBLIC_CLARIX_CONTROLLER_PORT ?? process.env.NEXT_PUBLIC_SIGNALOS_CONTROLLER_PORT ?? '7420';
 
 export function getBrowserControllerOrigin(): string {
   if (typeof window === 'undefined') return `http://localhost:${browserControllerPort}`;
@@ -95,7 +95,7 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
       case 'save_text_file':
         return undefined as T;
       default:
-        throw new Error('Controller administration is available only in the packaged SignalOS desktop app.');
+        throw new Error(`Controller administration is available only in the packaged ${process.env.NEXT_PUBLIC_APP_NAME || 'Clarix'} desktop app.`);
     }
     
     const response = await fetch(url);
@@ -306,7 +306,7 @@ export const analyticsApi = {
 // Screens discover and sync with each other while connected to the same router.
 
 export const localNetworkApi = {
-  /** Returns all SignalOS screens discovered via mDNS on the same router. */
+  /** Returns all Clarix screens discovered via mDNS on the same router. */
   getPeers: () => tauriInvoke<PeerScreen[]>('get_network_peers'),
 
   /** Checks a stable screen identity using its most recent heartbeat. */
@@ -317,7 +317,7 @@ export const localNetworkApi = {
   checkAllOnline: () =>
     tauriInvoke<[string, boolean][]>('check_all_screens_online'),
 
-  /** Returns the active port of the local SignalOS HTTP service. */
+  /** Returns the active port of the local Clarix HTTP service. */
   getServerPort: () => tauriInvoke<number>('get_lan_server_port'),
 
   /** Syncs all playlists, schedules, and assets to a screen on the same router. */

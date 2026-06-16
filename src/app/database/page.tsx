@@ -225,10 +225,11 @@ export default function DatabasePage() {
     try {
       if (isTauriRuntime()) {
         const { invoke } = await import('@tauri-apps/api/core')
+        const appNameLower = (process.env.NEXT_PUBLIC_APP_NAME || 'Clarix').toLowerCase()
         const savePath = await invoke<string | null>('plugin:dialog|save', {
           options: {
             title: 'Backup Content Library as ZIP',
-            defaultPath: 'signalos_content_library_backup.zip',
+            defaultPath: `${appNameLower}_content_library_backup.zip`,
             filters: [{ name: 'ZIP Archive', extensions: ['zip'] }]
           }
         })

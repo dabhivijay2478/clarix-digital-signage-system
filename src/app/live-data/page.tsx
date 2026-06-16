@@ -24,7 +24,7 @@ const sourceDetails: Record<SourceKind, { title: string; description: string; pl
   },
   spreadsheet: {
     title: 'Live spreadsheet or CSV',
-    description: 'A published Google Sheet or public CSV URL. SignalOS renders it as an auto-refreshing table.',
+    description: `A published Google Sheet or public CSV URL. ${process.env.NEXT_PUBLIC_APP_NAME || 'Clarix'} renders it as an auto-refreshing table.`,
     placeholder: 'https://docs.google.com/spreadsheets/d/.../edit',
   },
 }

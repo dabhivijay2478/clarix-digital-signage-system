@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 import os from "node:os";
 
-const explicitDevOrigins = (process.env.SIGNALOS_DEV_ORIGINS ?? "")
+const explicitDevOrigins = (process.env.CLARIX_DEV_ORIGINS ?? process.env.SIGNALOS_DEV_ORIGINS ?? "")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean)

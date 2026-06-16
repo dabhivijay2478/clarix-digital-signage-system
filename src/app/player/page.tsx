@@ -6,9 +6,12 @@ import { screensApi, playlistsApi, contentApi, scheduleApi, analyticsApi, localN
 import type { Screen, Playlist, ContentItem, ScheduleSlot, PlaylistItem } from '../../lib/types';
 import { showToast } from '../../components/Toast';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { useBrandingStore } from '../../store/ui';
 
 export default function PlayerPage() {
   const router = useRouter();
+  const branding = useBrandingStore();
+  const appName = branding.appName || 'Clarix';
   const [screenId, setScreenId] = useState<string | null>(null);
   const [screensList, setScreensList] = useState<Screen[]>([]);
   const [port, setPort] = useState<number>(7420);
@@ -77,7 +80,7 @@ export default function PlayerPage() {
   // Load screen ID from storage
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const id = localStorage.getItem('signalos_player_screen_id');
+      const id = localStorage.getItem('clarix_player_screen_id');
       if (id) {
         setScreenId(id);
       } else {
@@ -88,7 +91,7 @@ export default function PlayerPage() {
 
   // Screen selection handler
   const handleSelectScreen = (id: string) => {
-    localStorage.setItem('signalos_player_screen_id', id);
+    localStorage.setItem('clarix_player_screen_id', id);
     setScreenId(id);
   };
 
@@ -96,7 +99,7 @@ export default function PlayerPage() {
   const handleDisconnectScreen = async () => {
     const confirmed = await customConfirm('Disconnect screen from this Player device?');
     if (confirmed) {
-      localStorage.removeItem('signalos_player_screen_id');
+      localStorage.removeItem('clarix_player_screen_id');
       setScreenId(null);
       loadScreensList();
     }
@@ -447,10 +450,10 @@ export default function PlayerPage() {
         <div className="max-w-md w-full bg-bg-secondary/40 backdrop-blur-2xl border border-white/5 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center animate-fadeIn">
           {/* Logo anim */}
           <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-linear-to-br from-primary via-primary/80 to-secondary font-bold text-primary-foreground shadow-[0_0_25px_var(--accent-glow)] animate-pulse">
-            <span className="text-2xl">S</span>
+            <span className="text-2xl">{appName[0]}</span>
           </div>
 
-          <h1 className="text-2xl font-bold text-white mb-2">SignalOS Player</h1>
+          <h1 className="text-2xl font-bold text-white mb-2">{appName} Player</h1>
           <p className="text-xs text-text-secondary mb-8">
             Select a screen layout to link this display. Ensure the screen is registered in the dashboard.
           </p>

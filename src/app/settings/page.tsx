@@ -87,12 +87,13 @@ export default function SettingsPage() {
   }
 
   const handleResetBranding = () => {
-    setCustomAppName('SignalOS')
+    const defaultName = process.env.NEXT_PUBLIC_APP_NAME || 'Clarix'
+    setCustomAppName(defaultName)
     setCustomAppIcon(null)
     setCustomFavicon(null)
     setIconFileName('')
     setFaviconFileName('')
-    branding.save('SignalOS', null, null)
+    branding.save(defaultName, null, null)
     showToast('Branding reset to system defaults', 'success')
   }
 
@@ -100,7 +101,7 @@ export default function SettingsPage() {
     try {
       const next = await networkApi.setMode(role, role === 'Player' ? controllerUrl : undefined)
       setIdentity(next)
-      showToast(`Device mode changed to ${role}. Restart SignalOS to apply the networking role.`, 'success')
+      showToast(`Device mode changed to ${role}. Restart ${branding.appName} to apply the networking role.`, 'success')
       await loadNetworkState()
     } catch (error) {
       showToast(`Could not change mode: ${error}`, 'error')
@@ -232,14 +233,14 @@ export default function SettingsPage() {
 
       <div className="grid gap-6 xl:grid-cols-2">
         <SettingsSection title="General">
-          <SettingsRow label="Auto-start on boot" description="Launch SignalOS automatically when the system starts"><Switch checked={autoStart} onCheckedChange={setAutoStart} /></SettingsRow>
+          <SettingsRow label="Auto-start on boot" description={`Launch ${branding.appName} automatically when the system starts`}><Switch checked={autoStart} onCheckedChange={setAutoStart} /></SettingsRow>
           <SettingsRow label="Notifications" description="Show desktop notifications for schedule changes and alerts"><Switch checked={notificationsEnabled} onCheckedChange={setNotificationsEnabled} /></SettingsRow>
           <SettingsRow label="Collapse Sidebar" description="Minimize the navigation sidebar to icons only"><Switch checked={sidebar.isCollapsed} onCheckedChange={sidebar.setCollapsed} /></SettingsRow>
         </SettingsSection>
 
         <SettingsSection title="Local Network & Discovery" description="Discover the controller and sync players connected to the same Wi-Fi router.">
-          <SettingsRow label="Controller Discovery" description="Automatically find the SignalOS controller on the same local network"><Switch checked={discoveryEnabled} onCheckedChange={setDiscoveryEnabled} /></SettingsRow>
-          <SettingsRow label="Service Type" monoValue="_signalos._tcp.local." />
+          <SettingsRow label="Controller Discovery" description={`Automatically find the ${branding.appName} controller on the same local network`}><Switch checked={discoveryEnabled} onCheckedChange={setDiscoveryEnabled} /></SettingsRow>
+          <SettingsRow label="Service Type" monoValue="_clarix._tcp.local." />
           <SettingsRow label="Controller Port" monoValue={port || 'Player outbound only'} />
           <SettingsRow label="Device ID" monoValue={identity?.device_id ?? 'Loading'} />
           <SettingsRow label="Protocol" monoValue={identity?.protocol_version ?? '1'} />
