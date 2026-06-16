@@ -808,6 +808,12 @@ a:hover {
   gap: var(--space-md);
 }
 
+.grid-auto-sm {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-md);
+}
+
 /* ── Status Dot ───────────────────────────────────────────────────────────── */
 .status-dot {
   width: 8px;

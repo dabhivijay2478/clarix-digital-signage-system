@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const contentTypes = ['Image', 'Video', 'WebApp', 'Ad', 'Slideshow'];
+const contentTypes = ['Image', 'Video', 'Document', 'Spreadsheet', 'WebApp', 'Ad', 'Slideshow'];
 
 export default function ContentPage() {
   const { items, loading, search, setSearch, addItem, deleteItem } = useContent();
@@ -43,11 +43,17 @@ export default function ContentPage() {
       ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'mpg', 'mpeg', '3gp', 'ts', 'webm', 'm2v', 'm4v', 'mp3', 'wav', 'aac', 'flac', 'ogg', 'mid'].includes(ext || '');
     const isImage = file.type.startsWith('image/') || 
       ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp', 'svg', 'heic', 'heif'].includes(ext || '');
+    const isDoc = ['pdf', 'doc', 'docx', 'txt', 'rtf', 'odt', 'pages', 'key', 'ppt', 'pptx'].includes(ext || '');
+    const isExcel = ['xls', 'xlsx', 'csv', 'ods', 'numbers'].includes(ext || '');
 
     if (isVideoOrAudio) {
       setFormType('Video');
     } else if (isImage) {
       setFormType('Image');
+    } else if (isDoc) {
+      setFormType('Document');
+    } else if (isExcel) {
+      setFormType('Spreadsheet');
     } else {
       setFormType('WebApp');
     }
@@ -59,7 +65,7 @@ export default function ContentPage() {
       return;
     }
 
-    const isUploadType = formType === 'Image' || formType === 'Video' || formType === 'Ad' || formType === 'Slideshow';
+    const isUploadType = formType === 'Image' || formType === 'Video' || formType === 'Document' || formType === 'Spreadsheet' || formType === 'Ad' || formType === 'Slideshow';
     const isWebType = formType === 'WebApp';
 
     if (isUploadType && !selectedFile) {
@@ -115,7 +121,7 @@ export default function ContentPage() {
     setDeleteId(null);
   };
 
-  const isUploadType = formType === 'Image' || formType === 'Video' || formType === 'Ad' || formType === 'Slideshow' || formType === 'WebApp';
+  const isUploadType = formType === 'Image' || formType === 'Video' || formType === 'Document' || formType === 'Spreadsheet' || formType === 'Ad' || formType === 'Slideshow' || formType === 'WebApp';
 
   return (
     <div>
@@ -136,11 +142,11 @@ export default function ContentPage() {
       </div>
 
       {loading ? (
-        <div aria-busy="true" className="grid-auto">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-72" />)}</div>
+        <div aria-busy="true" className="grid-auto-sm">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-60" />)}</div>
       ) : items.length === 0 ? (
         <Card className="border-dashed bg-transparent"><CardContent className="flex flex-col items-center py-16 text-center"><LayoutGrid className="mb-4 size-12 text-muted-foreground/40" /><CardTitle>No content yet</CardTitle><CardDescription className="mt-1">Upload videos, images, ads, and web apps to your local content library.</CardDescription><Button className="mt-6" onClick={() => setShowAdd(true)}>+ Add Content</Button></CardContent></Card>
       ) : (
-        <div className="grid-auto stagger">
+        <div className="grid-auto-sm stagger">
           {items.map((item) => <ContentCard key={item.id} item={item} onDelete={setDeleteId} />)}
         </div>
       )}
@@ -185,12 +191,12 @@ export default function ContentPage() {
           {isUploadType && (
             <div className="space-y-2">
               <Label>
-                {formType === 'WebApp' ? 'Local Web/Document File (HTML, PDF, TXT, ZIP - Optional)' : 'Media File (Image/Video/Audio) *'}
+                {formType === 'WebApp' ? 'Local Web/Document File (HTML, PDF, TXT, ZIP - Optional)' : 'Upload File *'}
               </Label>
               <div className="relative cursor-pointer rounded-xl border border-dashed border-border bg-muted/20 p-6 text-center transition-colors hover:border-primary/50 hover:bg-primary/5">
                 <input
                   type="file"
-                  accept="image/*,video/*,audio/*,.pdf,.html,.htm,.xhtml,.txt,.zip,.tar,.ar,.xml,.rss"
+                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.rtf,.zip,.tar,.xml,.rss,.html,.htm"
                   onChange={handleFileChange}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
@@ -209,9 +215,7 @@ export default function ContentPage() {
                     <div>
                       <p className="text-sm font-semibold text-foreground">Click or drag file here</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {formType === 'WebApp' 
-                          ? 'Supports HTML, PDF, TXT, XML/RSS, ZIP/TAR. Use Live Data for spreadsheets.'
-                          : 'Supports PNG, JPG, JPEG, BMP, WebP, SVG, MP4, AVI, MOV, MP3, WAV'}
+                        Supports images, videos, PDFs, Word docs, Excel spreadsheets, CSVs, slides, HTML, and ZIP bundles.
                       </p>
                     </div>
                   )}

@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function ScreensPage() {
-  const { screens, loading, addScreen, editScreen, updateOperatingHours, setPower, setBrightness, deleteScreen } = useScreens();
+  const { screens, loading, addScreen, editScreen, updateOperatingHours, deleteScreen } = useScreens();
   const { playlists, createPlaylist, updateItems } = usePlaylists();
   const { items: contentItems } = useContent();
 
@@ -431,7 +431,7 @@ export default function ScreensPage() {
             </button>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h1 className="page-title" style={{ margin: 0, fontSize: '24px', fontWeight: 'bold', color: 'white' }}>{selectedScreen.name}</h1>
+                <h1 className="page-title" style={{ margin: 0, fontSize: '24px', fontWeight: 'bold', color: 'var(--foreground)' }}>{selectedScreen.name}</h1>
                 <span 
                   className={`w-2.5 h-2.5 rounded-full ${
                     isSyncing
@@ -484,7 +484,7 @@ export default function ScreensPage() {
             padding: '16px 24px',
             borderRadius: '12px',
             marginBottom: '24px',
-            color: 'white',
+            color: 'var(--foreground)',
             boxShadow: '0 4px 20px var(--accent-glow)',
             animation: 'fadeIn 0.2s ease-out'
           }}>
@@ -526,8 +526,8 @@ export default function ScreensPage() {
             
             {/* Left Column: Screen Playlist */}
             <div className="glass-card-static lg:col-span-7 flex flex-col gap-4 min-h-[450px]">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '12px' }}>
-                <h3 style={{ margin: 0, color: 'white', fontSize: '16px', fontWeight: 600 }}>Screen Playlist Items</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
+                <h3 style={{ margin: 0, color: 'var(--foreground)', fontSize: '16px', fontWeight: 600 }}>Screen Playlist Items</h3>
                 <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                   {localPlaylistItems.length} item{localPlaylistItems.length !== 1 ? 's' : ''}
                 </span>
@@ -559,8 +559,8 @@ export default function ScreensPage() {
                           alignItems: 'center',
                           gap: '16px',
                           padding: '12px 16px',
-                          background: 'rgba(255,255,255,0.02)',
-                          border: '1px solid rgba(255,255,255,0.05)',
+                          background: 'var(--border)',
+                          border: '1px solid var(--border)',
                           borderRadius: '12px',
                         }}
                       >
@@ -570,7 +570,7 @@ export default function ScreensPage() {
                         </div>
 
                         {/* Media Thumbnail */}
-                        <div style={{ width: '64px', height: '40px', borderRadius: '6px', overflow: 'hidden', background: '#111', flexShrink: 0, position: 'relative', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ width: '64px', height: '40px', borderRadius: '6px', overflow: 'hidden', background: '#111', flexShrink: 0, position: 'relative', border: '1px solid var(--border)' }}>
                           {contentItem.content_type === 'Image' ? (
                             <img src={mediaUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           ) : contentItem.content_type === 'Video' ? (
@@ -582,11 +582,11 @@ export default function ScreensPage() {
 
                         {/* Title and details */}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <h4 style={{ margin: 0, color: 'white', fontSize: '14px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <h4 style={{ margin: 0, color: 'var(--foreground)', fontSize: '14px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {contentItem.name}
                           </h4>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '9px', padding: '2px 6px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', color: 'var(--text-secondary)' }}>
+                            <span style={{ fontSize: '9px', padding: '2px 6px', background: 'var(--border)', borderRadius: '4px', color: 'var(--text-secondary)' }}>
                               {contentItem.content_type}
                             </span>
                             {hasRules && (
@@ -667,7 +667,7 @@ export default function ScreensPage() {
               )}
 
               {/* Save changes action row */}
-              <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                 <button className="btn btn-secondary" onClick={handleBack}>
                   Discard & Exit
                 </button>
@@ -679,8 +679,8 @@ export default function ScreensPage() {
 
             {/* Right Column: Content Library */}
             <div className="glass-card-static lg:col-span-5 flex flex-col gap-4 min-h-[450px]">
-              <div style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '12px' }}>
-                <h3 style={{ margin: 0, color: 'white', fontSize: '16px', fontWeight: 600, marginBottom: '12px' }}>Content Library</h3>
+              <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
+                <h3 style={{ margin: 0, color: 'var(--foreground)', fontSize: '16px', fontWeight: 600, marginBottom: '12px' }}>Content Library</h3>
                 <input
                   className="input"
                   placeholder="Search by name or tags..."
@@ -691,7 +691,7 @@ export default function ScreensPage() {
               </div>
 
               {/* Tabs */}
-              <div style={{ display: 'flex', gap: '6px', background: 'rgba(255,255,255,0.03)', padding: '4px', borderRadius: '8px' }}>
+              <div style={{ display: 'flex', gap: '6px', background: 'var(--border)', padding: '4px', borderRadius: '8px' }}>
                 {(['all', 'image', 'video', 'webapp'] as const).map((tab) => (
                   <button
                     key={tab}
@@ -733,14 +733,14 @@ export default function ScreensPage() {
                           alignItems: 'center',
                           gap: '12px',
                           padding: '10px 12px',
-                          background: 'rgba(255,255,255,0.01)',
-                          border: '1px solid rgba(255,255,255,0.03)',
+                          background: 'var(--border)',
+                          border: '1px solid var(--border)',
                           borderRadius: '10px',
                           cursor: 'pointer',
                           transition: 'all 0.2s'
                         }}
                       >
-                        <div style={{ width: '48px', height: '32px', borderRadius: '4px', overflow: 'hidden', background: '#111', flexShrink: 0, border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ width: '48px', height: '32px', borderRadius: '4px', overflow: 'hidden', background: '#111', flexShrink: 0, border: '1px solid var(--border)' }}>
                           {item.content_type === 'Image' ? (
                             <img src={mediaUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           ) : item.content_type === 'Video' ? (
@@ -750,7 +750,7 @@ export default function ScreensPage() {
                           )}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ display: 'block', color: 'white', fontSize: '13px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span style={{ display: 'block', color: 'var(--foreground)', fontSize: '13px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {item.name}
                           </span>
                           <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
@@ -786,16 +786,16 @@ export default function ScreensPage() {
             </>
           }
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', color: 'white' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', color: 'var(--foreground)' }}>
             
             {/* Custom Transition */}
-            <div style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '16px' }}>
+            <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
               <label className="input-label" style={{ marginBottom: '8px' }}>Custom Transition Override</label>
               <select
                 className="input"
                 value={itemSchedTransition}
                 onChange={(e) => setItemSchedTransition(e.target.value)}
-                style={{ background: 'var(--bg-tertiary)', color: 'white', border: '1px solid rgba(255,255,255,0.1)' }}
+                style={{ background: 'var(--bg-tertiary)', color: 'var(--foreground)', border: '1px solid var(--border)' }}
               >
                 <option value="Fade" style={{ background: 'var(--bg-primary)' }}>Fade</option>
                 <option value="Slide" style={{ background: 'var(--bg-primary)' }}>Slide</option>
@@ -805,7 +805,7 @@ export default function ScreensPage() {
             </div>
 
             {/* Daily display hours */}
-            <div style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '16px' }}>
+            <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: 600, fontSize: '14px', marginBottom: '12px' }}>
                 <input
                   type="checkbox"
@@ -860,9 +860,9 @@ export default function ScreensPage() {
                               fontSize: '11px',
                               fontWeight: 600,
                               borderRadius: '6px',
-                              background: active ? 'var(--accent-primary)' : 'rgba(255,255,255,0.03)',
+                              background: active ? 'var(--accent-primary)' : 'var(--border)',
                               color: active ? 'white' : 'var(--text-secondary)',
-                              border: active ? 'none' : '1px solid rgba(255,255,255,0.05)',
+                              border: active ? 'none' : '1px solid var(--border)',
                               cursor: 'pointer',
                             }}
                           >
@@ -969,7 +969,7 @@ export default function ScreensPage() {
                   className="input"
                   value={editFormOrientation}
                   onChange={(e) => setEditFormOrientation(e.target.value)}
-                  style={{ background: 'var(--bg-tertiary)', color: 'white', border: '1px solid rgba(255,255,255,0.1)' }}
+                  style={{ background: 'var(--bg-tertiary)', color: 'var(--foreground)', border: '1px solid var(--border)' }}
                 >
                   <option value="Landscape" style={{ background: 'var(--bg-primary)' }}>Landscape</option>
                   <option value="Portrait" style={{ background: 'var(--bg-primary)' }}>Portrait</option>
@@ -1037,14 +1037,14 @@ export default function ScreensPage() {
             </div>
           }
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: 'white' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: 'var(--foreground)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>This screen</span>
               <select
                 className="input"
                 value={hoursMode}
                 onChange={(e) => setHoursMode(e.target.value)}
-                style={{ width: 'auto', background: 'var(--bg-tertiary)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '6px 12px', fontSize: '13px' }}
+                style={{ width: 'auto', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--foreground)', padding: '6px 12px', fontSize: '13px' }}
               >
                 <option value="in_use">is in use during these times</option>
               </select>
@@ -1056,7 +1056,7 @@ export default function ScreensPage() {
                 return (
                   <div key={day} style={{ display: 'grid', gridTemplateColumns: '100px 1fr 1fr', alignItems: 'center', gap: '12px' }}>
                     <span style={{ fontSize: '13px', fontWeight: 500 }}>{day}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '4px 8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '4px 8px' }}>
                       <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Start</span>
                       <input
                         type="time"
@@ -1067,10 +1067,10 @@ export default function ScreensPage() {
                             [day]: { ...prev[day], start: e.target.value }
                           }));
                         }}
-                        style={{ background: 'transparent', border: 'none', color: 'white', width: '100%', fontSize: '13px', outline: 'none' }}
+                        style={{ background: 'transparent', border: 'none', color: 'var(--foreground)', width: '100%', fontSize: '13px', outline: 'none' }}
                       />
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '4px 8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '4px 8px' }}>
                       <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>End</span>
                       <input
                         type="time"
@@ -1081,7 +1081,7 @@ export default function ScreensPage() {
                             [day]: { ...prev[day], end: e.target.value }
                           }));
                         }}
-                        style={{ background: 'transparent', border: 'none', color: 'white', width: '100%', fontSize: '13px', outline: 'none' }}
+                        style={{ background: 'transparent', border: 'none', color: 'var(--foreground)', width: '100%', fontSize: '13px', outline: 'none' }}
                       />
                     </div>
                   </div>
@@ -1121,7 +1121,7 @@ export default function ScreensPage() {
       </div>
 
       {loading ? (
-        <div aria-busy="true" className="grid-auto">{Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-72 rounded-2xl" />)}</div>
+        <div aria-busy="true" className="grid-auto">{Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-[390px] rounded-2xl" />)}</div>
       ) : screens.length === 0 ? (
         <Card className="border-dashed bg-transparent">
           <CardContent className="flex min-h-80 flex-col items-center justify-center px-6 py-16 text-center">
@@ -1139,8 +1139,6 @@ export default function ScreensPage() {
                 key={screen.id}
                 screen={screen}
                 isSyncing={syncingScreenIds.includes(screen.id)}
-                onTogglePower={setPower}
-                onBrightnessChange={setBrightness}
                 onDelete={handleDelete}
                 onEdit={handleEditClick}
                 onHours={handleHoursClick}
@@ -1280,7 +1278,7 @@ export default function ScreensPage() {
                 className="input"
                 value={editFormOrientation}
                 onChange={(e) => setEditFormOrientation(e.target.value)}
-                style={{ background: 'var(--bg-tertiary)', color: 'white', border: '1px solid rgba(255,255,255,0.1)' }}
+                style={{ background: 'var(--bg-tertiary)', color: 'var(--foreground)', border: '1px solid var(--border)' }}
               >
                 <option value="Landscape" style={{ background: 'var(--bg-primary)' }}>Landscape</option>
                 <option value="Portrait" style={{ background: 'var(--bg-primary)' }}>Portrait</option>
@@ -1348,14 +1346,14 @@ export default function ScreensPage() {
           </div>
         }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: 'white' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: 'var(--foreground)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>This screen</span>
             <select
               className="input"
               value={hoursMode}
               onChange={(e) => setHoursMode(e.target.value)}
-              style={{ width: 'auto', background: 'var(--bg-tertiary)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '6px 12px', fontSize: '13px' }}
+              style={{ width: 'auto', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--foreground)', padding: '6px 12px', fontSize: '13px' }}
             >
               <option value="in_use">is in use during these times</option>
             </select>
@@ -1367,7 +1365,7 @@ export default function ScreensPage() {
               return (
                 <div key={day} style={{ display: 'grid', gridTemplateColumns: '100px 1fr 1fr', alignItems: 'center', gap: '12px' }}>
                   <span style={{ fontSize: '13px', fontWeight: 500 }}>{day}</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '4px 8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '4px 8px' }}>
                     <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Start</span>
                     <input
                       type="time"
@@ -1378,10 +1376,10 @@ export default function ScreensPage() {
                           [day]: { ...prev[day], start: e.target.value }
                         }));
                       }}
-                      style={{ background: 'transparent', border: 'none', color: 'white', width: '100%', fontSize: '13px', outline: 'none' }}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--foreground)', width: '100%', fontSize: '13px', outline: 'none' }}
                     />
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '4px 8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '4px 8px' }}>
                     <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>End</span>
                     <input
                       type="time"
@@ -1392,7 +1390,7 @@ export default function ScreensPage() {
                           [day]: { ...prev[day], end: e.target.value }
                         }));
                       }}
-                      style={{ background: 'transparent', border: 'none', color: 'white', width: '100%', fontSize: '13px', outline: 'none' }}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--foreground)', width: '100%', fontSize: '13px', outline: 'none' }}
                     />
                   </div>
                 </div>
