@@ -11,6 +11,8 @@ import {
   Trash2,
   Truck,
   Upload,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react'
 import { useTrucks } from '@/hooks/useTrucks'
 import { showToast } from '@/components/Toast'
@@ -75,6 +77,7 @@ export default function TrucksPage() {
     updateTruckChecks,
     importTrucks,
     getTruckById,
+    moveTruck,
   } = useTrucks()
 
   const [search, setSearch] = useState('')
@@ -92,6 +95,7 @@ export default function TrucksPage() {
     model: string
     year: number
     notes: string
+    gate_no: string
   }>>([])
 
   // Truck form fields
@@ -100,6 +104,7 @@ export default function TrucksPage() {
   const [fModel, setFModel] = useState('')
   const [fYear, setFYear] = useState(new Date().getFullYear().toString())
   const [fNotes, setFNotes] = useState('')
+  const [fGateNo, setFGateNo] = useState('')
 
   // ── Form Resets ─────────────────────────────────────────────────────────
 
@@ -109,6 +114,7 @@ export default function TrucksPage() {
     setFModel('')
     setFYear(new Date().getFullYear().toString())
     setFNotes('')
+    setFGateNo('')
   }
 
   // ── Truck CRUD Handlers ─────────────────────────────────────────────────
@@ -124,6 +130,7 @@ export default function TrucksPage() {
       model: fModel.trim(),
       year: parseInt(fYear) || new Date().getFullYear(),
       notes: fNotes,
+      gate_no: fGateNo.trim() || null,
       is_waiting: false,
       is_loading: false,
       is_in: false,
@@ -147,6 +154,7 @@ export default function TrucksPage() {
     setFModel(truck.model)
     setFYear(truck.year.toString())
     setFNotes(truck.notes)
+    setFGateNo(truck.gate_no || '')
   }
 
   const handleSaveEditTruck = () => {
@@ -157,6 +165,7 @@ export default function TrucksPage() {
       model: fModel.trim(),
       year: parseInt(fYear) || new Date().getFullYear(),
       notes: fNotes,
+      gate_no: fGateNo.trim() || null,
     })
     showToast('Truck updated', 'success')
     resetTruckForm()
@@ -208,6 +217,7 @@ export default function TrucksPage() {
           model: getCol(row, ['model', 'vehicle_model']),
           year: parseInt(getCol(row, ['year', 'mfg_year', 'manufacture_year'])) || new Date().getFullYear(),
           notes: getCol(row, ['notes', 'remarks', 'comment', 'comments']),
+          gate_no: getCol(row, ['gate_no', 'gate', 'gate_number', 'gateno']),
         }))
         .filter((t) => t.registration_number)
 
@@ -254,7 +264,7 @@ export default function TrucksPage() {
 
   // ── Truck Form Modal Body ───────────────────────────────────────────────
 
-  const TruckFormBody = () => (
+  const renderTruckFormFields = () => (
     <div className="grid gap-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
@@ -276,9 +286,15 @@ export default function TrucksPage() {
           <Input placeholder="Prima 4928" value={fModel} onChange={(e) => setFModel(e.target.value)} />
         </div>
       </div>
-      <div className="space-y-2">
-        <Label>Notes</Label>
-        <Input placeholder="Additional notes..." value={fNotes} onChange={(e) => setFNotes(e.target.value)} />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label>Gate Number</Label>
+          <Input placeholder="Gate 1" value={fGateNo} onChange={(e) => setFGateNo(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <Label>Notes</Label>
+          <Input placeholder="Additional notes..." value={fNotes} onChange={(e) => setFNotes(e.target.value)} />
+        </div>
       </div>
     </div>
   )
@@ -392,7 +408,11 @@ export default function TrucksPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-[140px]">Registration</TableHead>
+                  <TableHead className="w-[60px]">Sr no</TableHead>
+                  <TableHead className="min-w-[140px]">Truck Number</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-center">Up/Down</TableHead>
+                  <TableHead>Gate No</TableHead>
                   <TableHead>Make / Model</TableHead>
                   <TableHead className="text-center">Waiting</TableHead>
                   <TableHead className="text-center">Loading</TableHead>
@@ -402,11 +422,35 @@ export default function TrucksPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredTrucks.map((truck) => {
+                {filteredTrucks.map((truck, index) => {
                   // Sequential enable logic: each step requires the previous step to be checked
                   const canLoading = truck.is_waiting === true
                   const canIn = truck.is_loading === true
                   const canOut = truck.is_in === true
+
+                  const getStatusLabel = (t: TruckType) => {
+                    if (t.is_out) return 'Dispatched'
+                    if (t.is_in) return 'Gate In'
+                    if (t.is_loading) return 'Loading'
+                    if (t.is_waiting) return 'Waiting'
+                    return 'Registered'
+                  }
+
+                  const getStatusColor = (status: string) => {
+                    switch (status) {
+                      case 'Dispatched': return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+                      case 'Gate In': return 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20'
+                      case 'Loading': return 'bg-blue-500/10 text-blue-600 border-blue-500/20'
+                      case 'Waiting': return 'bg-amber-500/10 text-amber-600 border-amber-500/20'
+                      default: return 'bg-muted text-muted-foreground'
+                    }
+                  }
+
+                  const statusLabel = getStatusLabel(truck)
+                  const isWaiting = statusLabel === 'Waiting'
+                  const fullIndex = trucks.findIndex((t) => t.id === truck.id)
+                  const canMoveUp = trucks.slice(0, fullIndex).some((t) => t.is_waiting)
+                  const canMoveDown = trucks.slice(fullIndex + 1).some((t) => t.is_waiting)
 
                   return (
                     <TableRow
@@ -414,8 +458,54 @@ export default function TrucksPage() {
                       className="cursor-pointer hover:bg-muted/50 transition-colors"
                       onClick={() => setSelectedTruckForDetails(truck)}
                     >
+                      <TableCell className="text-muted-foreground font-mono text-xs">
+                        {index + 1}
+                      </TableCell>
                       <TableCell>
                         <span className="font-mono font-medium">{truck.registration_number}</span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={getStatusColor(statusLabel)}>
+                          {statusLabel.toLowerCase()}
+                        </Badge>
+                      </TableCell>
+                      {/* Up/Down buttons for waiting queue reordering */}
+                      <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                        {isWaiting ? (
+                          <div className="flex items-center justify-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="size-7 p-0"
+                              disabled={!canMoveUp}
+                              onClick={() => moveTruck(truck.id, 'up')}
+                              title="Move Up"
+                            >
+                              <ArrowUp className="size-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="size-7 p-0"
+                              disabled={!canMoveDown}
+                              onClick={() => moveTruck(truck.id, 'down')}
+                              title="Move Down"
+                            >
+                              <ArrowDown className="size-3.5" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground/30">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="font-medium text-xs">
+                        {truck.gate_no ? (
+                          <Badge variant="secondary" className="bg-primary/5 text-primary border-primary/10">
+                            {truck.gate_no}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground/30">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {truck.make} {truck.model} · {truck.year}
@@ -490,7 +580,7 @@ export default function TrucksPage() {
           </>
         }
       >
-        <TruckFormBody />
+        {renderTruckFormFields()}
       </Modal>
 
       {/* ── EDIT TRUCK MODAL ────────────────────────────────────────────────── */}
@@ -505,7 +595,7 @@ export default function TrucksPage() {
           </>
         }
       >
-        <TruckFormBody />
+        {renderTruckFormFields()}
       </Modal>
 
       {/* ── TRUCK DETAILS & STATUS LOG MODAL ────────────────────────────────── */}
@@ -530,6 +620,7 @@ export default function TrucksPage() {
                 </h3>
                 <p className="text-sm text-muted-foreground">
                   {selectedTruckForDetails.make} {selectedTruckForDetails.model} · {selectedTruckForDetails.year}
+                  {selectedTruckForDetails.gate_no && ` · Gate: ${selectedTruckForDetails.gate_no}`}
                 </p>
                 {selectedTruckForDetails.notes && (
                   <p className="mt-2 text-xs text-muted-foreground italic">
@@ -685,6 +776,7 @@ export default function TrucksPage() {
                 <TableRow>
                   <TableHead>#</TableHead>
                   <TableHead>Registration</TableHead>
+                  <TableHead>Gate No</TableHead>
                   <TableHead>Make</TableHead>
                   <TableHead>Model</TableHead>
                   <TableHead>Year</TableHead>
@@ -695,6 +787,7 @@ export default function TrucksPage() {
                   <TableRow key={i}>
                     <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                     <TableCell className="font-mono font-medium">{row.registration_number}</TableCell>
+                    <TableCell>{row.gate_no || '—'}</TableCell>
                     <TableCell>{row.make || '—'}</TableCell>
                     <TableCell>{row.model || '—'}</TableCell>
                     <TableCell>{row.year}</TableCell>
@@ -708,7 +801,7 @@ export default function TrucksPage() {
             <div>
               <p className="font-medium">CSV Format Tip</p>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Your CSV should have column headers like: <code className="rounded bg-muted px-1 font-mono text-[11px]">registration_number, make, model, year, notes</code>
+                Your CSV should have column headers like: <code className="rounded bg-muted px-1 font-mono text-[11px]">registration_number, gate_no, make, model, year, notes</code>
               </p>
             </div>
           </div>

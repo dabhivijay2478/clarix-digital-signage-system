@@ -18,5 +18,6 @@ export function useTrucks() {
     deleteTruck: store.deleteTruck,
     updateTruckChecks: store.updateTruckChecks,
     importTrucks: store.importTrucks,
+    moveTruck: store.moveTruck,
   }
 }

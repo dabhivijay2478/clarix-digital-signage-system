@@ -25,6 +25,7 @@ interface TruckStore {
   deleteTruck: (id: string) => void
   updateTruckChecks: (id: string, field: 'is_waiting' | 'is_loading' | 'is_in' | 'is_out', value: boolean) => void
   importTrucks: (data: Omit<Truck, 'id' | 'created_at'>[]) => number
+  moveTruck: (id: string, direction: 'up' | 'down') => void
 }
 
 // ── Store Implementation ────────────────────────────────────────────────────
@@ -39,6 +40,7 @@ export const useTruckStore = create<TruckStore>()(
           ...data,
           id: uid(),
           created_at: now(),
+          gate_no: data.gate_no ?? null,
           is_waiting: data.is_waiting ?? false,
           is_loading: data.is_loading ?? false,
           is_in: data.is_in ?? false,
@@ -113,6 +115,7 @@ export const useTruckStore = create<TruckStore>()(
           ...d,
           id: uid(),
           created_at: now(),
+          gate_no: d.gate_no ?? null,
           is_waiting: d.is_waiting ?? false,
           is_loading: d.is_loading ?? false,
           is_in: d.is_in ?? false,
@@ -125,6 +128,44 @@ export const useTruckStore = create<TruckStore>()(
         set((s) => ({ trucks: [...s.trucks, ...newTrucks] }))
         return newTrucks.length
       },
+
+      moveTruck: (id, direction) =>
+        set((s) => {
+          const index = s.trucks.findIndex((t) => t.id === id)
+          if (index === -1) return {}
+
+          const newTrucks = [...s.trucks]
+          if (direction === 'up') {
+            // Find closest waiting truck above it
+            let targetIndex = -1
+            for (let i = index - 1; i >= 0; i--) {
+              if (newTrucks[i].is_waiting) {
+                targetIndex = i
+                break
+              }
+            }
+            if (targetIndex !== -1) {
+              const temp = newTrucks[index]
+              newTrucks[index] = newTrucks[targetIndex]
+              newTrucks[targetIndex] = temp
+            }
+          } else {
+            // Find closest waiting truck below it
+            let targetIndex = -1
+            for (let i = index + 1; i < newTrucks.length; i++) {
+              if (newTrucks[i].is_waiting) {
+                targetIndex = i
+                break
+              }
+            }
+            if (targetIndex !== -1) {
+              const temp = newTrucks[index]
+              newTrucks[index] = newTrucks[targetIndex]
+              newTrucks[targetIndex] = temp
+            }
+          }
+          return { trucks: newTrucks }
+        }),
     }),
     {
       name: 'clarix-truck-management',

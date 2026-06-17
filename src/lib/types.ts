@@ -194,6 +194,7 @@ export interface Truck {
   make: string;
   year: number;
   notes: string;
+  gate_no?: string | null;
   is_waiting: boolean;
   is_loading: boolean;
   is_in: boolean;
