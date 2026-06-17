@@ -14,7 +14,7 @@ pub async fn get_screens(pool: State<'_, DbPool>) -> Result<Vec<Screen>, String>
                         resolution_w, resolution_h, brightness, power_on,
                         orientation, group_id, created_at, operating_hours, playlist_id,
                         device_id, endpoint, pairing_status, last_seen, last_sync_revision,
-                        force_sync
+                        force_sync, is_fullscreen
                  FROM screens ORDER BY name",
             )
             .map_err(|e| e.to_string())?;
@@ -62,6 +62,7 @@ pub async fn get_screens(pool: State<'_, DbPool>) -> Result<Vec<Screen>, String>
                     last_seen: row.get(17)?,
                     last_sync_revision: row.get(18)?,
                     force_sync: row.get(19)?,
+                    is_fullscreen: row.get(20)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -262,4 +263,28 @@ pub async fn force_sync_screen(
     .await
     .map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub async fn update_screen_fullscreen(
+    id: String,
+    fullscreen: bool,
+    pool: State<'_, DbPool>,
+    events: State<'_, crate::lan::server::SyncEventBus>,
+) -> Result<(), String> {
+    let pool = pool.inner().clone();
+    let event_bus = events.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE screens SET is_fullscreen = ?1 WHERE id = ?2",
+            params![fullscreen, id],
+        )
+        .map_err(|e| e.to_string())?;
+        let _ = crate::lan::server::publish_revision(&pool, &event_bus);
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 

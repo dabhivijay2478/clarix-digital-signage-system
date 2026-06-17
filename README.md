@@ -79,8 +79,6 @@ git clone https://github.com/dabhivijay2478/clarix-digital-signage-system.git
 cd clarix-digital-signage-system
 ```
 
-> ⚠️ Replace `YOUR_USERNAME` with the actual GitHub username or organization.
-
 ### Step 5 — Install Bun
 
 Bun is faster and more efficient than npm. Install it:
@@ -173,12 +171,10 @@ Open **Command Prompt** and run:
 ```cmd
 cd %USERPROFILE%\Desktop
 
-git clone https://github.com/YOUR_USERNAME/live-feed.git
+git clone https://github.com/dabhivijay2478/clarix-digital-signage-system.git
 
-cd live-feed
+cd clarix-digital-signage-system
 ```
-
-> ⚠️ Replace `YOUR_USERNAME` with the actual GitHub username or organization.
 
 ### Step 6 — Install Bun
 

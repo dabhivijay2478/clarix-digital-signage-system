@@ -651,7 +651,7 @@ fn query_screen(conn: &rusqlite::Connection, id: &str) -> anyhow::Result<Option<
     let mut stmt = conn.prepare(
         "SELECT id, name, location, ip_address, mac_address, resolution_w, resolution_h, brightness, power_on,
          orientation, group_id, created_at, operating_hours, playlist_id, device_id, endpoint, pairing_status,
-         last_seen, last_sync_revision, force_sync FROM screens WHERE id = ?1"
+         last_seen, last_sync_revision, force_sync, is_fullscreen FROM screens WHERE id = ?1"
     )?;
     let mut rows = stmt.query(params![id])?;
     let Some(row) = rows.next()? else { return Ok(None) };
@@ -669,7 +669,7 @@ fn query_screen(conn: &rusqlite::Connection, id: &str) -> anyhow::Result<Option<
         group_id: row.get(10)?, created_at: parse_date(row.get(11)?),
         operating_hours: serde_json::from_str(&row.get::<_, String>(12)?).ok(), playlist_id: row.get(13)?,
         device_id: row.get(14)?, endpoint: row.get(15)?, pairing_status: row.get(16)?,
-        last_seen, last_sync_revision: row.get(18)?, force_sync: row.get(19)?,
+        last_seen, last_sync_revision: row.get(18)?, force_sync: row.get(19)?, is_fullscreen: row.get(20)?,
     }))
 }
 

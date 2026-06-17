@@ -26,24 +26,28 @@ export default function PlayerPage() {
   // Toggle fullscreen mode safely
   const toggleFullscreen = async () => {
     try {
-      const tauriWindow = window as any;
-      if (tauriWindow.__TAURI_INTERNALS__) {
+      if (typeof window !== 'undefined' && ((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__ || (window as any).__TAURI_IPC__)) {
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
         const win = getCurrentWindow();
         const current = await win.isFullscreen();
         await win.setFullscreen(!current);
         setIsFullscreen(!current);
-      } else {
-        if (!document.fullscreenElement) {
-          await document.documentElement.requestFullscreen();
-          setIsFullscreen(true);
-        } else {
-          await document.exitFullscreen();
-          setIsFullscreen(false);
-        }
+        return;
       }
     } catch (err) {
-      console.warn('Failed to toggle fullscreen:', err);
+      console.warn('Tauri fullscreen failed, falling back to browser API:', err);
+    }
+
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        setIsFullscreen(true);
+      } else {
+        await document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    } catch (err) {
+      console.error('Failed to toggle browser fullscreen:', err);
     }
   };
 
@@ -141,14 +145,21 @@ export default function PlayerPage() {
     }
   }, []);
 
-  // Load screen ID from storage
+  // Load screen ID from query parameters or storage
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const id = localStorage.getItem('clarix_player_screen_id');
-      if (id) {
-        setScreenId(id);
+      const params = new URLSearchParams(window.location.search);
+      const queryId = params.get('screenId') || params.get('id');
+      if (queryId) {
+        setScreenId(queryId);
+        localStorage.setItem('clarix_player_screen_id', queryId);
       } else {
-        loadScreensList();
+        const id = localStorage.getItem('clarix_player_screen_id');
+        if (id) {
+          setScreenId(id);
+        } else {
+          loadScreensList();
+        }
       }
     }
   }, [loadScreensList]);
@@ -168,6 +179,42 @@ export default function PlayerPage() {
       loadScreensList();
     }
   };
+
+  // Sync remote fullscreen command from controller
+  useEffect(() => {
+    if (!activeScreen) return;
+
+    const syncRemoteFullscreen = async () => {
+      try {
+        const target = activeScreen.is_fullscreen;
+        let current = false;
+        const tauriWindow = window as any;
+
+        if (tauriWindow.__TAURI_INTERNALS__ || tauriWindow.__TAURI__ || tauriWindow.__TAURI_IPC__) {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          const win = getCurrentWindow();
+          current = await win.isFullscreen();
+          if (current !== target) {
+            await win.setFullscreen(target);
+          }
+        } else {
+          current = !!document.fullscreenElement;
+          if (current !== target) {
+            if (target) {
+              await document.documentElement.requestFullscreen();
+            } else if (document.fullscreenElement) {
+              await document.exitFullscreen();
+            }
+          }
+        }
+        setIsFullscreen(target);
+      } catch (err) {
+        console.warn('Failed to sync remote fullscreen:', err);
+      }
+    };
+
+    syncRemoteFullscreen();
+  }, [activeScreen]);
 
   // Helper to map weekday
   const getAppWeekday = (): string => {
@@ -648,54 +695,6 @@ export default function PlayerPage() {
             </button>
           </div>
         </div>
-
-        {/* Floating control toolbar */}
-        <div 
-          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-black/75 backdrop-blur-xl border border-white/10 px-4 py-2.5 rounded-2xl transition-all duration-300 shadow-2xl ${
-            showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
-          }`}
-        >
-          <div className="flex items-center gap-1.5 border-r border-white/10 pr-3 mr-1">
-            <span className="text-xs font-semibold text-white truncate max-w-[120px]">{activeScreen?.name || 'Player'}</span>
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-          </div>
-
-          <button 
-            onClick={handleManualSync}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 text-white transition-all text-[11px] font-medium cursor-pointer"
-            title="Force sync data with Controller"
-          >
-            <RefreshCw className="size-3.5" />
-            Sync Now
-          </button>
-
-          <button 
-            onClick={toggleFullscreen}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 text-white transition-all text-[11px] font-medium cursor-pointer"
-            title="Toggle Fullscreen Mode"
-          >
-            {isFullscreen ? <Minimize className="size-3.5" /> : <Maximize className="size-3.5" />}
-            {isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
-          </button>
-
-          <button 
-            onClick={handleDisconnectScreen}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 text-white transition-all text-[11px] font-medium cursor-pointer"
-            title="Disconnect this screen layout"
-          >
-            <XCircle className="size-3.5" />
-            Disconnect
-          </button>
-
-          <button 
-            onClick={() => router.push('/')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-red-400 transition-all text-[11px] font-medium cursor-pointer"
-            title="Exit to Dashboard"
-          >
-            <LogOut className="size-3.5" />
-            Exit
-          </button>
-        </div>
       </div>
     );
   }
@@ -745,70 +744,10 @@ export default function PlayerPage() {
     };
   };
 
-  // ── RENDER ACTIVE PLAYBACK SCREEN ──────────────────────────────────────────
   return (
     <div className="w-screen h-screen bg-black overflow-hidden relative select-none flex items-center justify-center">
       <div style={getRotationStyle()}>
         {renderContentItem()}
-      </div>
-
-      {/* Playback status badge */}
-      <div className="absolute top-4 right-4 z-50 flex items-center gap-2 bg-black/60 backdrop-blur-md border border-white/10 px-3 py-2 rounded-xl font-mono">
-        <div className="w-2 h-2 rounded-full bg-accent-secondary animate-pulse" />
-        <span className="text-[11px] text-text-secondary">{port > 0 ? 'Connected browser player' : 'Cached packaged player'}</span>
-      </div>
-
-      {/* Subtle indicator overlay on hover */}
-      <div className="absolute bottom-4 left-4 z-50 bg-black/60 backdrop-blur-md border border-white/5 px-3 py-1.5 rounded-lg text-[10px] text-text-muted opacity-0 hover:opacity-100 transition-opacity duration-200 pointer-events-none font-mono overflow-hidden">
-        Playing: {activePlaylist.name} (Index: {(currentItemIndex % playableItems.length) + 1}/{playableItems.length}) • Esc to Exit
-      </div>
-
-      {/* Floating control toolbar */}
-      <div 
-        className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-black/75 backdrop-blur-xl border border-white/10 px-4 py-2.5 rounded-2xl transition-all duration-300 shadow-2xl ${
-          showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
-        }`}
-      >
-        <div className="flex items-center gap-1.5 border-r border-white/10 pr-3 mr-1">
-          <span className="text-xs font-semibold text-white truncate max-w-[120px]">{activeScreen?.name || 'Player'}</span>
-          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-        </div>
-
-        <button 
-          onClick={handleManualSync}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 text-white transition-all text-[11px] font-medium cursor-pointer"
-          title="Force sync data with Controller"
-        >
-          <RefreshCw className="size-3.5" />
-          Sync Now
-        </button>
-
-        <button 
-          onClick={toggleFullscreen}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 text-white transition-all text-[11px] font-medium cursor-pointer"
-          title="Toggle Fullscreen Mode"
-        >
-          {isFullscreen ? <Minimize className="size-3.5" /> : <Maximize className="size-3.5" />}
-          {isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
-        </button>
-
-        <button 
-          onClick={handleDisconnectScreen}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 text-white transition-all text-[11px] font-medium cursor-pointer"
-          title="Disconnect this screen layout"
-        >
-          <XCircle className="size-3.5" />
-          Disconnect
-        </button>
-
-        <button 
-          onClick={() => router.push('/')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-red-400 transition-all text-[11px] font-medium cursor-pointer"
-          title="Exit to Dashboard"
-        >
-          <LogOut className="size-3.5" />
-          Exit
-        </button>
       </div>
     </div>
   );

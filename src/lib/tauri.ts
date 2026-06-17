@@ -97,6 +97,8 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
       case 'sync_screen_data':
       case 'force_sync_screen':
         return 1 as unknown as T;
+      case 'update_screen_fullscreen':
+        return undefined as T;
       default:
         throw new Error(`Controller administration is available only in the packaged ${process.env.NEXT_PUBLIC_APP_NAME || 'Clarix'} desktop app.`);
     }
@@ -204,6 +206,9 @@ export const screensApi = {
 
   setBrightness: (id: string, brightness: number) =>
     tauriInvoke<void>('update_screen_brightness', { id, brightness }),
+
+  setFullscreen: (id: string, fullscreen: boolean) =>
+    tauriInvoke<void>('update_screen_fullscreen', { id, fullscreen }),
 
   delete: (id: string) => tauriInvoke<void>('delete_screen', { id }),
 };
@@ -329,7 +334,7 @@ export const localNetworkApi = {
 
   /** Force syncs all playlists, schedules, and assets to a screen immediately. */
   forceSyncScreen: (screenId: string) =>
-    tauriInvoke<number>('force_sync_screen', { screenId }),
+    tauriInvoke<number>('force_sync_screen', { id: screenId }),
 };
 
 export const networkApi = {

@@ -146,6 +146,7 @@ pub fn run() {
             commands::screens::edit_screen,
             commands::screens::update_screen_operating_hours,
             commands::screens::force_sync_screen,
+            commands::screens::update_screen_fullscreen,
             // Content
             commands::content::get_content_items,
             commands::content::add_content_item,

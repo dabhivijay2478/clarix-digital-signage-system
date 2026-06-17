@@ -20,6 +20,7 @@ export interface Screen {
   last_seen: string | null;
   last_sync_revision: number;
   force_sync?: boolean;
+  is_fullscreen: boolean;
   created_at: string;
 }
 

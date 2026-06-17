@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function ScreensPage() {
-  const { screens, loading, addScreen, editScreen, updateOperatingHours, deleteScreen } = useScreens();
+  const { screens, loading, addScreen, editScreen, updateOperatingHours, deleteScreen, refresh } = useScreens();
   const { playlists, createPlaylist, updateItems } = usePlaylists();
   const { items: contentItems } = useContent();
 
@@ -481,13 +481,33 @@ export default function ScreensPage() {
               ✎ Settings
             </button>
             <button
+              className={`btn ${selectedScreen.is_fullscreen ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={async () => {
+                try {
+                  const { screensApi } = await import('../../lib/tauri');
+                  await screensApi.setFullscreen(selectedScreen.id, !selectedScreen.is_fullscreen);
+                  showToast(
+                    `Remote fullscreen command sent to "${selectedScreen.name}": ${
+                      !selectedScreen.is_fullscreen ? 'ON' : 'OFF'
+                    }`,
+                    'success'
+                  );
+                  await refresh();
+                } catch (err) {
+                  showToast(`Remote fullscreen control failed: ${err}`, 'error');
+                }
+              }}
+            >
+              {selectedScreen.is_fullscreen ? '📺 Exit Fullscreen' : '📺 Remote Fullscreen'}
+            </button>
+            <button
               className="btn btn-secondary"
               onClick={() => {
                 localStorage.setItem('clarix_player_screen_id', selectedScreen.id);
-                window.open('/player', '_blank');
+                window.open(`/player?screenId=${selectedScreen.id}`, '_blank');
               }}
             >
-              📺 Full Screen
+              🔗 Launch Player
             </button>
             <button
               className="btn btn-secondary"

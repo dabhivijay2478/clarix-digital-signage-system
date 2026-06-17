@@ -120,6 +120,7 @@ pub struct Screen {
     pub last_seen: Option<String>,
     pub last_sync_revision: i64,
     pub force_sync: bool,
+    pub is_fullscreen: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -148,6 +149,7 @@ impl Default for Screen {
             last_seen: None,
             last_sync_revision: 0,
             force_sync: false,
+            is_fullscreen: false,
             created_at: Utc::now(),
         }
     }
