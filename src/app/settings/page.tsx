@@ -236,6 +236,11 @@ export default function SettingsPage() {
           <SettingsRow label="Auto-start on boot" description={`Launch ${branding.appName} automatically when the system starts`}><Switch checked={autoStart} onCheckedChange={setAutoStart} /></SettingsRow>
           <SettingsRow label="Notifications" description="Show desktop notifications for schedule changes and alerts"><Switch checked={notificationsEnabled} onCheckedChange={setNotificationsEnabled} /></SettingsRow>
           <SettingsRow label="Collapse Sidebar" description="Minimize the navigation sidebar to icons only"><Switch checked={sidebar.isCollapsed} onCheckedChange={sidebar.setCollapsed} /></SettingsRow>
+          <SettingsRow label="Database Console" description="View system database tables, export CSV data, and download backups.">
+            <Button size="sm" variant="outline" onClick={() => router.push('/database')}>
+              <Server className="mr-1.5 size-4" /> Open Database
+            </Button>
+          </SettingsRow>
         </SettingsSection>
 
         <SettingsSection title="Local Network & Discovery" description="Discover the controller and sync players connected to the same Wi-Fi router.">
