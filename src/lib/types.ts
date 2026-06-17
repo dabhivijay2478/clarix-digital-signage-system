@@ -19,6 +19,7 @@ export interface Screen {
   pairing_status: string;
   last_seen: string | null;
   last_sync_revision: number;
+  force_sync?: boolean;
   created_at: string;
 }
 

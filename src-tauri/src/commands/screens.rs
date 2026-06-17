@@ -13,7 +13,8 @@ pub async fn get_screens(pool: State<'_, DbPool>) -> Result<Vec<Screen>, String>
                 "SELECT id, name, location, ip_address, mac_address,
                         resolution_w, resolution_h, brightness, power_on,
                         orientation, group_id, created_at, operating_hours, playlist_id,
-                        device_id, endpoint, pairing_status, last_seen, last_sync_revision
+                        device_id, endpoint, pairing_status, last_seen, last_sync_revision,
+                        force_sync
                  FROM screens ORDER BY name",
             )
             .map_err(|e| e.to_string())?;
@@ -60,6 +61,7 @@ pub async fn get_screens(pool: State<'_, DbPool>) -> Result<Vec<Screen>, String>
                     pairing_status: row.get(16)?,
                     last_seen: row.get(17)?,
                     last_sync_revision: row.get(18)?,
+                    force_sync: row.get(19)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -239,3 +241,25 @@ pub async fn update_screen_operating_hours(
     .await
     .map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub async fn force_sync_screen(
+    id: String,
+    pool: State<'_, DbPool>,
+    events: State<'_, crate::lan::server::SyncEventBus>,
+) -> Result<i64, String> {
+    let pool = pool.inner().clone();
+    let event_bus = events.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE screens SET force_sync = 1 WHERE id = ?1",
+            params![id],
+        )
+        .map_err(|e| e.to_string())?;
+        crate::lan::server::publish_revision(&pool, &event_bus).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+

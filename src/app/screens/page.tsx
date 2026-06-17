@@ -325,6 +325,23 @@ export default function ScreensPage() {
     }
   };
 
+  const handleForceSync = async (id: string) => {
+    const screen = screens.find((s) => s.id === id);
+    if (!screen) return;
+
+    setSyncingScreenIds((prev) => [...prev, id]);
+    showToast(`Requesting immediate force sync for "${screen.name}"...`, 'info');
+    try {
+      const { localNetworkApi } = await import('../../lib/tauri');
+      const revision = await localNetworkApi.forceSyncScreen(id);
+      showToast(`Force sync revision ${revision} requested. Screen will reload completely.`, 'success');
+    } catch (err) {
+      showToast(`Force sync request failed: ${err}`, 'error');
+    } finally {
+      setSyncingScreenIds((prev) => prev.filter((sid) => sid !== id));
+    }
+  };
+
   const handleDelete = async (id: string) => {
     const screen = screens.find((s) => s.id === id);
     const confirmed = await customConfirm(`Delete screen "${screen?.name}"?`);
@@ -462,6 +479,22 @@ export default function ScreensPage() {
             </button>
             <button className="btn btn-secondary" onClick={() => handleEditClick(selectedScreen)}>
               ✎ Settings
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => {
+                localStorage.setItem('clarix_player_screen_id', selectedScreen.id);
+                window.open('/player', '_blank');
+              }}
+            >
+              📺 Full Screen
+            </button>
+            <button
+              className="btn btn-secondary"
+              disabled={isSyncing}
+              onClick={() => handleForceSync(selectedScreen.id)}
+            >
+              ⚡ Force Sync
             </button>
             <button 
               className="btn btn-primary"

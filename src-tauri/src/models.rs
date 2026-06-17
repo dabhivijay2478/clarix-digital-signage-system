@@ -63,6 +63,7 @@ pub struct SyncManifest {
     pub screen_id: String,
     pub payload: crate::lan::server::SyncPayload,
     pub assets: Vec<SyncAsset>,
+    pub force_sync: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -118,6 +119,7 @@ pub struct Screen {
     pub pairing_status: String,
     pub last_seen: Option<String>,
     pub last_sync_revision: i64,
+    pub force_sync: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -145,6 +147,7 @@ impl Default for Screen {
             pairing_status: "unpaired".to_string(),
             last_seen: None,
             last_sync_revision: 0,
+            force_sync: false,
             created_at: Utc::now(),
         }
     }

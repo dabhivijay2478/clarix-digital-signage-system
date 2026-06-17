@@ -267,7 +267,7 @@ async fn sync_ack(
         tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
             let conn = pool.get()?;
             conn.execute(
-                "UPDATE screens SET last_sync_revision = ?1, last_seen = ?2 WHERE id = ?3",
+                "UPDATE screens SET last_sync_revision = ?1, last_seen = ?2, force_sync = 0 WHERE id = ?3",
                 params![ack.revision, Utc::now().to_rfc3339(), screen_id],
             )?;
             Ok(())
@@ -380,6 +380,11 @@ pub fn build_manifest(pool: &DbPool, screen_id: &str) -> anyhow::Result<SyncMani
     let revision = current_revision(pool)?;
     let mut assets = Vec::new();
     let conn = pool.get()?;
+    let force_sync: bool = conn.query_row(
+        "SELECT force_sync FROM screens WHERE id = ?1",
+        params![screen_id],
+        |row| row.get(0),
+    ).unwrap_or(false);
     for item in &payload.content_items {
         let Some(path) = item.file_path.as_deref() else { continue };
         let file_path = PathBuf::from(path);
@@ -396,7 +401,7 @@ pub fn build_manifest(pool: &DbPool, screen_id: &str) -> anyhow::Result<SyncMani
             params![item.id, sha256, path, bytes.len() as i64, Utc::now().to_rfc3339()],
         )?;
     }
-    Ok(SyncManifest { revision, screen_id: screen_id.to_string(), payload, assets })
+    Ok(SyncManifest { revision, screen_id: screen_id.to_string(), payload, assets, force_sync })
 }
 
 pub fn build_sync_payload(pool: &DbPool, screen_id: Option<&str>) -> anyhow::Result<SyncPayload> {
@@ -552,7 +557,7 @@ async fn player_sync_once(
     };
     client.post(format!("{base}/v1/players/heartbeat")).bearer_auth(&token).json(&heartbeat).send().await?.error_for_status()?;
     let manifest: SyncManifest = client.get(format!("{base}/v1/sync/manifest")).bearer_auth(&token).send().await?.error_for_status()?.json().await?;
-    if manifest.revision <= identity.current_revision { return Ok(()); }
+    if !manifest.force_sync && manifest.revision <= identity.current_revision { return Ok(()); }
 
     let mut payload = manifest.payload;
     let asset_by_content: HashMap<String, SyncAsset> = manifest.assets.into_iter().map(|asset| (asset.content_id.clone(), asset)).collect();
@@ -646,7 +651,7 @@ fn query_screen(conn: &rusqlite::Connection, id: &str) -> anyhow::Result<Option<
     let mut stmt = conn.prepare(
         "SELECT id, name, location, ip_address, mac_address, resolution_w, resolution_h, brightness, power_on,
          orientation, group_id, created_at, operating_hours, playlist_id, device_id, endpoint, pairing_status,
-         last_seen, last_sync_revision FROM screens WHERE id = ?1"
+         last_seen, last_sync_revision, force_sync FROM screens WHERE id = ?1"
     )?;
     let mut rows = stmt.query(params![id])?;
     let Some(row) = rows.next()? else { return Ok(None) };
@@ -664,7 +669,7 @@ fn query_screen(conn: &rusqlite::Connection, id: &str) -> anyhow::Result<Option<
         group_id: row.get(10)?, created_at: parse_date(row.get(11)?),
         operating_hours: serde_json::from_str(&row.get::<_, String>(12)?).ok(), playlist_id: row.get(13)?,
         device_id: row.get(14)?, endpoint: row.get(15)?, pairing_status: row.get(16)?,
-        last_seen, last_sync_revision: row.get(18)?,
+        last_seen, last_sync_revision: row.get(18)?, force_sync: row.get(19)?,
     }))
 }
 

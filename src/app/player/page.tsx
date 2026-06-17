@@ -7,6 +7,7 @@ import type { Screen, Playlist, ContentItem, ScheduleSlot, PlaylistItem } from '
 import { showToast } from '../../components/Toast';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { useBrandingStore } from '../../store/ui';
+import { Maximize, Minimize, RefreshCw, LogOut, XCircle } from 'lucide-react';
 
 export default function PlayerPage() {
   const router = useRouter();
@@ -16,6 +17,69 @@ export default function PlayerPage() {
   const [screensList, setScreensList] = useState<Screen[]>([]);
   const [port, setPort] = useState<number>(7420);
   const [loading, setLoading] = useState(true);
+
+  // Fullscreen and Overlay states
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showControls, setShowControls] = useState(false);
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Toggle fullscreen mode safely
+  const toggleFullscreen = async () => {
+    try {
+      const tauriWindow = window as any;
+      if (tauriWindow.__TAURI_INTERNALS__) {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const win = getCurrentWindow();
+        const current = await win.isFullscreen();
+        await win.setFullscreen(!current);
+        setIsFullscreen(!current);
+      } else {
+        if (!document.fullscreenElement) {
+          await document.documentElement.requestFullscreen();
+          setIsFullscreen(true);
+        } else {
+          await document.exitFullscreen();
+          setIsFullscreen(false);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to toggle fullscreen:', err);
+    }
+  };
+
+  // Sync fullscreen state changes
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleFsChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, []);
+
+  // Handle controls visibility on mouse move or touch
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleMouseMove = () => {
+      setShowControls(true);
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+      controlsTimeoutRef.current = setTimeout(() => {
+        setShowControls(false);
+      }, 3500);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('touchstart', handleMouseMove);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('touchstart', handleMouseMove);
+      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    };
+  }, []);
 
   // Signage states
   const [activeSlot, setActiveSlot] = useState<ScheduleSlot | null>(null);
@@ -229,6 +293,16 @@ export default function PlayerPage() {
       console.error('Error resolving signage slots:', err);
     }
   }, [screenId, currentDayStr, activePlaylist]);
+
+  const handleManualSync = useCallback(async () => {
+    showToast('Syncing signage content...', 'info');
+    try {
+      await resolveActiveSignage();
+      showToast('Signage content synced successfully', 'success');
+    } catch (err) {
+      showToast(`Sync failed: ${err}`, 'error');
+    }
+  }, [resolveActiveSignage]);
 
   // Run resolution on boot and periodically
   useEffect(() => {
@@ -574,6 +648,54 @@ export default function PlayerPage() {
             </button>
           </div>
         </div>
+
+        {/* Floating control toolbar */}
+        <div 
+          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-black/75 backdrop-blur-xl border border-white/10 px-4 py-2.5 rounded-2xl transition-all duration-300 shadow-2xl ${
+            showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
+          }`}
+        >
+          <div className="flex items-center gap-1.5 border-r border-white/10 pr-3 mr-1">
+            <span className="text-xs font-semibold text-white truncate max-w-[120px]">{activeScreen?.name || 'Player'}</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+          </div>
+
+          <button 
+            onClick={handleManualSync}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 text-white transition-all text-[11px] font-medium cursor-pointer"
+            title="Force sync data with Controller"
+          >
+            <RefreshCw className="size-3.5" />
+            Sync Now
+          </button>
+
+          <button 
+            onClick={toggleFullscreen}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 text-white transition-all text-[11px] font-medium cursor-pointer"
+            title="Toggle Fullscreen Mode"
+          >
+            {isFullscreen ? <Minimize className="size-3.5" /> : <Maximize className="size-3.5" />}
+            {isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
+          </button>
+
+          <button 
+            onClick={handleDisconnectScreen}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 text-white transition-all text-[11px] font-medium cursor-pointer"
+            title="Disconnect this screen layout"
+          >
+            <XCircle className="size-3.5" />
+            Disconnect
+          </button>
+
+          <button 
+            onClick={() => router.push('/')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-red-400 transition-all text-[11px] font-medium cursor-pointer"
+            title="Exit to Dashboard"
+          >
+            <LogOut className="size-3.5" />
+            Exit
+          </button>
+        </div>
       </div>
     );
   }
@@ -637,8 +759,56 @@ export default function PlayerPage() {
       </div>
 
       {/* Subtle indicator overlay on hover */}
-      <div className="absolute bottom-4 left-4 z-50 bg-black/60 backdrop-blur-md border border-white/5 px-3 py-1.5 rounded-lg text-[10px] text-text-muted opacity-0 hover:opacity-100 transition-opacity duration-200 pointer-events-none font-mono">
+      <div className="absolute bottom-4 left-4 z-50 bg-black/60 backdrop-blur-md border border-white/5 px-3 py-1.5 rounded-lg text-[10px] text-text-muted opacity-0 hover:opacity-100 transition-opacity duration-200 pointer-events-none font-mono overflow-hidden">
         Playing: {activePlaylist.name} (Index: {(currentItemIndex % playableItems.length) + 1}/{playableItems.length}) • Esc to Exit
+      </div>
+
+      {/* Floating control toolbar */}
+      <div 
+        className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-black/75 backdrop-blur-xl border border-white/10 px-4 py-2.5 rounded-2xl transition-all duration-300 shadow-2xl ${
+          showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
+        }`}
+      >
+        <div className="flex items-center gap-1.5 border-r border-white/10 pr-3 mr-1">
+          <span className="text-xs font-semibold text-white truncate max-w-[120px]">{activeScreen?.name || 'Player'}</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+        </div>
+
+        <button 
+          onClick={handleManualSync}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 text-white transition-all text-[11px] font-medium cursor-pointer"
+          title="Force sync data with Controller"
+        >
+          <RefreshCw className="size-3.5" />
+          Sync Now
+        </button>
+
+        <button 
+          onClick={toggleFullscreen}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 text-white transition-all text-[11px] font-medium cursor-pointer"
+          title="Toggle Fullscreen Mode"
+        >
+          {isFullscreen ? <Minimize className="size-3.5" /> : <Maximize className="size-3.5" />}
+          {isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
+        </button>
+
+        <button 
+          onClick={handleDisconnectScreen}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 text-white transition-all text-[11px] font-medium cursor-pointer"
+          title="Disconnect this screen layout"
+        >
+          <XCircle className="size-3.5" />
+          Disconnect
+        </button>
+
+        <button 
+          onClick={() => router.push('/')}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-red-400 transition-all text-[11px] font-medium cursor-pointer"
+          title="Exit to Dashboard"
+        >
+          <LogOut className="size-3.5" />
+          Exit
+        </button>
       </div>
     </div>
   );

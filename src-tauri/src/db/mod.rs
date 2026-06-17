@@ -47,6 +47,7 @@ pub fn init_db(app_data_dir: &str) -> Result<DbPool> {
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN pairing_status TEXT NOT NULL DEFAULT 'unpaired'", []);
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN last_seen TEXT", []);
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN last_sync_revision INTEGER NOT NULL DEFAULT 0", []);
+    let _ = conn.execute("ALTER TABLE screens ADD COLUMN force_sync BOOLEAN NOT NULL DEFAULT 0", []);
     let _ = conn.execute(
         "UPDATE screens SET endpoint = ip_address, pairing_status = 'repair_required'
          WHERE ip_address IS NOT NULL AND endpoint IS NULL AND device_id IS NULL",
@@ -95,6 +96,7 @@ const SCHEMA: &str = r#"
         group_id     TEXT,
         operating_hours TEXT DEFAULT '{}',
         playlist_id  TEXT,
+        force_sync   BOOLEAN NOT NULL DEFAULT 0,
         created_at   TEXT NOT NULL
     );
 
