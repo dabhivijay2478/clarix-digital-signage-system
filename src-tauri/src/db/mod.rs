@@ -91,6 +91,53 @@ pub fn init_db(app_data_dir: &str) -> Result<DbPool> {
         )?;
     }
 
+    let now = chrono::Utc::now().to_rfc3339();
+    // Seed default content items
+    let _ = conn.execute(
+        "INSERT OR IGNORE INTO content_items (id, name, content_type, url, duration_secs, tags, created_at)
+         VALUES ('d4-gate-display-content', 'D4 Gate Display', 'WebApp', '/trucks/display?gate=d4', 30, '[\"gate\",\"d4\"]', ?1)",
+        rusqlite::params![now],
+    );
+    let _ = conn.execute(
+        "INSERT OR IGNORE INTO content_items (id, name, content_type, url, duration_secs, tags, created_at)
+         VALUES ('d5-gate-display-content', 'D5 Gate Display', 'WebApp', '/trucks/display?gate=d5', 30, '[\"gate\",\"d5\"]', ?1)",
+        rusqlite::params![now],
+    );
+
+    // Seed default playlists
+    let _ = conn.execute(
+        "INSERT OR IGNORE INTO playlists (id, name, loop_enabled, transition, created_at)
+         VALUES ('d4-gate-playlist', 'Playlist for D4 Gate Screen', 1, 'Fade', ?1)",
+        rusqlite::params![now],
+    );
+    let _ = conn.execute(
+        "INSERT OR IGNORE INTO playlists (id, name, loop_enabled, transition, created_at)
+         VALUES ('d5-gate-playlist', 'Playlist for D5 Gate Screen', 1, 'Fade', ?1)",
+        rusqlite::params![now],
+    );
+
+    // Seed default playlist items
+    let _ = conn.execute(
+        "INSERT OR IGNORE INTO playlist_items (id, playlist_id, content_id, order_index, override_duration, display_schedule)
+         VALUES ('d4-gate-playlist-item', 'd4-gate-playlist', 'd4-gate-display-content', 0, NULL, '{}')",
+        [],
+    );
+    let _ = conn.execute(
+        "INSERT OR IGNORE INTO playlist_items (id, playlist_id, content_id, order_index, override_duration, display_schedule)
+         VALUES ('d5-gate-playlist-item', 'd5-gate-playlist', 'd5-gate-display-content', 0, NULL, '{}')",
+        [],
+    );
+
+    // Update screens to link to these playlists
+    let _ = conn.execute(
+        "UPDATE screens SET playlist_id = 'd4-gate-playlist' WHERE id = 'd4-gate-screen' AND playlist_id IS NULL",
+        [],
+    );
+    let _ = conn.execute(
+        "UPDATE screens SET playlist_id = 'd5-gate-playlist' WHERE id = 'd5-gate-screen' AND playlist_id IS NULL",
+        [],
+    );
+
     // Reset stale ports left by old port-scanning fallback logic.
     // The canonical default is 7420; runtime overrides use CLARIX_PORT or SIGNALOS_PORT env var.
     let _ = conn.execute(

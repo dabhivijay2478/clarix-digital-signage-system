@@ -75,6 +75,7 @@ function getImportValue(row: Record<string, unknown>, names: string[]): string {
 }
 
 function mapImportRecordToTruck(row: Record<string, unknown>): TruckImportRow {
+  const gate = normalizeGateNo(getImportValue(row, ['gate_no', 'gate', 'gate_number', 'gateno']))
   return {
     registration_number: getImportValue(row, [
       'registration_number',
@@ -87,7 +88,7 @@ function mapImportRecordToTruck(row: Record<string, unknown>): TruckImportRow {
       'truck_number',
       'number',
     ]),
-    gate_no: normalizeGateNo(getImportValue(row, ['gate_no', 'gate', 'gate_number', 'gateno'])),
+    gate_no: gate || 'd4',
   }
 }
 
@@ -164,7 +165,7 @@ export default function TrucksPage() {
   } = useTrucks()
 
   const [search, setSearch] = useState('')
-  const [activeTab, setActiveTab] = useState<'all' | 'd4' | 'd5' | 'manual'>('all')
+  const [activeTab, setActiveTab] = useState<'all' | 'd4' | 'd5'>('all')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // ── Modal states ────────────────────────────────────────────────────────
@@ -337,7 +338,6 @@ export default function TrucksPage() {
 
     if (activeTab === 'd4') return t.gate_no === 'd4'
     if (activeTab === 'd5') return t.gate_no === 'd5'
-    if (activeTab === 'manual') return !t.gate_no
     return true
   })
 
@@ -433,7 +433,7 @@ export default function TrucksPage() {
 
       {/* Tabs */}
       <div className="flex border-b border-border">
-        {(['all', 'd4', 'd5', 'manual'] as const).map((tab) => (
+        {(['all', 'd4', 'd5'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -444,8 +444,7 @@ export default function TrucksPage() {
             }`}
           >
             {tab === 'all' ? 'All Trucks' :
-             tab === 'd4' ? 'Gate D4' :
-             tab === 'd5' ? 'Gate D5' : 'Manual Entry'}
+             tab === 'd4' ? 'Gate D4' : 'Gate D5'}
           </button>
         ))}
       </div>
