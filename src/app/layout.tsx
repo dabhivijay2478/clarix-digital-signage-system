@@ -8,7 +8,7 @@ import { ThemeProvider } from "../components/ThemeProvider";
 export const metadata: Metadata = {
   title: `${process.env.NEXT_PUBLIC_APP_NAME || "Clarix"} — Digital Signage Management`,
   description:
-    "Cross-platform digital signage management desktop application. Control screens, schedule content, manage playlists, and display live data.",
+    "Cross-platform digital signage management desktop application. Control screens, schedule content, and manage playlists.",
 };
 
 export default function RootLayout({

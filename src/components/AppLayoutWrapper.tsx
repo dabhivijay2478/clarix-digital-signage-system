@@ -13,8 +13,6 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
   const pathname = usePathname()
   const isPresentation = pathname === '/player'
     || pathname?.startsWith('/player/')
-    || pathname === '/data-view'
-    || pathname?.startsWith('/data-view/')
     || pathname === '/production-data/view'
     || pathname?.startsWith('/production-data/view/')
   const { isCollapsed, toggle } = useSidebarStore()

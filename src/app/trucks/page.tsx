@@ -17,7 +17,7 @@ import {
 import { useTrucks } from '@/hooks/useTrucks'
 import { showToast } from '@/components/Toast'
 import Modal from '@/components/Modal'
-import { customConfirm } from '@/lib/tauri'
+import { customConfirm, productionApi } from '@/lib/tauri'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -26,19 +26,67 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import type { Truck as TruckType } from '@/lib/types'
+import type { ProductionImportResult, ProductionRow, Truck as TruckType } from '@/lib/types'
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-const gateOptions = ['D4', 'D5'] as const
+const gateOptions = ['d4', 'd5'] as const
+const delimitedExtensions = new Set(['csv', 'tsv', 'txt'])
+const excelExtensions = new Set(['xlsx', 'xls', 'xlsm', 'xlsb'])
+
+type TruckImportRow = {
+  registration_number: string
+  gate_no: string
+}
 
 function normalizeGateNo(value: string | null | undefined): string {
-  const normalized = (value ?? '').trim().toUpperCase()
+  const normalized = (value ?? '').trim().toLowerCase()
   return gateOptions.includes(normalized as typeof gateOptions[number]) ? normalized : ''
 }
 
-/** Parse a CSV string into rows of string arrays. Handles quoted fields. */
-function parseCSV(text: string): string[][] {
+function normalizeImportKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
+function stringifyImportValue(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  return String(value).trim()
+}
+
+function getImportValue(row: Record<string, unknown>, names: string[]): string {
+  const normalized = new Map(
+    Object.entries(row).map(([key, value]) => [normalizeImportKey(key), value])
+  )
+  for (const name of names) {
+    const value = stringifyImportValue(normalized.get(normalizeImportKey(name)))
+    if (value) return value
+  }
+  return ''
+}
+
+function mapImportRecordToTruck(row: Record<string, unknown>): TruckImportRow {
+  return {
+    registration_number: getImportValue(row, [
+      'registration_number',
+      'registration',
+      'reg_no',
+      'reg_number',
+      'vehicle_no',
+      'vehicle_number',
+      'truck_no',
+      'truck_number',
+      'number',
+    ]),
+    gate_no: normalizeGateNo(getImportValue(row, ['gate_no', 'gate', 'gate_number', 'gateno'])),
+  }
+}
+
+/** Parse a delimited string into rows of string arrays. Handles quoted fields. */
+function parseDelimitedText(text: string, delimiter = ','): string[][] {
   const rows: string[][] = []
   const lines = text.split(/\r?\n/)
   for (const line of lines) {
@@ -60,7 +108,7 @@ function parseCSV(text: string): string[][] {
       } else {
         if (char === '"') {
           inQuotes = true
-        } else if (char === ',') {
+        } else if (char === delimiter) {
           cells.push(current.trim())
           current = ''
         } else {
@@ -72,6 +120,27 @@ function parseCSV(text: string): string[][] {
     rows.push(cells)
   }
   return rows
+}
+
+function parseTruckRowsFromDelimited(text: string, delimiter: string): TruckImportRow[] {
+  const rows = parseDelimitedText(text, delimiter)
+  if (rows.length < 2) return []
+  const headers = rows[0].map(normalizeImportKey)
+  return rows
+    .slice(1)
+    .filter((row) => row.some((cell) => cell.trim()))
+    .map((row) => {
+      const record = Object.fromEntries(headers.map((header, index) => [header, row[index] ?? '']))
+      return mapImportRecordToTruck(record)
+    })
+    .filter((truck) => truck.registration_number)
+}
+
+function parseTruckRowsFromProductionImport(result: ProductionImportResult): TruckImportRow[] {
+  return result.tables
+    .flatMap((table) => table.rows)
+    .map((row: ProductionRow) => mapImportRecordToTruck(row))
+    .filter((truck) => truck.registration_number)
 }
 
 // ── Main Page ───────────────────────────────────────────────────────────────
@@ -99,20 +168,17 @@ export default function TrucksPage() {
   const [showImportPreview, setShowImportPreview] = useState(false)
   const [importPreviewData, setImportPreviewData] = useState<Array<{
     registration_number: string
-    notes: string
     gate_no: string
   }>>([])
 
   // Truck form fields
   const [fRegNo, setFRegNo] = useState('')
-  const [fNotes, setFNotes] = useState('')
   const [fGateNo, setFGateNo] = useState('')
 
   // ── Form Resets ─────────────────────────────────────────────────────────
 
   const resetTruckForm = () => {
     setFRegNo('')
-    setFNotes('')
     setFGateNo('')
   }
 
@@ -125,13 +191,12 @@ export default function TrucksPage() {
     }
     addTruck({
       registration_number: fRegNo.trim(),
-      notes: fNotes,
       gate_no: normalizeGateNo(fGateNo) || null,
-      is_waiting: false,
+      is_waiting: true,
       is_loading: false,
       is_in: false,
       is_out: false,
-      waiting_at: null,
+      waiting_at: new Date().toISOString(),
       loading_at: null,
       in_at: null,
       out_at: null,
@@ -146,7 +211,6 @@ export default function TrucksPage() {
     if (!truck) return
     setEditingTruckId(id)
     setFRegNo(truck.registration_number)
-    setFNotes(truck.notes)
     setFGateNo(normalizeGateNo(truck.gate_no))
   }
 
@@ -158,7 +222,6 @@ export default function TrucksPage() {
     }
     editTruck(editingTruckId, {
       registration_number: fRegNo.trim(),
-      notes: fNotes,
       gate_no: normalizeGateNo(fGateNo) || null,
     })
     showToast('Truck updated', 'success')
@@ -177,63 +240,48 @@ export default function TrucksPage() {
 
   // ── CSV Import ──────────────────────────────────────────────────────────
 
-  const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
+    event.target.value = ''
     if (!file) return
 
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const text = e.target?.result as string
-      if (!text) return
+    try {
+      const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
+      let parsed: TruckImportRow[] = []
 
-      const rows = parseCSV(text)
-      if (rows.length < 2) {
-        showToast('File is empty or has no data rows', 'error')
+      if (delimitedExtensions.has(extension)) {
+        const text = await file.text()
+        parsed = parseTruckRowsFromDelimited(text, extension === 'tsv' ? '\t' : ',')
+      } else if (excelExtensions.has(extension)) {
+        const bytes = new Uint8Array(await file.arrayBuffer())
+        const result = await productionApi.importFile(file.name, bytes)
+        parsed = parseTruckRowsFromProductionImport(result)
+      } else {
+        showToast('Unsupported file type. Upload CSV, TSV, XLS, or XLSX.', 'error')
         return
       }
 
-      const headers = rows[0].map((h) => h.toLowerCase().replace(/[^a-z0-9_]/g, '_'))
-      const dataRows = rows.slice(1)
-
-      const getCol = (row: string[], names: string[]) => {
-        for (const name of names) {
-          const idx = headers.indexOf(name)
-          if (idx >= 0 && row[idx]) return row[idx]
-        }
-        return ''
-      }
-
-      const parsed = dataRows
-        .filter((row) => row.some((cell) => cell.trim()))
-        .map((row) => ({
-          registration_number: getCol(row, ['registration_number', 'reg_no', 'registration', 'reg_number', 'vehicle_no', 'vehicle_number', 'number']),
-          notes: getCol(row, ['notes', 'remarks', 'comment', 'comments']),
-          gate_no: normalizeGateNo(getCol(row, ['gate_no', 'gate', 'gate_number', 'gateno'])),
-        }))
-        .filter((t) => t.registration_number)
-
       if (parsed.length === 0) {
-        showToast('No valid truck records found. Ensure a "registration_number" column exists.', 'error')
+        showToast('No valid truck records found. Ensure truck_number and gate columns exist.', 'error')
         return
       }
 
       setImportPreviewData(parsed)
       setShowImportPreview(true)
+    } catch (error) {
+      showToast(`Import failed: ${error instanceof Error ? error.message : String(error)}`, 'error')
     }
-
-    reader.readAsText(file)
-    event.target.value = ''
   }, [])
 
   const handleConfirmImport = () => {
     const count = importTrucks(
       importPreviewData.map((d) => ({
         ...d,
-        is_waiting: false,
+        is_waiting: true,
         is_loading: false,
         is_in: false,
         is_out: false,
-        waiting_at: null,
+        waiting_at: new Date().toISOString(),
         loading_at: null,
         in_at: null,
         out_at: null,
@@ -271,10 +319,6 @@ export default function TrucksPage() {
               {gateOptions.map((gate) => <SelectItem key={gate} value={gate}>{gate}</SelectItem>)}
             </SelectContent>
           </Select>
-        </div>
-        <div className="space-y-2">
-          <Label>Notes</Label>
-          <Input placeholder="Additional notes..." value={fNotes} onChange={(e) => setFNotes(e.target.value)} />
         </div>
       </div>
     </div>
@@ -353,12 +397,12 @@ export default function TrucksPage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,.tsv,.txt"
+            accept=".csv,.tsv,.txt,.xlsx,.xls,.xlsm,.xlsb"
             className="hidden"
             onChange={handleFileSelect}
           />
           <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-            <Upload className="mr-1.5 size-4" /> Import CSV
+            <Upload className="mr-1.5 size-4" /> Import CSV / Excel
           </Button>
           <Button onClick={() => { resetTruckForm(); setShowAddTruck(true) }}>
             <Plus className="mr-1 size-4" /> Add Truck
@@ -372,10 +416,10 @@ export default function TrucksPage() {
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <Truck className="mb-4 size-12 text-muted-foreground/30" />
             <p className="text-lg font-medium">No trucks yet</p>
-            <p className="mt-1 text-sm text-muted-foreground">Add a truck manually or import from a CSV file.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Add a truck manually or import from a CSV/Excel file.</p>
             <div className="mt-5 flex gap-3">
               <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-                <Upload className="mr-1.5 size-4" /> Import CSV
+                <Upload className="mr-1.5 size-4" /> Import CSV / Excel
               </Button>
               <Button onClick={() => { resetTruckForm(); setShowAddTruck(true) }}>
                 <Plus className="mr-1 size-4" /> Add Truck
@@ -598,11 +642,6 @@ export default function TrucksPage() {
                 <p className="text-sm text-muted-foreground">
                   {selectedTruckForDetails.gate_no ? `Gate: ${selectedTruckForDetails.gate_no}` : 'No gate selected'}
                 </p>
-                {selectedTruckForDetails.notes && (
-                  <p className="mt-2 text-xs text-muted-foreground italic">
-                    Note: &ldquo;{selectedTruckForDetails.notes}&rdquo;
-                  </p>
-                )}
               </div>
             </div>
 
@@ -751,7 +790,7 @@ export default function TrucksPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>#</TableHead>
-                  <TableHead>Registration</TableHead>
+                  <TableHead>Truck Number</TableHead>
                   <TableHead>Gate No</TableHead>
                 </TableRow>
               </TableHeader>
@@ -769,9 +808,9 @@ export default function TrucksPage() {
           <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-primary">
             <FileSpreadsheet className="mt-0.5 size-4 shrink-0" />
             <div>
-              <p className="font-medium">CSV Format Tip</p>
+              <p className="font-medium">Import Format Tip</p>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Your CSV should have column headers like: <code className="rounded bg-muted px-1 font-mono text-[11px]">registration_number, gate_no, notes</code>. Gate values should be <code className="rounded bg-muted px-1 font-mono text-[11px]">D4</code> or <code className="rounded bg-muted px-1 font-mono text-[11px]">D5</code>.
+                Your CSV or Excel file should have only these columns: <code className="rounded bg-muted px-1 font-mono text-[11px]">truck_number, gate</code>. Gate values should be lower-case <code className="rounded bg-muted px-1 font-mono text-[11px]">d4</code> or <code className="rounded bg-muted px-1 font-mono text-[11px]">d5</code>.
               </p>
             </div>
           </div>

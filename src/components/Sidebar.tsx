@@ -5,7 +5,6 @@ import { usePathname } from 'next/navigation'
 import {
   ChevronLeft,
   ChevronRight,
-  Database,
   FileSpreadsheet,
   LayoutDashboard,
   Menu,
@@ -30,7 +29,6 @@ const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/screens', label: 'Screens', icon: Monitor },
   { href: '/content', label: 'Content', icon: PlaySquare },
-  { href: '/live-data', label: 'Live Data', icon: Database },
   { href: '/production-data', label: 'Production Data', icon: FileSpreadsheet },
   { href: '/trucks', label: 'Fleet', icon: Truck },
   { href: '/settings', label: 'Settings', icon: Settings },

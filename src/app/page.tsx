@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePeers } from '@/hooks/usePeers'
-import { contentApi, playlistsApi, scheduleApi, screensApi } from '@/lib/tauri'
+import { playlistsApi, scheduleApi, screensApi } from '@/lib/tauri'
 import type { ScheduleSlot } from '@/lib/types'
 
 const ScheduleTimeline = dynamic(() => import('@/components/ScheduleTimeline'), {
@@ -27,7 +27,6 @@ export default function DashboardPage() {
   const [screensCount, setScreensCount] = useState(0)
   const [playlistsCount, setPlaylistsCount] = useState(0)
   const [uptime, setUptime] = useState('0%')
-  const [liveDataCount, setLiveDataCount] = useState(0)
   const [scheduleSlots, setScheduleSlots] = useState<ScheduleSlot[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -41,12 +40,11 @@ export default function DashboardPage() {
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
-        const [screens, playlists, schedules, content] = await Promise.all([screensApi.getAll(), playlistsApi.getAll(), scheduleApi.getAll(), contentApi.getAll()])
+        const [screens, playlists, schedules] = await Promise.all([screensApi.getAll(), playlistsApi.getAll(), scheduleApi.getAll()])
         setScreensCount(screens.length)
         setPlaylistsCount(playlists.length)
         const onlineScreens = screens.filter((screen) => screen.is_online).length
         setUptime(screens.length ? `${((onlineScreens / screens.length) * 100).toFixed(1)}%` : '0%')
-        setLiveDataCount(content.filter((item) => item.tags.includes('live-data')).length)
         setScheduleSlots(schedules)
       } catch (error) {
         console.error('Failed to load dashboard data:', error)
@@ -83,16 +81,15 @@ export default function DashboardPage() {
 
       {loading ? (
         <div aria-busy="true" className="space-y-8">
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-36" />)}</div>
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-36" />)}</div>
           <Skeleton className="h-80" />
         </div>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <StatCard icon="▣" value={screensCount} label="Active Screens" />
             <StatCard icon="☰" value={playlistsCount} label="Playlists" color="info" />
             <StatCard icon="◔" value={uptime} label="Uptime" color="success" />
-            <StatCard icon="◉" value={liveDataCount} label="Live Data" color="warning" />
           </div>
           <ScheduleTimeline slots={scheduleSlots} />
         </>
@@ -104,7 +101,6 @@ export default function DashboardPage() {
           <CardContent className="grid gap-3 sm:grid-cols-2">
             <Button className="group h-14 justify-start px-4" onClick={() => router.push('/screens')}><span className="flex size-8 items-center justify-center rounded-lg bg-white/10 text-white transition-colors group-hover:bg-white/20"><Monitor className="size-4" /></span>Add a screen</Button>
             <Button className="group h-14 justify-start px-4" variant="accent" onClick={() => router.push('/content')}><span className="flex size-8 items-center justify-center rounded-lg bg-white/10 text-white transition-colors group-hover:bg-white/20"><PlaySquare className="size-4" /></span>Upload content</Button>
-            <Button className="group h-14 justify-start px-4" variant="outline" onClick={() => router.push('/live-data')}><span className="flex size-8 items-center justify-center rounded-lg bg-muted text-foreground/70 transition-colors group-hover:bg-white/20 group-hover:text-white"><Network className="size-4" /></span>Add live data</Button>
             <Button className="group h-14 justify-start px-4" variant="outline" onClick={() => router.push('/playlists')}><span className="flex size-8 items-center justify-center rounded-lg bg-muted text-foreground/70 transition-colors group-hover:bg-white/20 group-hover:text-white"><Rows3 className="size-4" /></span>Create playlist</Button>
             <Tooltip><TooltipTrigger asChild><Button className="group h-14 justify-start px-4" variant="destructive" onClick={handleEmergencyStop}><span className="flex size-8 items-center justify-center rounded-lg bg-black/10 text-white transition-colors group-hover:bg-black/20"><CircleStop className="size-4" /></span>Emergency stop</Button></TooltipTrigger><TooltipContent>Immediately powers off every registered screen</TooltipContent></Tooltip>
           </CardContent>

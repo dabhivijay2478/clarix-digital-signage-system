@@ -14,6 +14,24 @@ function now(): string {
   return new Date().toISOString()
 }
 
+function defaultTruckToWaiting(truck: Truck): Truck {
+  const hasProgress = truck.is_loading || truck.is_in || truck.is_out
+  const isWaiting = truck.is_waiting || !hasProgress
+
+  return {
+    ...truck,
+    gate_no: truck.gate_no ?? null,
+    is_waiting: isWaiting,
+    is_loading: truck.is_loading ?? false,
+    is_in: truck.is_in ?? false,
+    is_out: truck.is_out ?? false,
+    waiting_at: isWaiting ? (truck.waiting_at ?? truck.created_at ?? now()) : null,
+    loading_at: truck.loading_at ?? null,
+    in_at: truck.in_at ?? null,
+    out_at: truck.out_at ?? null,
+  }
+}
+
 // ── Store Interface ─────────────────────────────────────────────────────────
 
 interface TruckStore {
@@ -36,16 +54,17 @@ export const useTruckStore = create<TruckStore>()(
       trucks: [],
 
       addTruck: (data) => {
+        const isWaiting = data.is_waiting ?? true
         const truck: Truck = {
           ...data,
           id: uid(),
           created_at: now(),
           gate_no: data.gate_no ?? null,
-          is_waiting: data.is_waiting ?? false,
+          is_waiting: isWaiting,
           is_loading: data.is_loading ?? false,
           is_in: data.is_in ?? false,
           is_out: data.is_out ?? false,
-          waiting_at: data.is_waiting ? now() : null,
+          waiting_at: isWaiting ? (data.waiting_at ?? now()) : null,
           loading_at: data.is_loading ? now() : null,
           in_at: data.is_in ? now() : null,
           out_at: data.is_out ? now() : null,
@@ -116,11 +135,11 @@ export const useTruckStore = create<TruckStore>()(
           id: uid(),
           created_at: now(),
           gate_no: d.gate_no ?? null,
-          is_waiting: d.is_waiting ?? false,
+          is_waiting: d.is_waiting ?? true,
           is_loading: d.is_loading ?? false,
           is_in: d.is_in ?? false,
           is_out: d.is_out ?? false,
-          waiting_at: d.is_waiting ? now() : null,
+          waiting_at: (d.is_waiting ?? true) ? (d.waiting_at ?? now()) : null,
           loading_at: d.is_loading ? now() : null,
           in_at: d.is_in ? now() : null,
           out_at: d.is_out ? now() : null,
@@ -169,6 +188,18 @@ export const useTruckStore = create<TruckStore>()(
     }),
     {
       name: 'clarix-truck-management',
+      version: 1,
+      migrate: (persistedState, version) => {
+        if (version >= 1 || !persistedState || typeof persistedState !== 'object') {
+          return persistedState as TruckStore
+        }
+
+        const state = persistedState as Partial<TruckStore>
+        return {
+          ...state,
+          trucks: (state.trucks ?? []).map(defaultTruckToWaiting),
+        } as TruckStore
+      },
     }
   )
 )

@@ -275,7 +275,6 @@ export interface DiagnosticCheck {
 export interface Truck {
   id: string;
   registration_number: string;
-  notes: string;
   gate_no?: string | null;
   is_waiting: boolean;
   is_loading: boolean;
