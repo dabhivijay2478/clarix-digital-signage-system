@@ -354,7 +354,7 @@ export default function PlayerPage() {
         }
         truckAlertTimeoutRef.current = setTimeout(() => {
           setTruckAlert((current) => (current?.id === alert.id ? null : current));
-        }, Math.max(alert.duration_secs || 30, 1) * 1000);
+        }, Math.max(alert.duration_secs || 3, 1) * 1000);
       } catch (error) {
         console.warn('Failed to parse truck alert event:', error);
       }
@@ -537,33 +537,157 @@ export default function PlayerPage() {
   const renderTruckAlertOverlay = () => {
     if (!truckAlert) return null;
     const changedAt = new Date(truckAlert.changed_at);
-    const changedAtLabel = Number.isNaN(changedAt.getTime()) ? 'just now' : changedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const changedAtLabel = Number.isNaN(changedAt.getTime())
+      ? 'just now'
+      : changedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    const status = truckAlert.status;
+    let themeColor = 'from-indigo-500 to-violet-600';
+    let glowColor = 'rgba(124, 58, 237, 0.4)';
+    let textColor = 'text-violet-300';
+    let icon = '🚚';
+
+    if (status === 'in') {
+      themeColor = 'from-emerald-400 via-teal-500 to-cyan-600';
+      glowColor = 'rgba(16, 185, 129, 0.45)';
+      textColor = 'text-emerald-300';
+      icon = '🏁';
+    } else if (status === 'loading') {
+      themeColor = 'from-cyan-400 via-blue-500 to-indigo-600';
+      glowColor = 'rgba(6, 182, 212, 0.45)';
+      textColor = 'text-cyan-300';
+      icon = '⏳';
+    } else if (status === 'waiting') {
+      themeColor = 'from-amber-400 via-orange-500 to-red-600';
+      glowColor = 'rgba(245, 158, 11, 0.45)';
+      textColor = 'text-amber-300';
+      icon = '🛑';
+    } else if (status === 'out') {
+      themeColor = 'from-rose-500 to-red-700';
+      glowColor = 'rgba(244, 63, 94, 0.45)';
+      textColor = 'text-rose-300';
+      icon = '🚪';
+    }
+
+    const steps = [
+      { id: 'registered', label: 'Registered' },
+      { id: 'waiting', label: 'Waiting' },
+      { id: 'loading', label: 'Loading' },
+      { id: 'in', label: 'Gate In' },
+      { id: 'out', label: 'Gate Out' },
+    ];
 
     return (
-      <div className="pointer-events-none absolute inset-x-0 top-8 z-[80] flex justify-center px-6">
-        <div className="w-full max-w-4xl overflow-hidden rounded-[2rem] border border-primary/40 bg-black/80 shadow-[0_24px_90px_rgba(0,0,0,0.65)] backdrop-blur-2xl">
-          <div className="flex items-stretch">
-            <div className="hidden w-3 bg-linear-to-b from-primary via-secondary to-emerald-400 sm:block" />
-            <div className="flex flex-1 flex-col gap-5 p-7 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-5">
-                <div className="flex size-20 shrink-0 items-center justify-center rounded-3xl bg-primary/15 text-4xl shadow-[0_0_40px_rgba(34,211,238,0.25)]">
-                  🚚
-                </div>
-                <div>
-                  <p className="text-sm font-bold uppercase tracking-[0.35em] text-primary">Truck status update</p>
-                  <h2 className="mt-1 text-4xl font-black tracking-tight text-white sm:text-5xl">
-                    {truckAlert.truck_number}
-                  </h2>
-                  <p className="mt-2 text-lg font-semibold text-white/70">
-                    {truckAlert.gate ? `Gate ${truckAlert.gate.toUpperCase()}` : 'Gate not assigned'} · {changedAtLabel}
-                  </p>
-                </div>
+      <div
+        className="fixed inset-0 z-100 flex flex-col justify-between bg-zinc-950 p-8 md:p-12 select-none animate-fadeIn"
+        style={{
+          backgroundImage: 'radial-gradient(circle at center, #0e1220 0%, #030408 100%)',
+        }}
+      >
+        {/* Top Header */}
+        <div className="flex items-center justify-between border-b border-white/5 pb-6">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl font-bold bg-linear-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+              {appName.toUpperCase()} DISPATCH
+            </span>
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-white/5 border border-white/10 text-white/50">
+              Live Feed
+            </span>
+          </div>
+          <div className="flex items-center gap-4 text-white/60 font-mono text-sm">
+            <span>Alert Received at: <strong className="text-white">{changedAtLabel}</strong></span>
+          </div>
+        </div>
+
+        {/* Main Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 my-auto items-center">
+          {/* Left Column: Truck info */}
+          <div className="lg:col-span-7 flex flex-col gap-6">
+            <div>
+              <span className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest bg-white/5 border border-white/10 ${textColor}`}>
+                <span className="w-2 h-2 rounded-full bg-current animate-ping" />
+                Status Broadcast
+              </span>
+              <h1 className="mt-4 text-7xl md:text-8xl font-black tracking-tight text-white font-mono break-all leading-none">
+                {truckAlert.truck_number.toUpperCase()}
+              </h1>
+            </div>
+
+            <div className="flex items-center gap-5 mt-4">
+              <div className="flex size-20 shrink-0 items-center justify-center rounded-3xl bg-white/5 border border-white/10 text-4xl shadow-inner">
+                {icon}
               </div>
-              <div className="rounded-3xl border border-white/10 bg-white/10 px-7 py-5 text-center">
-                <p className="text-sm uppercase tracking-[0.25em] text-white/50">Now</p>
-                <p className="mt-1 text-3xl font-black text-emerald-300 sm:text-4xl">{truckAlert.status_label}</p>
+              <div>
+                <p className="text-sm uppercase tracking-wider text-white/40">Action Type</p>
+                <p className="text-2xl font-bold text-white mt-0.5">
+                  {status === 'in' ? 'Gate entry verified. Proceed inside.' :
+                   status === 'loading' ? 'Docking bay loading sequence initiated.' :
+                   status === 'waiting' ? 'Holding area assigned. Awaiting call.' :
+                   status === 'out' ? 'Departure cleared. Exit terminal.' :
+                   'Registered and queued in the yard.'}
+                </p>
               </div>
             </div>
+          </div>
+
+          {/* Right Column: Gate Assignment Card */}
+          <div className="lg:col-span-5">
+            <div
+              className="relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-zinc-900/60 p-8 md:p-10 text-center backdrop-blur-3xl"
+              style={{
+                boxShadow: `0 30px 100px ${glowColor}, inset 0 1px 1px rgba(255, 255, 255, 0.05)`,
+              }}
+            >
+              <div className={`absolute top-0 inset-x-0 h-1.5 bg-linear-to-r ${themeColor}`} />
+              <p className="text-xs font-bold uppercase tracking-[0.25em] text-white/40">Assigned Location</p>
+              <h2 className="mt-4 text-5xl md:text-6xl font-black tracking-tight text-white uppercase leading-none">
+                {truckAlert.gate ? `GATE ${truckAlert.gate.toUpperCase()}` : 'BAY QUEUE'}
+              </h2>
+              <div className={`mt-8 inline-flex items-center justify-center px-8 py-4 rounded-2xl bg-linear-to-r ${themeColor} text-white font-black text-2xl md:text-3xl tracking-wide uppercase shadow-lg`}>
+                {truckAlert.status_label}
+              </div>
+              <p className="mt-6 text-xs text-white/40 max-w-xs mx-auto">
+                Please follow terminal signage and screen instructions. Contact control room if gate is blocked.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom Timeline */}
+        <div className="border-t border-white/5 pt-8">
+          <div className="relative flex flex-col md:flex-row justify-between items-center gap-6 md:gap-0">
+            {/* Timeline line */}
+            <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-white/5 -translate-y-1/2 hidden md:block" />
+
+            {steps.map((step, idx) => {
+              const isCurrent = step.id === status;
+              const isCompleted = steps.findIndex(s => s.id === status) >= idx;
+
+              return (
+                <div
+                  key={step.id}
+                  className={`relative flex items-center md:flex-col gap-4 md:gap-3 z-10 w-full md:w-auto ${
+                    isCurrent ? 'opacity-100' : isCompleted ? 'opacity-85' : 'opacity-35'
+                  }`}
+                >
+                  <div
+                    className={`flex size-10 items-center justify-center rounded-full border text-sm font-bold transition-all duration-300 ${
+                      isCurrent
+                        ? `bg-linear-to-r ${themeColor} border-transparent text-white scale-125 shadow-lg`
+                        : isCompleted
+                          ? 'bg-zinc-800 border-white/20 text-white'
+                          : 'bg-zinc-950 border-white/5 text-white/30'
+                    }`}
+                    style={isCurrent ? { boxShadow: `0 0 20px ${glowColor}` } : {}}
+                  >
+                    {isCurrent ? '✓' : idx + 1}
+                  </div>
+                  <span className={`text-xs font-bold uppercase tracking-wider ${isCurrent ? 'text-white' : 'text-white/60'}`}>
+                    {step.label}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

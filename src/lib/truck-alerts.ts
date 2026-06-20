@@ -62,6 +62,6 @@ export function createTruckScreenAlert(truck: Truck, changedAt = new Date().toIS
     status: status.status,
     status_label: status.status_label,
     changed_at: changedAt,
-    duration_secs: 30,
+    duration_secs: 3,
   };
 }
