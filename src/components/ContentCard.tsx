@@ -2,6 +2,7 @@
 
 import { memo, useRef, useState } from 'react'
 import { Trash2, Film, Image as ImageIcon, Globe, Megaphone, Presentation, FileText, FileSpreadsheet } from 'lucide-react'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import type { ContentItem } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -43,7 +44,6 @@ function ContentCard({ item, onDelete }: ContentCardProps) {
       const tauriWindow = typeof window !== 'undefined' ? (window as typeof window & { __TAURI_INTERNALS__?: unknown }) : null
       if (tauriWindow?.__TAURI_INTERNALS__) {
         try {
-          const { convertFileSrc } = require('@tauri-apps/api/core')
           return convertFileSrc(file_path)
         } catch (e) {
           console.error('Failed to convert file source', e)

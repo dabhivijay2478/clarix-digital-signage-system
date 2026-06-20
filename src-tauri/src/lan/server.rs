@@ -100,6 +100,9 @@ pub async fn start_controller_server(
         .route("/api/playlists", get(read_playlists))
         .route("/api/content", get(read_content))
         .route("/api/schedule", get(read_schedule))
+        .route("/api/production/dashboards", get(read_production_dashboards))
+        .route("/api/production/dashboards/{id}", get(read_production_dashboard))
+        .route("/api/production/datasets/{id}", get(read_production_dataset))
         .route("/media/{filename}", get(legacy_media))
         .layer(CorsLayer::permissive());
 
@@ -116,6 +119,8 @@ pub async fn start_controller_server(
         .merge(browser_routes)
         .route_service("/player", ServeFile::new(browser_assets_dir.join("player.html")))
         .route_service("/player/", ServeFile::new(browser_assets_dir.join("player.html")))
+        .route_service("/production-data/view", ServeFile::new(browser_assets_dir.join("production-data/view.html")))
+        .route_service("/production-data/view/", ServeFile::new(browser_assets_dir.join("production-data/view.html")))
         .fallback_service(ServeDir::new(browser_assets_dir))
         .with_state(state);
 
@@ -317,6 +322,32 @@ async fn read_content(State(state): State<AppState>) -> Result<Json<Vec<ContentI
 
 async fn read_schedule(State(state): State<AppState>) -> Result<Json<Vec<crate::models::ScheduleSlot>>, (StatusCode, String)> {
     build_sync_payload(&state.pool, None).map(|payload| Json(payload.schedule_slots)).map_err(internal_error)
+}
+
+async fn read_production_dashboards(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<crate::models::ProductionDashboard>>, (StatusCode, String)> {
+    crate::commands::production::query_dashboards(&state.pool).map(Json).map_err(internal_error)
+}
+
+async fn read_production_dashboard(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<crate::models::ProductionDashboardBundle>, (StatusCode, String)> {
+    crate::commands::production::query_dashboard_bundle(&state.pool, &id)
+        .map_err(internal_error)?
+        .map(Json)
+        .ok_or((StatusCode::NOT_FOUND, "Production dashboard not found".to_string()))
+}
+
+async fn read_production_dataset(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<crate::models::ProductionDataset>, (StatusCode, String)> {
+    crate::commands::production::query_dataset(&state.pool, &id)
+        .map_err(internal_error)?
+        .map(Json)
+        .ok_or((StatusCode::NOT_FOUND, "Production dataset not found".to_string()))
 }
 
 async fn legacy_media(
@@ -684,6 +715,24 @@ fn sha256_bytes(bytes: &[u8]) -> String {
 fn internal_error(error: impl std::fmt::Display) -> (StatusCode, String) {
     tracing::error!("Network API error: {error}");
     (StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+}
+
+#[allow(dead_code)]
+fn is_same_host_origin(headers: &HeaderMap) -> bool {
+    let Some(host) = headers.get(axum::http::header::HOST).and_then(|value| value.to_str().ok()) else {
+        return false;
+    };
+    let Some(origin) = headers.get(axum::http::header::ORIGIN).and_then(|value| value.to_str().ok()) else {
+        return false;
+    };
+    let host_name = host.split(':').next().unwrap_or(host);
+    let origin_without_scheme = origin
+        .strip_prefix("http://")
+        .or_else(|| origin.strip_prefix("https://"))
+        .unwrap_or(origin);
+    let origin_host_port = origin_without_scheme.split('/').next().unwrap_or(origin_without_scheme);
+    let origin_host = origin_host_port.split(':').next().unwrap_or(origin_host_port);
+    !host_name.is_empty() && host_name.eq_ignore_ascii_case(origin_host)
 }
 
 #[cfg(test)]

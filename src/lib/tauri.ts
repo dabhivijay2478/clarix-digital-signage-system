@@ -13,6 +13,12 @@ import type {
   DeviceIdentity,
   PairingRequest,
   ConnectionDiagnostic,
+  ProductionDashboard,
+  ProductionDashboardBundle,
+  ProductionDataset,
+  ProductionDatasetSummary,
+  ProductionImportResult,
+  ProductionRow,
 } from './types';
 
 // ── Safe invoke wrapper ─────────────────────────────────────────────────────
@@ -71,6 +77,15 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
       case 'get_schedule':
         url = `${baseUrl}/api/schedule`;
         break;
+      case 'get_production_dashboards':
+        url = `${baseUrl}/api/production/dashboards`;
+        break;
+      case 'get_production_dashboard':
+        url = `${baseUrl}/api/production/dashboards/${args?.id}`;
+        break;
+      case 'get_production_dataset':
+        url = `${baseUrl}/api/production/datasets/${args?.id}`;
+        break;
       case 'get_lan_server_port':
         return port as unknown as T;
       case 'record_analytics_event':
@@ -85,7 +100,7 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
       case 'check_screen_online':
         return false as T;
       case 'get_db_tables':
-        return ['screens', 'content_items', 'playlists', 'playlist_items', 'schedule_slots', 'analytics_events', 'device_settings', 'pairing_requests', 'player_heartbeats', 'asset_checksums'] as unknown as T;
+        return ['screens', 'content_items', 'playlists', 'playlist_items', 'schedule_slots', 'analytics_events', 'device_settings', 'pairing_requests', 'player_heartbeats', 'asset_checksums', 'production_datasets', 'production_dashboards'] as unknown as T;
       case 'get_db_table_data':
         return { columns: ['id', 'name', 'location'], rows: [{ id: '1', name: 'Main Lobby', location: 'Floor 1' }] } as unknown as T;
       case 'export_db_table_to_csv':
@@ -239,6 +254,42 @@ export const contentApi = {
 
   saveLocalFile: (filename: string, bytes: Uint8Array) =>
     tauriInvoke<string>('save_local_content_file', { filename, bytes: Array.from(bytes) }),
+};
+
+// ── Production Data API ────────────────────────────────────────────────────
+
+export const productionApi = {
+  importFile: (filename: string, bytes: Uint8Array) =>
+    tauriInvoke<ProductionImportResult>('import_production_file', { filename, bytes: Array.from(bytes) }),
+
+  saveImport: (name: string, importResult: ProductionImportResult) =>
+    tauriInvoke<ProductionDashboardBundle>('save_production_import', { name, importResult }),
+
+  getDatasets: () => tauriInvoke<ProductionDatasetSummary[]>('get_production_datasets'),
+
+  getDataset: (id: string) => tauriInvoke<ProductionDataset>('get_production_dataset', { id }),
+
+  getDashboards: () => tauriInvoke<ProductionDashboard[]>('get_production_dashboards'),
+
+  getDashboard: (id: string) => tauriInvoke<ProductionDashboardBundle>('get_production_dashboard', { id }),
+
+  updateRows: (datasetId: string, tableId: string, rows: ProductionRow[]) =>
+    tauriInvoke<ProductionDataset>('update_production_table_rows', { datasetId, tableId, rows }),
+
+  updateDataset: (dataset: ProductionDataset) =>
+    tauriInvoke<ProductionDataset>('update_production_dataset', { dataset }),
+
+  updateDashboard: (dashboard: ProductionDashboard) =>
+    tauriInvoke<ProductionDashboard>('update_production_dashboard', { dashboard }),
+
+  deleteDashboard: (id: string) =>
+    tauriInvoke<void>('delete_production_dashboard', { id }),
+
+  deleteDataset: (id: string) =>
+    tauriInvoke<void>('delete_production_dataset', { id }),
+
+  addToContent: (dashboardId: string, durationSecs: number = 300) =>
+    tauriInvoke<ContentItem>('add_production_dashboard_to_content', { dashboardId, durationSecs }),
 };
 
 // ── Playlists API ───────────────────────────────────────────────────────────

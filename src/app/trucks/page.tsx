@@ -24,10 +24,18 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { Truck as TruckType } from '@/lib/types'
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+const gateOptions = ['D4', 'D5'] as const
+
+function normalizeGateNo(value: string | null | undefined): string {
+  const normalized = (value ?? '').trim().toUpperCase()
+  return gateOptions.includes(normalized as typeof gateOptions[number]) ? normalized : ''
+}
 
 /** Parse a CSV string into rows of string arrays. Handles quoted fields. */
 function parseCSV(text: string): string[][] {
@@ -91,18 +99,12 @@ export default function TrucksPage() {
   const [showImportPreview, setShowImportPreview] = useState(false)
   const [importPreviewData, setImportPreviewData] = useState<Array<{
     registration_number: string
-    make: string
-    model: string
-    year: number
     notes: string
     gate_no: string
   }>>([])
 
   // Truck form fields
   const [fRegNo, setFRegNo] = useState('')
-  const [fMake, setFMake] = useState('')
-  const [fModel, setFModel] = useState('')
-  const [fYear, setFYear] = useState(new Date().getFullYear().toString())
   const [fNotes, setFNotes] = useState('')
   const [fGateNo, setFGateNo] = useState('')
 
@@ -110,9 +112,6 @@ export default function TrucksPage() {
 
   const resetTruckForm = () => {
     setFRegNo('')
-    setFMake('')
-    setFModel('')
-    setFYear(new Date().getFullYear().toString())
     setFNotes('')
     setFGateNo('')
   }
@@ -120,17 +119,14 @@ export default function TrucksPage() {
   // ── Truck CRUD Handlers ─────────────────────────────────────────────────
 
   const handleAddTruck = () => {
-    if (!fRegNo.trim() || !fMake.trim() || !fModel.trim()) {
-      showToast('Please fill registration, make and model', 'error')
+    if (!fRegNo.trim() || !fGateNo.trim()) {
+      showToast('Please fill registration number and gate', 'error')
       return
     }
     addTruck({
       registration_number: fRegNo.trim(),
-      make: fMake.trim(),
-      model: fModel.trim(),
-      year: parseInt(fYear) || new Date().getFullYear(),
       notes: fNotes,
-      gate_no: fGateNo.trim() || null,
+      gate_no: normalizeGateNo(fGateNo) || null,
       is_waiting: false,
       is_loading: false,
       is_in: false,
@@ -150,22 +146,20 @@ export default function TrucksPage() {
     if (!truck) return
     setEditingTruckId(id)
     setFRegNo(truck.registration_number)
-    setFMake(truck.make)
-    setFModel(truck.model)
-    setFYear(truck.year.toString())
     setFNotes(truck.notes)
-    setFGateNo(truck.gate_no || '')
+    setFGateNo(normalizeGateNo(truck.gate_no))
   }
 
   const handleSaveEditTruck = () => {
     if (!editingTruckId) return
+    if (!fRegNo.trim() || !fGateNo.trim()) {
+      showToast('Please fill registration number and gate', 'error')
+      return
+    }
     editTruck(editingTruckId, {
       registration_number: fRegNo.trim(),
-      make: fMake.trim(),
-      model: fModel.trim(),
-      year: parseInt(fYear) || new Date().getFullYear(),
       notes: fNotes,
-      gate_no: fGateNo.trim() || null,
+      gate_no: normalizeGateNo(fGateNo) || null,
     })
     showToast('Truck updated', 'success')
     resetTruckForm()
@@ -213,11 +207,8 @@ export default function TrucksPage() {
         .filter((row) => row.some((cell) => cell.trim()))
         .map((row) => ({
           registration_number: getCol(row, ['registration_number', 'reg_no', 'registration', 'reg_number', 'vehicle_no', 'vehicle_number', 'number']),
-          make: getCol(row, ['make', 'manufacturer', 'brand']),
-          model: getCol(row, ['model', 'vehicle_model']),
-          year: parseInt(getCol(row, ['year', 'mfg_year', 'manufacture_year'])) || new Date().getFullYear(),
           notes: getCol(row, ['notes', 'remarks', 'comment', 'comments']),
-          gate_no: getCol(row, ['gate_no', 'gate', 'gate_number', 'gateno']),
+          gate_no: normalizeGateNo(getCol(row, ['gate_no', 'gate', 'gate_number', 'gateno'])),
         }))
         .filter((t) => t.registration_number)
 
@@ -258,8 +249,7 @@ export default function TrucksPage() {
   const filteredTrucks = trucks.filter(
     (t) =>
       t.registration_number.toLowerCase().includes(search.toLowerCase()) ||
-      t.make.toLowerCase().includes(search.toLowerCase()) ||
-      t.model.toLowerCase().includes(search.toLowerCase())
+      (t.gate_no ?? '').toLowerCase().includes(search.toLowerCase())
   )
 
   // ── Truck Form Modal Body ───────────────────────────────────────────────
@@ -268,28 +258,19 @@ export default function TrucksPage() {
     <div className="grid gap-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label>Registration Number *</Label>
+          <Label>Truck Number *</Label>
           <Input placeholder="MH-01-AB-1234" value={fRegNo} onChange={(e) => setFRegNo(e.target.value)} />
         </div>
         <div className="space-y-2">
-          <Label>Year</Label>
-          <Input type="number" placeholder="2024" value={fYear} onChange={(e) => setFYear(e.target.value)} />
-        </div>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label>Make *</Label>
-          <Input placeholder="Tata" value={fMake} onChange={(e) => setFMake(e.target.value)} />
-        </div>
-        <div className="space-y-2">
-          <Label>Model *</Label>
-          <Input placeholder="Prima 4928" value={fModel} onChange={(e) => setFModel(e.target.value)} />
-        </div>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label>Gate Number</Label>
-          <Input placeholder="Gate 1" value={fGateNo} onChange={(e) => setFGateNo(e.target.value)} />
+          <Label>Gate *</Label>
+          <Select value={fGateNo} onValueChange={setFGateNo}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select gate" />
+            </SelectTrigger>
+            <SelectContent>
+              {gateOptions.map((gate) => <SelectItem key={gate} value={gate}>{gate}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-2">
           <Label>Notes</Label>
@@ -413,7 +394,6 @@ export default function TrucksPage() {
                   <TableHead>Status</TableHead>
                   <TableHead className="text-center">Up/Down</TableHead>
                   <TableHead>Gate No</TableHead>
-                  <TableHead>Make / Model</TableHead>
                   <TableHead className="text-center">Waiting</TableHead>
                   <TableHead className="text-center">Loading</TableHead>
                   <TableHead className="text-center">In</TableHead>
@@ -506,9 +486,6 @@ export default function TrucksPage() {
                         ) : (
                           <span className="text-muted-foreground/30">—</span>
                         )}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {truck.make} {truck.model} · {truck.year}
                       </TableCell>
                       {/* Step 1: Waiting — always enabled */}
                       <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
@@ -619,8 +596,7 @@ export default function TrucksPage() {
                   {selectedTruckForDetails.registration_number}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  {selectedTruckForDetails.make} {selectedTruckForDetails.model} · {selectedTruckForDetails.year}
-                  {selectedTruckForDetails.gate_no && ` · Gate: ${selectedTruckForDetails.gate_no}`}
+                  {selectedTruckForDetails.gate_no ? `Gate: ${selectedTruckForDetails.gate_no}` : 'No gate selected'}
                 </p>
                 {selectedTruckForDetails.notes && (
                   <p className="mt-2 text-xs text-muted-foreground italic">
@@ -777,9 +753,6 @@ export default function TrucksPage() {
                   <TableHead>#</TableHead>
                   <TableHead>Registration</TableHead>
                   <TableHead>Gate No</TableHead>
-                  <TableHead>Make</TableHead>
-                  <TableHead>Model</TableHead>
-                  <TableHead>Year</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -788,9 +761,6 @@ export default function TrucksPage() {
                     <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                     <TableCell className="font-mono font-medium">{row.registration_number}</TableCell>
                     <TableCell>{row.gate_no || '—'}</TableCell>
-                    <TableCell>{row.make || '—'}</TableCell>
-                    <TableCell>{row.model || '—'}</TableCell>
-                    <TableCell>{row.year}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -801,7 +771,7 @@ export default function TrucksPage() {
             <div>
               <p className="font-medium">CSV Format Tip</p>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Your CSV should have column headers like: <code className="rounded bg-muted px-1 font-mono text-[11px]">registration_number, gate_no, make, model, year, notes</code>
+                Your CSV should have column headers like: <code className="rounded bg-muted px-1 font-mono text-[11px]">registration_number, gate_no, notes</code>. Gate values should be <code className="rounded bg-muted px-1 font-mono text-[11px]">D4</code> or <code className="rounded bg-muted px-1 font-mono text-[11px]">D5</code>.
               </p>
             </div>
           </div>

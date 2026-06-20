@@ -49,6 +49,7 @@ pub fn init_db(app_data_dir: &str) -> Result<DbPool> {
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN last_sync_revision INTEGER NOT NULL DEFAULT 0", []);
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN force_sync BOOLEAN NOT NULL DEFAULT 0", []);
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN is_fullscreen BOOLEAN NOT NULL DEFAULT 0", []);
+    let _ = conn.execute("ALTER TABLE production_datasets ADD COLUMN selected_table_id TEXT", []);
     let _ = conn.execute(
         "UPDATE screens SET endpoint = ip_address, pairing_status = 'repair_required'
          WHERE ip_address IS NOT NULL AND endpoint IS NULL AND device_id IS NULL",
@@ -201,6 +202,26 @@ const SCHEMA: &str = r#"
         updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS production_datasets (
+        id                TEXT PRIMARY KEY,
+        name              TEXT NOT NULL,
+        source_name       TEXT NOT NULL,
+        selected_table_id TEXT,
+        tables_json       TEXT NOT NULL DEFAULT '[]',
+        created_at        TEXT NOT NULL,
+        updated_at        TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS production_dashboards (
+        id           TEXT PRIMARY KEY,
+        name         TEXT NOT NULL,
+        dataset_id   TEXT NOT NULL REFERENCES production_datasets(id) ON DELETE CASCADE,
+        widgets_json TEXT NOT NULL DEFAULT '[]',
+        layout_json  TEXT NOT NULL DEFAULT '{}',
+        created_at   TEXT NOT NULL,
+        updated_at   TEXT NOT NULL
+    );
+
     CREATE TRIGGER IF NOT EXISTS revision_content_insert AFTER INSERT ON content_items
     WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
     BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
@@ -237,6 +258,24 @@ const SCHEMA: &str = r#"
     CREATE TRIGGER IF NOT EXISTS revision_schedule_delete AFTER DELETE ON schedule_slots
     WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
     BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
+    CREATE TRIGGER IF NOT EXISTS revision_production_dataset_insert AFTER INSERT ON production_datasets
+    WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
+    BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
+    CREATE TRIGGER IF NOT EXISTS revision_production_dataset_update AFTER UPDATE ON production_datasets
+    WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
+    BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
+    CREATE TRIGGER IF NOT EXISTS revision_production_dataset_delete AFTER DELETE ON production_datasets
+    WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
+    BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
+    CREATE TRIGGER IF NOT EXISTS revision_production_dashboard_insert AFTER INSERT ON production_dashboards
+    WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
+    BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
+    CREATE TRIGGER IF NOT EXISTS revision_production_dashboard_update AFTER UPDATE ON production_dashboards
+    WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
+    BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
+    CREATE TRIGGER IF NOT EXISTS revision_production_dashboard_delete AFTER DELETE ON production_dashboards
+    WHEN (SELECT role FROM device_settings WHERE singleton = 1) = 'Controller'
+    BEGIN UPDATE device_settings SET current_revision = current_revision + 1 WHERE singleton = 1; END;
 
     -- Performance indexes
     CREATE INDEX IF NOT EXISTS idx_analytics_screen    ON analytics_events(screen_id);
@@ -244,6 +283,7 @@ const SCHEMA: &str = r#"
     CREATE INDEX IF NOT EXISTS idx_analytics_type      ON analytics_events(event_type);
     CREATE INDEX IF NOT EXISTS idx_schedule_active     ON schedule_slots(is_active);
     CREATE INDEX IF NOT EXISTS idx_playlist_items_pid  ON playlist_items(playlist_id);
+    CREATE INDEX IF NOT EXISTS idx_production_dashboard_dataset ON production_dashboards(dataset_id);
 "#;
 
 pub fn get_device_identity(pool: &DbPool) -> Result<DeviceIdentity> {

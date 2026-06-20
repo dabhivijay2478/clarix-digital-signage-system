@@ -15,6 +15,8 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
     || pathname?.startsWith('/player/')
     || pathname === '/data-view'
     || pathname?.startsWith('/data-view/')
+    || pathname === '/production-data/view'
+    || pathname?.startsWith('/production-data/view/')
   const { isCollapsed, toggle } = useSidebarStore()
   const { appName, customFavicon } = useBrandingStore()
   const { resolvedTheme, setTheme } = useTheme()

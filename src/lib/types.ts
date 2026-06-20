@@ -50,6 +50,89 @@ export interface ContentItem {
 
 export type ContentType = "Video" | "Image" | "WebApp" | "Ad" | "Slideshow";
 
+// ── Production Data ────────────────────────────────────────────────────────
+
+export type ProductionRow = Record<string, unknown>;
+
+export interface ProductionColumn {
+  key: string;
+  label: string;
+  data_type: "text" | "number" | "date" | string;
+}
+
+export interface ProductionTable {
+  id: string;
+  name: string;
+  sheet_name: string;
+  kind: "trend" | "kpi" | "raw" | string;
+  columns: ProductionColumn[];
+  rows: ProductionRow[];
+}
+
+export interface ProductionImportResult {
+  source_name: string;
+  tables: ProductionTable[];
+  detected: string[];
+}
+
+export interface ProductionDataset {
+  id: string;
+  name: string;
+  source_name: string;
+  selected_table_id: string | null;
+  tables: ProductionTable[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductionDatasetSummary {
+  id: string;
+  name: string;
+  source_name: string;
+  selected_table_id: string | null;
+  table_count: number;
+  row_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductionWidgetFilter {
+  key: string;
+  op: string;
+  value: string;
+}
+
+export interface ProductionWidget {
+  id: string;
+  title: string;
+  widget_type: "chart" | "table" | string;
+  chart_type: "line" | "bar" | "area" | "stacked-bar" | "pie" | "kpi-table" | string;
+  source_table_id: string;
+  x_key: string | null;
+  series_keys: string[];
+  measure_key: string | null;
+  group_by_key: string | null;
+  aggregation: "sum" | "avg" | "count" | "min" | "max" | string;
+  filters: ProductionWidgetFilter[];
+  top_n: number | null;
+  color_map: Record<string, string>;
+}
+
+export interface ProductionDashboard {
+  id: string;
+  name: string;
+  dataset_id: string;
+  widgets: ProductionWidget[];
+  layout: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductionDashboardBundle {
+  dashboard: ProductionDashboard;
+  dataset: ProductionDataset;
+}
+
 // ── Playlist ────────────────────────────────────────────────────────────────
 
 export interface Playlist {
@@ -192,9 +275,6 @@ export interface DiagnosticCheck {
 export interface Truck {
   id: string;
   registration_number: string;
-  model: string;
-  make: string;
-  year: number;
   notes: string;
   gate_no?: string | null;
   is_waiting: boolean;

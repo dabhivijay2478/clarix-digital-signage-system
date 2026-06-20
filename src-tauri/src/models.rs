@@ -192,6 +192,96 @@ pub enum ContentType {
     Slideshow,
 }
 
+// ── Production Data ────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProductionColumn {
+    pub key: String,
+    pub label: String,
+    pub data_type: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProductionTable {
+    pub id: String,
+    pub name: String,
+    pub sheet_name: String,
+    pub kind: String,
+    pub columns: Vec<ProductionColumn>,
+    pub rows: Vec<serde_json::Map<String, serde_json::Value>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProductionImportResult {
+    pub source_name: String,
+    pub tables: Vec<ProductionTable>,
+    pub detected: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProductionDataset {
+    pub id: String,
+    pub name: String,
+    pub source_name: String,
+    pub selected_table_id: Option<String>,
+    pub tables: Vec<ProductionTable>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProductionDatasetSummary {
+    pub id: String,
+    pub name: String,
+    pub source_name: String,
+    pub selected_table_id: Option<String>,
+    pub table_count: usize,
+    pub row_count: usize,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProductionWidget {
+    pub id: String,
+    pub title: String,
+    pub widget_type: String,
+    pub chart_type: String,
+    pub source_table_id: String,
+    pub x_key: Option<String>,
+    pub series_keys: Vec<String>,
+    pub measure_key: Option<String>,
+    pub group_by_key: Option<String>,
+    pub aggregation: String,
+    pub filters: Vec<ProductionWidgetFilter>,
+    pub top_n: Option<u32>,
+    pub color_map: std::collections::HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProductionWidgetFilter {
+    pub key: String,
+    pub op: String,
+    pub value: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProductionDashboard {
+    pub id: String,
+    pub name: String,
+    pub dataset_id: String,
+    pub widgets: Vec<ProductionWidget>,
+    pub layout: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProductionDashboardBundle {
+    pub dashboard: ProductionDashboard,
+    pub dataset: ProductionDataset,
+}
+
 // ── Playlist ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
