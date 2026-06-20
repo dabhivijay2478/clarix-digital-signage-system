@@ -111,6 +111,7 @@ pub async fn start_controller_server(
         .route("/api/production/datasets/{id}", get(read_production_dataset))
         .route("/media/{filename}", get(legacy_media))
         .route("/presentation/{filename}", get(presentation_viewer))
+        .route("/api/proxy", get(proxy_url))
         .layer(CorsLayer::permissive());
 
     let router = Router::new()
@@ -766,6 +767,60 @@ pub fn apply_sync_payload(pool: &DbPool, payload: SyncPayload) -> anyhow::Result
     }
     tx.commit()?;
     Ok(())
+}
+
+async fn proxy_url(
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Response, (StatusCode, String)> {
+    let url_str = params.get("url")
+        .ok_or((StatusCode::BAD_REQUEST, "Missing url parameter".to_string()))?;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let response = client.get(url_str)
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .send()
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to fetch URL: {}", e)))?;
+
+    let status = response.status();
+    let content_type = response.headers().get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("text/html")
+        .to_string();
+
+    let body_bytes = response.bytes().await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to read response body: {}", e)))?;
+
+    if content_type.contains("text/html") {
+        let html = String::from_utf8_lossy(&body_bytes).to_string();
+        let base_tag = format!("<base href=\"{}\">", url_str);
+        
+        let modified_html = if let Some(pos) = html.find("<head>") {
+            let (head, rest) = html.split_at(pos + 6);
+            format!("{}{}{}", head, base_tag, rest)
+        } else if let Some(pos) = html.find("<HEAD>") {
+            let (head, rest) = html.split_at(pos + 6);
+            format!("{}{}{}", head, base_tag, rest)
+        } else {
+            format!("{}{}", base_tag, html)
+        };
+
+        Ok(Response::builder()
+            .status(status)
+            .header("content-type", "text/html; charset=utf-8")
+            .body(Body::from(modified_html))
+            .map_err(internal_error)?)
+    } else {
+        Ok(Response::builder()
+            .status(status)
+            .header("content-type", content_type)
+            .body(Body::from(body_bytes))
+            .map_err(internal_error)?)
+    }
 }
 
 fn query_screens(pool: &DbPool) -> anyhow::Result<Vec<Screen>> {

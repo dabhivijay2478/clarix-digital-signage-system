@@ -449,7 +449,10 @@ export default function PlayerPage() {
   // Get source URL for assets
   const getMediaUrl = (item: ContentItem): string => {
     if (item.url) {
-      return item.url;
+      if (item.url.startsWith('/') || item.url.includes('localhost') || item.url.includes('127.0.0.1')) {
+        return item.url;
+      }
+      return `${getBrowserControllerOrigin()}/api/proxy?url=${encodeURIComponent(item.url)}`;
     }
     if (item.file_path) {
       const filename = item.file_path.split(/[/\\]/).pop() || '';
