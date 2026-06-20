@@ -15,6 +15,7 @@ import {
   X,
   Trash2,
   Upload,
+  Loader2,
 } from 'lucide-react'
 import { ProductionDashboardRenderer } from '@/components/production/ProductionDashboardRenderer'
 import { showToast } from '@/components/Toast'
@@ -25,7 +26,6 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
@@ -383,8 +383,9 @@ export default function ProductionDataPage() {
       )}
 
       {loading && !bundle ? (
-        <div className="grid gap-5 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} className="h-40 rounded-2xl" />)}
+        <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <span className="text-sm font-semibold tracking-wide uppercase">Loading production dashboards...</span>
         </div>
       ) : !bundle ? (
         <Card className="border-dashed">

@@ -5,7 +5,7 @@ import { useContent } from '../../hooks/useContent';
 import ContentCard from '../../components/ContentCard';
 import Modal from '../../components/Modal';
 import { showToast } from '../../components/Toast';
-import { LayoutGrid, Plus, Search, UploadCloud } from 'lucide-react';
+import { LayoutGrid, Plus, Search, UploadCloud, Loader2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,6 @@ import { Card, CardContent, CardDescription, CardTitle } from '@/components/ui/c
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
 
 const contentTypes = ['Image', 'Video', 'Presentation', 'Document', 'Spreadsheet', 'WebApp', 'Ad', 'Slideshow'];
 
@@ -149,7 +148,10 @@ export default function ContentPage() {
       </div>
 
       {loading ? (
-        <div aria-busy="true" className="grid-auto-sm">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-60" />)}</div>
+        <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <span className="text-sm font-semibold tracking-wide uppercase">Loading content...</span>
+        </div>
       ) : items.length === 0 ? (
         <Card className="border-dashed bg-transparent"><CardContent className="flex flex-col items-center py-16 text-center"><LayoutGrid className="mb-4 size-12 text-muted-foreground/40" /><CardTitle>No content yet</CardTitle><CardDescription className="mt-1">Upload videos, images, ads, and web apps to your local content library.</CardDescription><Button className="mt-6" onClick={() => setShowAdd(true)}>+ Add Content</Button></CardContent></Card>
       ) : (

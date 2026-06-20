@@ -1,11 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, FileSpreadsheet, RefreshCw } from 'lucide-react'
+import { AlertTriangle, FileSpreadsheet, RefreshCw, Loader2 } from 'lucide-react'
 import { ProductionDashboardRenderer } from '@/components/production/ProductionDashboardRenderer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
 import { productionApi } from '@/lib/tauri'
 import type { ProductionDashboardBundle } from '@/lib/types'
 
@@ -71,8 +70,9 @@ export default function ProductionDataViewPage() {
         </header>
 
         {loading && !bundle ? (
-          <div className="grid gap-5 xl:grid-cols-2">
-            {Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-[420px] rounded-2xl" />)}
+          <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+            <span className="text-sm font-semibold tracking-wide uppercase">Loading production dashboard...</span>
           </div>
         ) : error ? (
           <div className="flex min-h-[60vh] flex-col items-center justify-center rounded-2xl border border-destructive/30 bg-destructive/10 p-8 text-center">

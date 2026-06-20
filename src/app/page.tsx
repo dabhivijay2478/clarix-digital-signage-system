@@ -3,13 +3,12 @@
 import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { CircleStop, Clock3, Monitor, Network, PlaySquare, Rows3, Sparkles } from 'lucide-react'
+import { CircleStop, Clock3, Monitor, Network, PlaySquare, Rows3, Sparkles, Loader2 } from 'lucide-react'
 import StatCard from '@/components/StatCard'
 import { showToast } from '@/components/Toast'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePeers } from '@/hooks/usePeers'
@@ -17,7 +16,12 @@ import { playlistsApi, scheduleApi, screensApi } from '@/lib/tauri'
 import type { ScheduleSlot } from '@/lib/types'
 
 const ScheduleTimeline = dynamic(() => import('@/components/ScheduleTimeline'), {
-  loading: () => <Skeleton className="h-80 w-full" />,
+  loading: () => (
+    <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <span className="text-xs font-semibold tracking-wide uppercase">Loading schedule...</span>
+    </div>
+  ),
 })
 
 export default function DashboardPage() {
@@ -80,9 +84,9 @@ export default function DashboardPage() {
       </div>
 
       {loading ? (
-        <div aria-busy="true" className="space-y-8">
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-36" />)}</div>
-          <Skeleton className="h-80" />
+        <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <span className="text-sm font-semibold tracking-wide uppercase">Loading dashboard...</span>
         </div>
       ) : (
         <>

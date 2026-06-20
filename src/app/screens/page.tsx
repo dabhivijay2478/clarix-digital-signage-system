@@ -24,7 +24,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
 
 const ITEM_SCHEDULE_DAY_LABELS: Record<AppWeekday, string> = {
   Mon: 'Monday',

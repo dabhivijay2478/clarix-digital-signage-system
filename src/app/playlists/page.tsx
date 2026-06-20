@@ -6,14 +6,13 @@ import { useContent } from '../../hooks/useContent';
 import PlaylistEditor from '../../components/PlaylistEditor';
 import Modal from '../../components/Modal';
 import { showToast } from '../../components/Toast';
-import { X } from 'lucide-react';
+import { X, Loader2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
 
 export default function PlaylistsPage() {
   const { playlists, loading, createPlaylist, updateItems, deletePlaylist } = usePlaylists();
@@ -68,7 +67,10 @@ export default function PlaylistsPage() {
       </div>
 
       {loading ? (
-        <Skeleton className="h-[500px] w-full" />
+        <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <span className="text-sm font-semibold tracking-wide uppercase">Loading playlists...</span>
+        </div>
       ) : (
         <div className="flex gap-6">
           {/* Playlist List */}
