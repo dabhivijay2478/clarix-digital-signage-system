@@ -336,7 +336,7 @@ export default function PlayerPage() {
     if (!screenId || typeof window === 'undefined' || !window.location.protocol.startsWith('http')) return;
     const events = new EventSource(`${getBrowserControllerOrigin()}/v1/browser/events`);
     events.addEventListener('revision', () => {
-      void resolveActiveSignage(true);
+      window.location.reload();
     });
     return () => events.close();
   }, [screenId, resolveActiveSignage]);
