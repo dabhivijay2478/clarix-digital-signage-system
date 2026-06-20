@@ -48,7 +48,15 @@ export interface ContentItem {
   created_at: string;
 }
 
-export type ContentType = "Video" | "Image" | "WebApp" | "Ad" | "Slideshow";
+export type ContentType =
+  | "Video"
+  | "Image"
+  | "WebApp"
+  | "Ad"
+  | "Slideshow"
+  | "Document"
+  | "Spreadsheet"
+  | "Presentation";
 
 // ── Production Data ────────────────────────────────────────────────────────
 

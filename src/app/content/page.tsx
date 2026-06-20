@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const contentTypes = ['Image', 'Video', 'Document', 'Spreadsheet', 'WebApp', 'Ad', 'Slideshow'];
+const contentTypes = ['Image', 'Video', 'Presentation', 'Document', 'Spreadsheet', 'WebApp', 'Ad', 'Slideshow'];
 
 export default function ContentPage() {
   const { items, loading, search, setSearch, addItem, deleteItem } = useContent();
@@ -43,13 +43,16 @@ export default function ContentPage() {
       ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'mpg', 'mpeg', '3gp', 'ts', 'webm', 'm2v', 'm4v', 'mp3', 'wav', 'aac', 'flac', 'ogg', 'mid'].includes(ext || '');
     const isImage = file.type.startsWith('image/') || 
       ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp', 'svg', 'heic', 'heif'].includes(ext || '');
-    const isDoc = ['pdf', 'doc', 'docx', 'txt', 'rtf', 'odt', 'pages', 'key', 'ppt', 'pptx'].includes(ext || '');
+    const isPresentation = ['ppt', 'pptx', 'pps', 'ppsx', 'key'].includes(ext || '');
+    const isDoc = ['pdf', 'doc', 'docx', 'txt', 'rtf', 'odt', 'pages'].includes(ext || '');
     const isExcel = ['xls', 'xlsx', 'csv', 'ods', 'numbers'].includes(ext || '');
 
     if (isVideoOrAudio) {
       setFormType('Video');
     } else if (isImage) {
       setFormType('Image');
+    } else if (isPresentation) {
+      setFormType('Presentation');
     } else if (isDoc) {
       setFormType('Document');
     } else if (isExcel) {
@@ -65,7 +68,7 @@ export default function ContentPage() {
       return;
     }
 
-    const isUploadType = formType === 'Image' || formType === 'Video' || formType === 'Document' || formType === 'Spreadsheet' || formType === 'Ad' || formType === 'Slideshow';
+    const isUploadType = formType === 'Image' || formType === 'Video' || formType === 'Presentation' || formType === 'Document' || formType === 'Spreadsheet' || formType === 'Ad' || formType === 'Slideshow';
     const isWebType = formType === 'WebApp';
 
     if (isUploadType && !selectedFile) {
@@ -91,6 +94,10 @@ export default function ContentPage() {
         // Save file locally using Tauri backend
         const { contentApi: api } = await import('../../lib/tauri');
         filePath = await api.saveLocalFile(selectedFile.name, bytes);
+        if (formType === 'Presentation') {
+          showToast('Preparing presentation for screen playback...', 'info');
+          filePath = await api.preparePresentation(filePath);
+        }
       }
 
       await addItem(
@@ -121,7 +128,7 @@ export default function ContentPage() {
     setDeleteId(null);
   };
 
-  const isUploadType = formType === 'Image' || formType === 'Video' || formType === 'Document' || formType === 'Spreadsheet' || formType === 'Ad' || formType === 'Slideshow' || formType === 'WebApp';
+  const isUploadType = formType === 'Image' || formType === 'Video' || formType === 'Presentation' || formType === 'Document' || formType === 'Spreadsheet' || formType === 'Ad' || formType === 'Slideshow' || formType === 'WebApp';
 
   return (
     <div>
@@ -196,7 +203,7 @@ export default function ContentPage() {
               <div className="relative cursor-pointer rounded-xl border border-dashed border-border bg-muted/20 p-6 text-center transition-colors hover:border-primary/50 hover:bg-primary/5">
                 <input
                   type="file"
-                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.rtf,.zip,.tar,.xml,.rss,.html,.htm"
+                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.pps,.ppsx,.key,.txt,.rtf,.zip,.tar,.xml,.rss,.html,.htm"
                   onChange={handleFileChange}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
@@ -215,7 +222,7 @@ export default function ContentPage() {
                     <div>
                       <p className="text-sm font-semibold text-foreground">Click or drag file here</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Supports images, videos, PDFs, Word docs, Excel spreadsheets, CSVs, slides, HTML, and ZIP bundles.
+                        Supports images, videos, PowerPoint slides, PDFs, Word docs, Excel spreadsheets, CSVs, HTML, and ZIP bundles.
                       </p>
                     </div>
                   )}

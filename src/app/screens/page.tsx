@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useScreens } from '../../hooks/useScreens';
 import { usePlaylists } from '../../hooks/usePlaylists';
 import { useContent } from '../../hooks/useContent';
@@ -8,7 +8,7 @@ import ScreenCard from '../../components/ScreenCard';
 import Modal from '../../components/Modal';
 import { showToast } from '../../components/Toast';
 import type { Screen, PlaylistItem, ContentItem } from '../../lib/types';
-import { customConfirm } from '../../lib/tauri';
+import { customConfirm, getBrowserControllerOrigin } from '../../lib/tauri';
 import { Monitor, Plus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -74,49 +74,71 @@ export default function ScreensPage() {
   const [itemSchedEndDate, setItemSchedEndDate] = useState('');
   const [itemSchedTransition, setItemSchedTransition] = useState('Fade');
 
-  const selectedScreen = screens.find((s) => s.id === selectedScreenId) || null;
+  const selectedScreen = useMemo(
+    () => screens.find((s) => s.id === selectedScreenId) || null,
+    [screens, selectedScreenId]
+  );
+  const selectedPlaylist = useMemo(
+    () => selectedScreen?.playlist_id ? playlists.find((p) => p.id === selectedScreen.playlist_id) || null : null,
+    [playlists, selectedScreen]
+  );
+  const autoCreatingPlaylistFor = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (selectedScreenId && selectedScreen) {
-      if (selectedScreen.playlist_id) {
-        const playlist = playlists.find(p => p.id === selectedScreen.playlist_id);
-        if (playlist) {
-          const sorted = [...playlist.items].sort((a, b) => a.order - b.order);
-          setLocalPlaylistItems(sorted);
-          setHasUnsavedChanges(false);
-        } else {
-          setLocalPlaylistItems([]);
-          setHasUnsavedChanges(false);
-        }
-      } else {
-        // Auto-create a playlist for this screen
-        const autoCreate = async () => {
-          try {
-            const name = `Playlist for ${selectedScreen.name}`;
-            const newPlaylist = await createPlaylist(name, 'Fade', true);
-            await editScreen(
-              selectedScreen.id,
-              selectedScreen.name,
-              selectedScreen.location,
-              selectedScreen.ip_address || undefined,
-              selectedScreen.orientation,
-              selectedScreen.resolution?.width ?? 1920,
-              selectedScreen.resolution?.height ?? 1080,
-              newPlaylist.id
-            );
-            showToast(`Auto-created direct playlist for screen "${selectedScreen.name}"`, 'success');
-          } catch (err) {
-            console.error("Auto-create playlist failed:", err);
-            showToast("Failed to link playlist to screen", "error");
-          }
-        };
-        autoCreate();
-      }
-    } else {
+    if (!selectedScreenId) {
       setLocalPlaylistItems([]);
       setHasUnsavedChanges(false);
+      return;
     }
-  }, [selectedScreenId, selectedScreen, playlists, createPlaylist, editScreen]);
+
+    if (!selectedScreen) return;
+
+    if (!selectedScreen.playlist_id) {
+      if (autoCreatingPlaylistFor.current.has(selectedScreen.id)) return;
+      autoCreatingPlaylistFor.current.add(selectedScreen.id);
+
+      const autoCreate = async () => {
+        try {
+          const name = `Playlist for ${selectedScreen.name}`;
+          const newPlaylist = await createPlaylist(name, 'Fade', true);
+          await editScreen(
+            selectedScreen.id,
+            selectedScreen.name,
+            selectedScreen.location,
+            selectedScreen.ip_address || undefined,
+            selectedScreen.orientation,
+            selectedScreen.resolution?.width ?? 1920,
+            selectedScreen.resolution?.height ?? 1080,
+            newPlaylist.id
+          );
+          await refresh();
+          showToast(`Auto-created direct playlist for screen "${selectedScreen.name}"`, 'success');
+        } catch (err) {
+          autoCreatingPlaylistFor.current.delete(selectedScreen.id);
+          console.error("Auto-create playlist failed:", err);
+          showToast("Failed to link playlist to screen", "error");
+        }
+      };
+
+      autoCreate();
+      return;
+    }
+
+    if (hasUnsavedChanges) return;
+    if (!selectedPlaylist) return;
+
+    const sorted = [...selectedPlaylist.items].sort((a, b) => a.order - b.order);
+    setLocalPlaylistItems(sorted);
+    setHasUnsavedChanges(false);
+  }, [
+    selectedScreenId,
+    selectedScreen,
+    selectedPlaylist,
+    hasUnsavedChanges,
+    createPlaylist,
+    editScreen,
+    refresh,
+  ]);
 
   const handleAddContent = (contentId: string) => {
     const nextOrder = localPlaylistItems.length;
@@ -137,7 +159,6 @@ export default function ScreensPage() {
     };
     setLocalPlaylistItems(prev => [...prev, newItem]);
     setHasUnsavedChanges(true);
-    showToast("Added to playlist (unsaved changes)", "info");
   };
 
   const handleRemoveItem = (index: number) => {
@@ -195,16 +216,23 @@ export default function ScreensPage() {
 
   const handleSavePlaylist = async () => {
     if (!selectedScreen || !selectedScreen.playlist_id) return;
+
+    setSyncingScreenIds((prev) => prev.includes(selectedScreen.id) ? prev : [...prev, selectedScreen.id]);
     try {
-      await updateItems(selectedScreen.playlist_id, localPlaylistItems);
+      const normalizedItems = localPlaylistItems.map((item, index) => ({ ...item, order: index }));
+      await updateItems(selectedScreen.playlist_id, normalizedItems);
+      setLocalPlaylistItems(normalizedItems);
       setHasUnsavedChanges(false);
-      showToast("Playlist saved successfully!", "success");
-      
-      // Auto-sync after saving playlist
-      handleSync(selectedScreen.id);
+
+      const { localNetworkApi } = await import('../../lib/tauri');
+      const revision = await localNetworkApi.forceSyncScreen(selectedScreen.id);
+      await refresh();
+      showToast(`Playlist saved. Force sync revision ${revision} sent to the player.`, "success");
     } catch (err) {
       console.error(err);
-      showToast("Failed to save playlist", "error");
+      showToast("Failed to save playlist or force sync", "error");
+    } finally {
+      setSyncingScreenIds((prev) => prev.filter((sid) => sid !== selectedScreen.id));
     }
   };
 
@@ -308,33 +336,24 @@ export default function ScreensPage() {
     }
   };
 
-  const handleSync = async (id: string) => {
-    const screen = screens.find((s) => s.id === id);
-    if (!screen) return;
-
-    setSyncingScreenIds((prev) => [...prev, id]);
-    showToast(`Publishing a new revision for "${screen.name}"...`, 'info');
-    try {
-      const { localNetworkApi } = await import('../../lib/tauri');
-      const revision = await localNetworkApi.syncScreenData(id);
-      showToast(`Revision ${revision} published. The player will pull it automatically.`, 'success');
-    } catch (err) {
-      showToast(`Publish failed: ${err}`, 'error');
-    } finally {
-      setSyncingScreenIds((prev) => prev.filter((sid) => sid !== id));
-    }
-  };
-
   const handleForceSync = async (id: string) => {
     const screen = screens.find((s) => s.id === id);
     if (!screen) return;
 
-    setSyncingScreenIds((prev) => [...prev, id]);
-    showToast(`Requesting immediate force sync for "${screen.name}"...`, 'info');
+    setSyncingScreenIds((prev) => prev.includes(id) ? prev : [...prev, id]);
+    showToast(`Force syncing "${screen.name}"...`, 'info');
     try {
+      if (selectedScreen?.id === id && selectedScreen.playlist_id && hasUnsavedChanges) {
+        const normalizedItems = localPlaylistItems.map((item, index) => ({ ...item, order: index }));
+        await updateItems(selectedScreen.playlist_id, normalizedItems);
+        setLocalPlaylistItems(normalizedItems);
+        setHasUnsavedChanges(false);
+      }
+
       const { localNetworkApi } = await import('../../lib/tauri');
       const revision = await localNetworkApi.forceSyncScreen(id);
-      showToast(`Force sync revision ${revision} requested. Screen will reload completely.`, 'success');
+      await refresh();
+      showToast(`Force sync revision ${revision} sent. Launch Player will pull it automatically.`, 'success');
     } catch (err) {
       showToast(`Force sync request failed: ${err}`, 'error');
     } finally {
@@ -376,7 +395,7 @@ export default function ScreensPage() {
       showToast(`Screen "${editFormName}" updated`, 'success');
       
       if (editingScreen.pairing_status === 'paired') {
-        handleSync(editingScreen.id);
+        handleForceSync(editingScreen.id);
       }
 
       setEditingScreen(null);
@@ -420,7 +439,7 @@ export default function ScreensPage() {
       showToast(`Operating hours for "${hoursScreen.name}" updated`, 'success');
       
       if (hoursScreen.pairing_status === 'paired') {
-        handleSync(hoursScreen.id);
+        handleForceSync(hoursScreen.id);
       }
 
       setHoursScreen(null);
@@ -430,7 +449,6 @@ export default function ScreensPage() {
   };
 
   if (selectedScreenId && selectedScreen) {
-    const isOnline = selectedScreen.is_online;
     const isSyncing = syncingScreenIds.includes(selectedScreen.id);
 
     return (
@@ -449,24 +467,11 @@ export default function ScreensPage() {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <h1 className="page-title" style={{ margin: 0, fontSize: '24px', fontWeight: 'bold', color: 'var(--foreground)' }}>{selectedScreen.name}</h1>
-                <span 
-                  className={`w-2.5 h-2.5 rounded-full ${
-                    isSyncing
-                      ? 'bg-primary animate-ping'
-                      : isOnline 
-                      ? 'bg-status-success shadow-[0_0_8px_rgba(34,197,94,0.4)] animate-pulse' 
-                      : 'bg-text-muted'
-                  }`}
-                  style={{
-                    width: '10px',
-                    height: '10px',
-                    borderRadius: '50%',
-                    backgroundColor: isSyncing ? 'var(--primary)' : isOnline ? 'var(--status-success)' : 'var(--text-muted)'
-                  }}
-                />
-                <span className="text-[10px] uppercase font-bold text-text-secondary">
-                  {isSyncing ? 'Syncing' : isOnline ? 'Online' : 'Offline'}
-                </span>
+                {isSyncing && (
+                  <span className="text-[10px] uppercase font-bold text-primary">
+                    Syncing
+                  </span>
+                )}
               </div>
               <p className="page-subtitle" style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)' }}>
                 {selectedScreen.location || 'No location set'} • {selectedScreen.resolution?.width ?? 1920}x{selectedScreen.resolution?.height ?? 1080} • {selectedScreen.orientation}
@@ -481,47 +486,24 @@ export default function ScreensPage() {
               ✎ Settings
             </button>
             <button
-              className={`btn ${selectedScreen.is_fullscreen ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={async () => {
-                try {
-                  const { screensApi } = await import('../../lib/tauri');
-                  await screensApi.setFullscreen(selectedScreen.id, !selectedScreen.is_fullscreen);
-                  showToast(
-                    `Remote fullscreen command sent to "${selectedScreen.name}": ${
-                      !selectedScreen.is_fullscreen ? 'ON' : 'OFF'
-                    }`,
-                    'success'
-                  );
-                  await refresh();
-                } catch (err) {
-                  showToast(`Remote fullscreen control failed: ${err}`, 'error');
-                }
-              }}
-            >
-              {selectedScreen.is_fullscreen ? '📺 Exit Fullscreen' : '📺 Remote Fullscreen'}
-            </button>
-            <button
               className="btn btn-secondary"
               onClick={() => {
+                const playerUrl = `${getBrowserControllerOrigin()}/player?screenId=${encodeURIComponent(selectedScreen.id)}`;
                 localStorage.setItem('clarix_player_screen_id', selectedScreen.id);
-                window.open(`/player?screenId=${selectedScreen.id}`, '_blank');
+                const opened = window.open(playerUrl, 'clarix-player', 'popup,width=1280,height=720');
+                if (!opened) {
+                  window.location.href = playerUrl;
+                }
               }}
             >
               🔗 Launch Player
             </button>
             <button
-              className="btn btn-secondary"
+              className="btn btn-primary"
               disabled={isSyncing}
               onClick={() => handleForceSync(selectedScreen.id)}
             >
-              ⚡ Force Sync
-            </button>
-            <button 
-              className="btn btn-primary"
-              disabled={isSyncing}
-              onClick={() => handleSync(selectedScreen.id)}
-            >
-              {isSyncing ? 'Publishing...' : 'Publish Revision'}
+              {isSyncing ? 'Syncing...' : '⚡ Force Sync'}
             </button>
           </div>
         </div>
@@ -1195,7 +1177,7 @@ export default function ScreensPage() {
                 onDelete={handleDelete}
                 onEdit={handleEditClick}
                 onHours={handleHoursClick}
-                onSync={handleSync}
+                onSync={handleForceSync}
                 onManage={(id) => setSelectedScreenId(id)}
               />
             );
