@@ -20,6 +20,7 @@ import type {
   ProductionImportResult,
   ProductionRow,
   TruckScreenAlert,
+  Truck,
 } from './types';
 import { APP_NAME } from './branding';
 
@@ -102,7 +103,7 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
       case 'check_screen_online':
         return false as T;
       case 'get_db_tables':
-        return ['screens', 'content_items', 'playlists', 'playlist_items', 'schedule_slots', 'analytics_events', 'device_settings', 'pairing_requests', 'player_heartbeats', 'asset_checksums', 'production_datasets', 'production_dashboards'] as unknown as T;
+        return ['screens', 'content_items', 'playlists', 'playlist_items', 'schedule_slots', 'analytics_events', 'device_settings', 'pairing_requests', 'player_heartbeats', 'asset_checksums', 'production_datasets', 'production_dashboards', 'dispatched_trucks'] as unknown as T;
       case 'get_db_table_data':
         return { columns: ['id', 'name', 'location'], rows: [{ id: '1', name: 'Main Lobby', location: 'Floor 1' }] } as unknown as T;
       case 'export_db_table_to_csv':
@@ -119,6 +120,7 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
         return 1 as unknown as T;
       case 'update_screen_fullscreen':
       case 'publish_truck_alert':
+      case 'save_dispatched_truck':
         return undefined as T;
       default:
         throw new Error(`Controller administration is available only in the packaged ${APP_NAME} desktop app.`);
@@ -325,6 +327,8 @@ export const productionApi = {
 export const truckAlertsApi = {
   publish: (alert: TruckScreenAlert) =>
     tauriInvoke<void>('publish_truck_alert', { alert }),
+  saveDispatchedTruck: (truck: Truck) =>
+    tauriInvoke<void>('save_dispatched_truck', { truck }),
 };
 
 // ── Playlists API ───────────────────────────────────────────────────────────

@@ -279,6 +279,12 @@ export default function TrucksPage() {
         next_truck_status: next ? getTruckStatusInfo(next).status_label : null,
       })
 
+      if (field === 'is_out' && value === true) {
+        await truckAlertsApi.saveDispatchedTruck(preview)
+        showToast(`Truck "${truck.registration_number}" dispatched and saved to database`, 'success')
+        deleteTruck(truck.id)
+      }
+
       // Trigger a force sync on all paired screens by default
       const { screensApi, localNetworkApi } = await import('@/lib/tauri')
       const screens = await screensApi.getAll()

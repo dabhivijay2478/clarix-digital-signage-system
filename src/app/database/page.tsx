@@ -53,6 +53,7 @@ const tablesMetadata: Record<string, { label: string; desc: string }> = {
   pairing_requests: { label: 'Pairing Requests', desc: 'Pending and approved player pairing authorization codes' },
   player_heartbeats: { label: 'Player Heartbeats', desc: 'Heartbeats and active revisions of connected players' },
   asset_checksums: { label: 'Asset Checksums', desc: 'Content file hashes (SHA-256) and local sizes for synchronization' },
+  dispatched_trucks: { label: 'Dispatched Trucks', desc: 'Persistently saved log of dispatched trucks including all status transition timestamps' },
 }
 
 export default function DatabasePage() {

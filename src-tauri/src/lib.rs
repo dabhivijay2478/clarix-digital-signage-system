@@ -199,6 +199,7 @@ pub fn run() {
             commands::production::add_production_dashboard_to_content,
             // Truck screen alerts
             commands::trucks::publish_truck_alert,
+            commands::trucks::save_dispatched_truck,
             // Database viewer & backups
             commands::database::get_db_tables,
             commands::database::get_db_table_data,

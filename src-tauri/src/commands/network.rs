@@ -137,12 +137,6 @@ pub async fn get_network_diagnostics(
     if identity.role == DeviceRole::Player && identity.controller_url.is_none() {
         hints.push("Enter the controller address or wait for Wi-Fi discovery.".to_string());
     }
-    if peer_count == 0 {
-        hints.push("No controller was discovered. Confirm both devices use the same non-guest Wi-Fi and disable client isolation.".to_string());
-    }
-    if identity.role == DeviceRole::Controller {
-        hints.push("Allow MG Enterprise inbound TCP access in the controller firewall. Players only require outbound access.".to_string());
-    }
     if let (Some((_, local_ip)), Some(controller)) = (interface.as_ref(), identity.controller_url.as_deref()) {
         let controller_ip = reqwest::Url::parse(controller).ok()
             .and_then(|url| url.host_str().and_then(|host| host.parse::<std::net::Ipv4Addr>().ok()));
