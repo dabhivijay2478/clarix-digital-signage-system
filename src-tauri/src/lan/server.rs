@@ -104,6 +104,7 @@ pub async fn start_controller_server(
         .route("/api/production/dashboards/{id}", get(read_production_dashboard))
         .route("/api/production/datasets/{id}", get(read_production_dataset))
         .route("/media/{filename}", get(legacy_media))
+        .route("/presentation/{filename}", get(presentation_viewer))
         .layer(CorsLayer::permissive());
 
     let router = Router::new()
@@ -254,9 +255,9 @@ async fn asset(
         Ok(rows.next()?.map(|row| row.get(0)).transpose()?)
     }).await.map_err(internal_error)?.map_err(internal_error)?;
     let path = file_path.ok_or((StatusCode::NOT_FOUND, "Asset not found".to_string()))?;
-    let bytes = tokio::fs::read(path).await.map_err(internal_error)?;
+    let bytes = tokio::fs::read(&path).await.map_err(internal_error)?;
     Ok(Response::builder()
-        .header("Content-Type", "application/octet-stream")
+        .header("Content-Type", media_content_type(&path))
         .body(Body::from(bytes))
         .map_err(internal_error)?)
 }
@@ -356,9 +357,52 @@ async fn legacy_media(
 ) -> Result<Response, (StatusCode, String)> {
     let safe_name = FsPath::new(&filename).file_name().and_then(|value| value.to_str())
         .ok_or((StatusCode::BAD_REQUEST, "Invalid filename".to_string()))?;
-    let bytes = tokio::fs::read(state.media_dir.join(safe_name)).await
+    let media_path = state.media_dir.join(safe_name);
+    let bytes = tokio::fs::read(&media_path).await
         .map_err(|_| (StatusCode::NOT_FOUND, "Media not found".to_string()))?;
-    Ok(Response::builder().body(Body::from(bytes)).map_err(internal_error)?)
+    Ok(Response::builder()
+        .header("Content-Type", media_content_type(&media_path))
+        .body(Body::from(bytes))
+        .map_err(internal_error)?)
+}
+
+async fn presentation_viewer(
+    State(state): State<AppState>,
+    Path(filename): Path<String>,
+) -> Result<Response, (StatusCode, String)> {
+    let safe_name = FsPath::new(&filename).file_name().and_then(|value| value.to_str())
+        .ok_or((StatusCode::BAD_REQUEST, "Invalid filename".to_string()))?;
+    let source_path = state.media_dir.join(safe_name);
+    let viewer_path = crate::commands::content::prepare_presentation_content(
+        source_path.to_string_lossy().to_string(),
+    )
+    .await
+    .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))?;
+    let bytes = tokio::fs::read(&viewer_path).await.map_err(internal_error)?;
+    Ok(Response::builder()
+        .header("Content-Type", media_content_type(&viewer_path))
+        .body(Body::from(bytes))
+        .map_err(internal_error)?)
+}
+
+fn media_content_type(path: impl AsRef<FsPath>) -> &'static str {
+    match path.as_ref().extension().and_then(|value| value.to_str()).unwrap_or_default().to_ascii_lowercase().as_str() {
+        "html" | "htm" => "text/html; charset=utf-8",
+        "pdf" => "application/pdf",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "mp4" => "video/mp4",
+        "webm" => "video/webm",
+        "mov" => "video/quicktime",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        "txt" => "text/plain; charset=utf-8",
+        "csv" => "text/csv; charset=utf-8",
+        _ => "application/octet-stream",
+    }
 }
 
 fn authenticate(pool: &DbPool, headers: &HeaderMap, query_token: Option<&str>) -> Result<PairingRequest, (StatusCode, String)> {
@@ -406,6 +450,12 @@ pub fn publish_revision(pool: &DbPool, events: &SyncEventBus) -> anyhow::Result<
     Ok(revision)
 }
 
+pub fn notify_current_revision(pool: &DbPool, events: &SyncEventBus) -> anyhow::Result<i64> {
+    let revision = current_revision(pool)?;
+    let _ = events.0.send(revision);
+    Ok(revision)
+}
+
 pub fn build_manifest(pool: &DbPool, screen_id: &str) -> anyhow::Result<SyncManifest> {
     let payload = build_sync_payload(pool, Some(screen_id))?;
     let revision = current_revision(pool)?;
@@ -443,8 +493,15 @@ pub fn build_sync_payload(pool: &DbPool, screen_id: Option<&str>) -> anyhow::Res
     )?;
     let content_items = content_stmt.query_map([], |row| {
         let content_type = match row.get::<_, String>(2)?.as_str() {
-            "Video" => ContentType::Video, "WebApp" => ContentType::WebApp, "Ad" => ContentType::Ad,
-            "Slideshow" => ContentType::Slideshow, _ => ContentType::Image,
+            "Video" => ContentType::Video,
+            "Image" => ContentType::Image,
+            "WebApp" => ContentType::WebApp,
+            "Ad" => ContentType::Ad,
+            "Slideshow" => ContentType::Slideshow,
+            "Document" => ContentType::Document,
+            "Spreadsheet" => ContentType::Spreadsheet,
+            "Presentation" => ContentType::Presentation,
+            _ => ContentType::Image,
         };
         Ok(ContentItem {
             id: row.get(0)?, name: row.get(1)?, content_type, file_path: row.get(3)?, url: row.get(4)?,

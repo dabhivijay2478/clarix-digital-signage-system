@@ -9,6 +9,27 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { useBrandingStore } from '../../store/ui';
 import { Maximize, Minimize, RefreshCw, LogOut, XCircle } from 'lucide-react';
 
+function playlistPlaybackSignature(playlist: Playlist): string {
+  return JSON.stringify({
+    id: playlist.id,
+    loop_enabled: playlist.loop_enabled,
+    transition: playlist.transition,
+    items: playlist.items.map((item) => ({
+      content_id: item.content_id,
+      order: item.order,
+      override_duration: item.override_duration,
+      display_schedule: item.display_schedule ?? null,
+    })),
+  });
+}
+
+function getLocalDateKey(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function PlayerPage() {
   const router = useRouter();
   const branding = useBrandingStore();
@@ -99,7 +120,6 @@ export default function PlayerPage() {
 
   // Time tracker for schedules
   const [currentTimeStr, setCurrentTimeStr] = useState<string>('');
-  const [currentDayStr, setCurrentDayStr] = useState<string>('');
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const playStartTimeRef = useRef<number>(0);
@@ -235,7 +255,6 @@ export default function PlayerPage() {
   useEffect(() => {
     const updateTime = () => {
       setCurrentTimeStr(getLocalTimeStr());
-      setCurrentDayStr(getAppWeekday());
 
       if (activeScreen && activeScreen.operating_hours) {
         const oh = activeScreen.operating_hours;
@@ -272,7 +291,7 @@ export default function PlayerPage() {
   }, [activeScreen]);
 
   // Resolve schedule slot & active playlist
-  const resolveActiveSignage = useCallback(async () => {
+  const resolveActiveSignage = useCallback(async (resetPlayback = false) => {
     if (!screenId) return;
 
     try {
@@ -291,11 +310,12 @@ export default function PlayerPage() {
       const nowHours = now.getHours();
       const nowMinutes = now.getMinutes();
       const nowSecs = nowHours * 3600 + nowMinutes * 60 + now.getSeconds();
+      const currentDay = getAppWeekday();
 
       const candidates = schedules.filter((slot) => {
         if (!slot.is_active) return false;
         if (!slot.screen_ids.includes(screenId)) return false;
-        if (!slot.days_of_week.includes(currentDayStr as any)) return false;
+        if (!slot.days_of_week.includes(currentDay as any)) return false;
 
         // Parse slot start_time (format: "HH:MM:SS" or "HH:MM")
         const timeParts = slot.start_time.split(':');
@@ -323,15 +343,28 @@ export default function PlayerPage() {
       }
 
       if (playlistToPlay && playlistToPlay.items.length > 0) {
-        // Sort items by order
-        playlistToPlay.items.sort((a, b) => a.order - b.order);
+        const sortedPlaylist: Playlist = {
+          ...playlistToPlay,
+          items: [...playlistToPlay.items].sort((a, b) => a.order - b.order),
+        };
 
-        // If playlist changed, restart playback
-        if (!activePlaylist || activePlaylist.id !== playlistToPlay.id) {
-          setActivePlaylist(playlistToPlay);
-          setCurrentItemIndex(0);
-          setIsPlaying(true);
+        const nextSignature = playlistPlaybackSignature(sortedPlaylist);
+        const currentSignature = activePlaylist ? playlistPlaybackSignature(activePlaylist) : '';
+
+        if (resetPlayback || nextSignature !== currentSignature) {
+          const playlistChanged = activePlaylist?.id !== sortedPlaylist.id;
+          setActivePlaylist(sortedPlaylist);
+          if (resetPlayback || playlistChanged) {
+            setCurrentItemIndex(0);
+          } else {
+            setCurrentItemIndex((index) => Math.min(index, Math.max(sortedPlaylist.items.length - 1, 0)));
+          }
         }
+
+        if (!isPlaying) {
+          setCurrentItemIndex(0);
+        }
+        setIsPlaying(true);
       } else {
         setActivePlaylist(null);
         setIsPlaying(false);
@@ -339,12 +372,12 @@ export default function PlayerPage() {
     } catch (err) {
       console.error('Error resolving signage slots:', err);
     }
-  }, [screenId, currentDayStr, activePlaylist]);
+  }, [screenId, activePlaylist, isPlaying]);
 
   const handleManualSync = useCallback(async () => {
     showToast('Syncing signage content...', 'info');
     try {
-      await resolveActiveSignage();
+      await resolveActiveSignage(true);
       showToast('Signage content synced successfully', 'success');
     } catch (err) {
       showToast(`Sync failed: ${err}`, 'error');
@@ -365,7 +398,7 @@ export default function PlayerPage() {
     if (!screenId || typeof window === 'undefined' || !window.location.protocol.startsWith('http')) return;
     const events = new EventSource(`${getBrowserControllerOrigin()}/v1/browser/events`);
     events.addEventListener('revision', () => {
-      void resolveActiveSignage();
+      void resolveActiveSignage(true);
     });
     return () => events.close();
   }, [screenId, resolveActiveSignage]);
@@ -382,7 +415,7 @@ export default function PlayerPage() {
       
       // 1. Date restriction check
       if (sched.date_restricted) {
-        const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+        const todayStr = getLocalDateKey(now);
         if (sched.start_date && todayStr < sched.start_date) return false;
         if (sched.end_date && todayStr > sched.end_date) return false;
       }
@@ -475,12 +508,16 @@ export default function PlayerPage() {
       return item.url;
     }
     if (item.file_path) {
+      const filename = item.file_path.split(/[/\\]/).pop() || '';
+      const extension = filename.split('.').pop()?.toLowerCase();
+      if (['ppt', 'pptx', 'pps', 'ppsx', 'key'].includes(extension || '')) {
+        return `${getBrowserControllerOrigin()}/presentation/${encodeURIComponent(filename)}`;
+      }
+
       const tauriWindow = window as typeof window & { __TAURI_INTERNALS__?: unknown };
       if (tauriWindow.__TAURI_INTERNALS__) {
         return convertFileSrc(item.file_path);
       }
-      // Extract filename
-      const filename = item.file_path.split(/[/\\]/).pop() || '';
       return `${getBrowserControllerOrigin()}/media/${encodeURIComponent(filename)}`;
     }
     return '';
@@ -523,13 +560,27 @@ export default function PlayerPage() {
       );
     }
 
-    if (contentItem.content_type === 'WebApp') {
+    if (
+      contentItem.content_type === 'WebApp' ||
+      contentItem.content_type === 'Document' ||
+      contentItem.content_type === 'Spreadsheet' ||
+      contentItem.content_type === 'Presentation'
+    ) {
+      const isWebApp = contentItem.content_type === 'WebApp';
       return (
-        <iframe
-          src={src}
-          className={`w-full h-full border-none ${transitionClass}`}
-          style={{ width: '100%', height: '100%' }}
-        />
+        <div className={`relative h-full w-full overflow-hidden bg-black ${transitionClass}`}>
+          <iframe
+            src={src}
+            title={contentItem.name}
+            className="h-full w-full border-none bg-white"
+            style={{ width: '100%', height: '100%' }}
+          />
+          {!isWebApp && (
+            <div className="pointer-events-none absolute bottom-4 left-1/2 max-w-[90vw] -translate-x-1/2 rounded-full border border-white/10 bg-black/70 px-4 py-2 text-center text-xs font-medium text-white/80 backdrop-blur">
+              {contentItem.content_type}: {contentItem.name}
+            </div>
+          )}
+        </div>
       );
     }
 
@@ -681,7 +732,7 @@ export default function PlayerPage() {
             </div>
             <div className="flex gap-4 justify-between">
               <span>System Mode:</span>
-              <span className="text-white">Offline Wi-Fi Signage</span>
+              <span className="text-white">Local Network Signage</span>
             </div>
           </div>
 

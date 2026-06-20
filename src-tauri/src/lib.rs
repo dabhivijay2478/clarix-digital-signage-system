@@ -152,6 +152,8 @@ pub fn run() {
             commands::content::add_content_item,
             commands::content::delete_content_item,
             commands::content::save_local_content_file,
+            commands::content::save_local_content_file_chunk,
+            commands::content::prepare_presentation_content,
             // Playlists
             commands::playlists::get_playlists,
             commands::playlists::create_playlist,

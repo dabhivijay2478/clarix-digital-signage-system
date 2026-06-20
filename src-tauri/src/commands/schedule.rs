@@ -74,6 +74,7 @@ pub async fn add_schedule_slot(
     priority: u8,
     pool: State<'_, DbPool>,
     scheduler: State<'_, std::sync::Arc<SchedulerState>>,
+    events: State<'_, crate::lan::server::SyncEventBus>,
 ) -> Result<String, String> {
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now();
@@ -119,6 +120,7 @@ pub async fn add_schedule_slot(
 
     // Reload the scheduler with updated slots
     scheduler.reload(&pool_inner).await;
+    let _ = crate::lan::server::notify_current_revision(&pool_inner, events.inner());
 
     Ok(id)
 }
@@ -128,11 +130,13 @@ pub async fn delete_schedule_slot(
     id: String,
     pool: State<'_, DbPool>,
     scheduler: State<'_, std::sync::Arc<SchedulerState>>,
+    events: State<'_, crate::lan::server::SyncEventBus>,
 ) -> Result<(), String> {
     let pool_inner = pool.inner().clone();
+    let pool_worker = pool_inner.clone();
     let id_clone = id.clone();
     tokio::task::spawn_blocking(move || {
-        let conn = pool_inner.get().map_err(|e| e.to_string())?;
+        let conn = pool_worker.get().map_err(|e| e.to_string())?;
         conn.execute(
             "UPDATE schedule_slots SET is_active = 0 WHERE id = ?1",
             params![id_clone],
@@ -143,6 +147,7 @@ pub async fn delete_schedule_slot(
     .await
     .map_err(|e| e.to_string())??;
 
-    scheduler.reload(&pool).await;
+    scheduler.reload(&pool_inner).await;
+    let _ = crate::lan::server::notify_current_revision(&pool_inner, events.inner());
     Ok(())
 }

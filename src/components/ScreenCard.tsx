@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
 interface ScreenCardProps {
@@ -22,7 +21,6 @@ interface ScreenCardProps {
 }
 
 function ScreenCard({ screen, onDelete, onEdit, onSync, onManage, isSyncing = false }: ScreenCardProps) {
-  const status = isSyncing ? 'Syncing' : screen.is_online ? 'Online' : 'Offline'
   const pairingBadgeStyle = screen.pairing_status === 'paired'
     ? 'bg-green-500/10 text-green-600 border-green-500/20 dark:text-green-400'
     : screen.pairing_status === 'unpaired'
@@ -38,11 +36,7 @@ function ScreenCard({ screen, onDelete, onEdit, onSync, onManage, isSyncing = fa
         </div>
         <CardTitle className="pr-20 text-base">{screen.name}</CardTitle>
         <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-          <Tooltip>
-            <TooltipTrigger asChild><span className={cn('size-2 rounded-full', isSyncing ? 'animate-pulse bg-primary' : screen.is_online ? 'animate-pulse bg-green-500' : 'bg-muted-foreground/60')} /></TooltipTrigger>
-            <TooltipContent>{status}</TooltipContent>
-          </Tooltip>
-          {status} · {screen.location || 'No location set'}
+          {screen.location || 'No location set'}
         </div>
       </CardHeader>
       <CardContent className="px-6 pb-4 pt-2" onClick={(event) => event.stopPropagation()}>
@@ -58,7 +52,7 @@ function ScreenCard({ screen, onDelete, onEdit, onSync, onManage, isSyncing = fa
         {isSyncing && <Progress value={undefined} className="animate-pulse mt-3" />}
       </CardContent>
       <CardFooter className="flex-col gap-2 p-6 pt-2" onClick={(event) => event.stopPropagation()}>
-        {onSync && <Button className="w-full text-xs py-2 h-9" disabled={isSyncing} onClick={() => onSync(screen.id)}>{isSyncing ? 'Publishing…' : 'Publish Revision'}</Button>}
+        {onSync && <Button className="w-full text-xs py-2 h-9" disabled={isSyncing} onClick={() => onSync(screen.id)}>{isSyncing ? 'Syncing…' : 'Force Sync'}</Button>}
         {onManage && <Button variant="link" className="self-end px-0 text-xs h-auto py-0" onClick={() => onManage(screen.id)}>Manage →</Button>}
       </CardFooter>
     </Card>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { screensApi, onScheduleChange, localNetworkApi } from '../lib/tauri';
+import { screensApi, onScheduleChange } from '../lib/tauri';
 import type { Screen } from '../lib/types';
 
 export function useScreens() {
@@ -14,19 +14,6 @@ export function useScreens() {
       const data = await screensApi.getAll();
       setScreens(data);
       setError(null);
-      
-      // Immediately trigger a status check after fetching screens
-      try {
-        const onlineStatus = await localNetworkApi.checkAllOnline();
-        setScreens((prev) =>
-          prev.map((s) => {
-            const status = onlineStatus.find(([id]) => id === s.id);
-            return status ? { ...s, is_online: status[1] } : s;
-          })
-        );
-      } catch (err) {
-        console.error('Error fetching initial online status:', err);
-      }
     } catch (e) {
       setError(String(e));
     } finally {
@@ -42,26 +29,8 @@ export function useScreens() {
       fetchScreens();
     });
 
-    // Check online status periodically (every 10 seconds)
-    const checkStatus = async () => {
-      try {
-        const onlineStatus = await localNetworkApi.checkAllOnline();
-        setScreens((prev) =>
-          prev.map((s) => {
-            const status = onlineStatus.find(([id]) => id === s.id);
-            return status ? { ...s, is_online: status[1] } : s;
-          })
-        );
-      } catch (err) {
-        console.error('Failed to check screen online statuses:', err);
-      }
-    };
-
-    const interval = setInterval(checkStatus, 10000);
-
     return () => {
       unlisten();
-      clearInterval(interval);
     };
   }, [fetchScreens]);
 

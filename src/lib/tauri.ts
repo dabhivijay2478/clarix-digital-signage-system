@@ -109,6 +109,9 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
         return undefined as T;
       case 'save_text_file':
         return undefined as T;
+      case 'save_local_content_file_chunk':
+      case 'prepare_presentation_content':
+        return undefined as T;
       case 'sync_screen_data':
       case 'force_sync_screen':
         return 1 as unknown as T;
@@ -252,8 +255,30 @@ export const contentApi = {
 
   delete: (id: string) => tauriInvoke<void>('delete_content_item', { id }),
 
-  saveLocalFile: (filename: string, bytes: Uint8Array) =>
-    tauriInvoke<string>('save_local_content_file', { filename, bytes: Array.from(bytes) }),
+  saveLocalFile: async (filename: string, bytes: Uint8Array) => {
+    const chunkSize = 512 * 1024;
+    let savedPath = '';
+    if (bytes.length === 0) {
+      return tauriInvoke<string>('save_local_content_file_chunk', {
+        filename,
+        bytes: [],
+        append: false,
+      });
+    }
+
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      const chunk = bytes.slice(offset, offset + chunkSize);
+      savedPath = await tauriInvoke<string>('save_local_content_file_chunk', {
+        filename,
+        bytes: Array.from(chunk),
+        append: offset > 0,
+      });
+    }
+    return savedPath;
+  },
+
+  preparePresentation: (filePath: string) =>
+    tauriInvoke<string>('prepare_presentation_content', { filePath }),
 };
 
 // ── Production Data API ────────────────────────────────────────────────────

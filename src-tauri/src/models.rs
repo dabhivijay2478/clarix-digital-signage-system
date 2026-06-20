@@ -190,6 +190,9 @@ pub enum ContentType {
     WebApp,
     Ad,
     Slideshow,
+    Document,
+    Spreadsheet,
+    Presentation,
 }
 
 // ── Production Data ────────────────────────────────────────────────────────

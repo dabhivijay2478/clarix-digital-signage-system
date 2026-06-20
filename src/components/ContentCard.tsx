@@ -21,6 +21,7 @@ const typeIcons: Record<string, React.ReactNode> = {
   WebApp: <Globe className="size-5 text-indigo-500" />,
   Ad: <Megaphone className="size-5 text-amber-500" />,
   Slideshow: <Presentation className="size-5 text-emerald-500" />,
+  Presentation: <Presentation className="size-5 text-purple-500" />,
   Document: <FileText className="size-5 text-rose-500" />,
   Spreadsheet: <FileSpreadsheet className="size-5 text-green-500" />,
 }
@@ -28,6 +29,7 @@ const typeIcons: Record<string, React.ReactNode> = {
 const typeStyles: Record<string, string> = {
   Ad: 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400',
   Slideshow: 'border-primary/30 bg-primary/10 text-primary',
+  Presentation: 'border-purple-500/30 bg-purple-500/10 text-purple-600 dark:text-purple-400',
   Document: 'border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400',
   Spreadsheet: 'border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400',
 }
