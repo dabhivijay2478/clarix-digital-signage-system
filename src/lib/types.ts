@@ -336,4 +336,8 @@ export interface TruckScreenAlert {
   status_label: string;
   changed_at: string;
   duration_secs: number;
+  active_truck_number?: string | null;
+  active_truck_status?: string | null;
+  next_truck_number?: string | null;
+  next_truck_status?: string | null;
 }

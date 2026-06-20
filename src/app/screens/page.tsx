@@ -17,7 +17,7 @@ import {
   normalizePlaylistItemSchedule,
   validatePlaylistItemSchedule,
 } from '../../lib/signage-schedule';
-import { Monitor, Plus } from 'lucide-react';
+import { Monitor, Plus, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -1148,7 +1148,10 @@ export default function ScreensPage() {
       </div>
 
       {loading ? (
-        <div aria-busy="true" className="grid-auto">{Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-[390px] rounded-2xl" />)}</div>
+        <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <span className="text-sm font-semibold tracking-wide uppercase">Loading screens...</span>
+        </div>
       ) : screens.length === 0 ? (
         <Card className="border-dashed bg-transparent">
           <CardContent className="flex min-h-80 flex-col items-center justify-center px-6 py-16 text-center">

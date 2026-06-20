@@ -258,7 +258,26 @@ export default function TrucksPage() {
     if (before.status === after.status) return
 
     try {
-      await truckAlertsApi.publish(createTruckScreenAlert(preview))
+      const gateVal = (preview.gate_no ?? '').toLowerCase()
+      // Calculate the active and next trucks for this gate, taking into account the preview status of the changing truck
+      const gateTrucks = trucks
+        .map(t => t.id === preview.id ? preview : t)
+        .filter((t) => (t.gate_no ?? '').toLowerCase() === gateVal)
+
+      // Active truck: currently Loading or In Gate, but not Out yet
+      const active = gateTrucks.find((t) => (t.is_loading || t.is_in) && !t.is_out) || null
+
+      // Next truck: in Waiting queue, not yet Loading/In/Out
+      const waitingList = gateTrucks.filter((t) => t.is_waiting && !t.is_loading && !t.is_in && !t.is_out)
+      const next = waitingList[0] || null
+
+      await truckAlertsApi.publish({
+        ...createTruckScreenAlert(preview),
+        active_truck_number: active ? active.registration_number : null,
+        active_truck_status: active ? getTruckStatusInfo(active).status_label : null,
+        next_truck_number: next ? next.registration_number : null,
+        next_truck_status: next ? getTruckStatusInfo(next).status_label : null,
+      })
 
       // Trigger a force sync on all paired screens by default
       const { screensApi, localNetworkApi } = await import('@/lib/tauri')

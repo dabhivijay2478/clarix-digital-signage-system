@@ -546,59 +546,141 @@ export default function PlayerPage() {
     );
   };
 
+  const getStatusColor = (status: string | null | undefined) => {
+    switch (status) {
+      case 'Gate In':
+        return 'from-emerald-500 to-teal-600 text-white shadow-emerald-500/20'
+      case 'Loading':
+        return 'from-cyan-500 to-blue-600 text-white shadow-cyan-500/20'
+      case 'Waiting':
+        return 'from-amber-500 to-orange-600 text-white shadow-amber-500/20'
+      default:
+        return 'from-zinc-700 to-zinc-800 text-zinc-300'
+    }
+  };
+
   const renderTruckAlertOverlay = () => {
     if (!truckAlert) return null;
 
-    const status = truckAlert.status;
-    let themeGlow = 'rgba(124, 58, 237, 0.4)';
-    let statusColor = 'text-indigo-400';
-
-    if (status === 'in') {
-      themeGlow = 'rgba(16, 185, 129, 0.5)';
-      statusColor = 'text-emerald-400';
-    } else if (status === 'loading') {
-      themeGlow = 'rgba(6, 182, 212, 0.5)';
-      statusColor = 'text-cyan-400';
-    } else if (status === 'waiting') {
-      themeGlow = 'rgba(245, 158, 11, 0.5)';
-      statusColor = 'text-amber-400';
-    } else if (status === 'out') {
-      themeGlow = 'rgba(244, 63, 94, 0.5)';
-      statusColor = 'text-rose-400';
+    // Filter alert to match the screen's gate location (individual display routing)
+    if (activeScreen) {
+      const screenLoc = (activeScreen.location || '').toLowerCase();
+      const alertGate = (truckAlert.gate || '').toLowerCase();
+      if (screenLoc.includes('d4') && alertGate !== 'd4') return null;
+      if (screenLoc.includes('d5') && alertGate !== 'd5') return null;
     }
 
+    const activeTruckNum = truckAlert.active_truck_number;
+    const activeTruckStatus = truckAlert.active_truck_status;
+    const nextTruckNum = truckAlert.next_truck_number;
+    const nextTruckStatus = truckAlert.next_truck_status;
+    const gateLabel = truckAlert.gate ? truckAlert.gate.toUpperCase() : 'UNKNOWN';
+
     return (
-      <div
-        className="fixed inset-0 z-100 flex flex-col items-center justify-center bg-black p-8 text-center select-none animate-fadeIn"
+      <div 
+        className="fixed inset-0 z-100 flex flex-col justify-between bg-black text-white p-12 select-none font-sans"
         style={{
-          backgroundImage: 'radial-gradient(circle at center, #0B0E14 0%, #030406 100%)',
+          backgroundImage: 'radial-gradient(circle at center, #0B0F19 0%, #030406 100%)',
         }}
       >
-        <div
-          className="flex flex-col gap-6 max-w-4xl w-full p-12 rounded-[3rem] border border-white/5 bg-zinc-950/40 backdrop-blur-2xl"
-          style={{
-            boxShadow: `0 30px 100px ${themeGlow}`,
-          }}
-        >
-          {/* Gate No (if present) */}
-          {truckAlert.gate && (
-            <span className="text-xl md:text-2xl font-bold tracking-[0.4em] uppercase text-white/40">
-              GATE {truckAlert.gate.toUpperCase()}
-            </span>
-          )}
-
-          {/* Truck Number */}
-          <h1 className="text-8xl md:text-[8vw] font-black tracking-tight text-white font-mono break-all leading-none">
-            {truckAlert.truck_number.toUpperCase()}
-          </h1>
-
-          {/* Divider */}
-          <div className="w-24 h-1 bg-white/10 mx-auto my-4 rounded-full" />
-
-          {/* Status */}
-          <div className={`text-5xl md:text-[5vw] font-black uppercase tracking-wide ${statusColor} animate-pulse`}>
-            {truckAlert.status_label}
+        {/* Header with pulsing status dot */}
+        <div className="flex items-center justify-between border-b border-white/5 pb-8">
+          <div className="flex items-center gap-4">
+            <div className="h-4 w-4 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_15px_#10b981]" />
+            <h1 className="text-3xl font-black tracking-widest text-white/90 uppercase">
+              GATE {gateLabel} STATUS UPDATE
+            </h1>
           </div>
+          <div className="text-xl font-mono font-medium text-white/40">
+            Live Feed Alert
+          </div>
+        </div>
+
+        {/* Main Grid: Active vs Next */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 my-auto items-stretch w-full">
+          
+          {/* Active Truck Column */}
+          <div 
+            className="flex flex-col justify-between p-12 rounded-[2.5rem] border border-white/5 bg-zinc-950/20 backdrop-blur-3xl relative overflow-hidden"
+            style={{
+              boxShadow: activeTruckNum ? '0 30px 100px rgba(6, 182, 212, 0.08)' : 'none',
+            }}
+          >
+            {activeTruckNum && (
+              <div className="absolute top-0 right-0 h-40 w-40 rounded-full bg-cyan-500/5 blur-[50px] pointer-events-none" />
+            )}
+            <div>
+              <span className="text-sm font-bold tracking-[0.3em] uppercase text-white/30 block mb-6">
+                CURRENT TRUCK
+              </span>
+              {activeTruckNum ? (
+                <h2 className="text-6xl md:text-8xl font-black font-mono tracking-tight text-white leading-none break-all">
+                  {activeTruckNum.toUpperCase()}
+                </h2>
+              ) : (
+                <h2 className="text-5xl font-black tracking-tight text-zinc-700 leading-none">
+                  NO ACTIVE VEHICLE
+                </h2>
+              )}
+            </div>
+
+            <div className="mt-12">
+              {activeTruckNum ? (
+                <span className={`inline-flex items-center justify-center px-8 py-3 rounded-full text-2xl font-black uppercase tracking-wider bg-linear-to-r shadow-lg ${getStatusColor(activeTruckStatus)}`}>
+                  {activeTruckStatus}
+                </span>
+              ) : (
+                <span className="inline-flex items-center justify-center px-8 py-3 rounded-full text-xl font-bold uppercase tracking-wider bg-zinc-900 border border-white/5 text-zinc-500">
+                  Awaiting Gate In
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Next Truck Column */}
+          <div 
+            className="flex flex-col justify-between p-12 rounded-[2.5rem] border border-white/5 bg-zinc-950/20 backdrop-blur-3xl relative overflow-hidden"
+            style={{
+              boxShadow: nextTruckNum ? '0 30px 100px rgba(245, 158, 11, 0.05)' : 'none',
+            }}
+          >
+            {nextTruckNum && (
+              <div className="absolute top-0 right-0 h-40 w-40 rounded-full bg-amber-500/5 blur-[50px] pointer-events-none" />
+            )}
+            <div>
+              <span className="text-sm font-bold tracking-[0.3em] uppercase text-white/30 block mb-6">
+                NEXT VEHICLE
+              </span>
+              {nextTruckNum ? (
+                <h2 className="text-6xl md:text-8xl font-black font-mono tracking-tight text-white/90 leading-none break-all">
+                  {nextTruckNum.toUpperCase()}
+                </h2>
+              ) : (
+                <h2 className="text-5xl font-black tracking-tight text-zinc-700 leading-none">
+                  NO VEHICLE WAITING
+                </h2>
+              )}
+            </div>
+
+            <div className="mt-12">
+              {nextTruckNum ? (
+                <span className={`inline-flex items-center justify-center px-8 py-3 rounded-full text-2xl font-black uppercase tracking-wider bg-linear-to-r shadow-lg ${getStatusColor(nextTruckStatus)}`}>
+                  {nextTruckStatus}
+                </span>
+              ) : (
+                <span className="inline-flex items-center justify-center px-8 py-3 rounded-full text-xl font-bold uppercase tracking-wider bg-zinc-900 border border-white/5 text-zinc-500">
+                  Queue Empty
+                </span>
+              )}
+            </div>
+          </div>
+
+        </div>
+
+        {/* Footer System Info */}
+        <div className="flex items-center justify-between border-t border-white/5 pt-8 text-xs font-mono text-white/20 w-full">
+          <span>GATE MONITORING UNIT</span>
+          <span>ALERT DISPLAY</span>
         </div>
       </div>
     );

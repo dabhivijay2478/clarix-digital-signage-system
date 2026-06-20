@@ -386,4 +386,8 @@ pub struct TruckScreenAlert {
     pub status_label: String,
     pub changed_at: String,
     pub duration_secs: u32,
+    pub active_truck_number: Option<String>,
+    pub active_truck_status: Option<String>,
+    pub next_truck_number: Option<String>,
+    pub next_truck_status: Option<String>,
 }
