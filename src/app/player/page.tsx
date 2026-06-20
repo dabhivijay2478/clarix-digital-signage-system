@@ -775,6 +775,10 @@ export default function PlayerPage() {
     );
   }
 
+  if (screenId && truckAlert) {
+    return renderTruckAlertOverlay();
+  }
+
   // ── RENDER DEFAULT WAIT SCREEN ──────────────────────────────────────────
   const playableItems = getPlayableItems();
   if (!activePlaylist || playableItems.length === 0) {
