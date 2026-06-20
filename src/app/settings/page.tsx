@@ -142,10 +142,9 @@ export default function SettingsPage() {
 
       <SettingsSection title="Network Diagnostics" description="Separate discovery, pairing, connectivity, and sync state.">
         <div className="mb-4 flex justify-end"><Button size="sm" variant="outline" onClick={loadNetworkState}><RefreshCw />Refresh</Button></div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2">
           <Card className="p-4"><Wifi className="mb-3 size-5 text-primary" /><p className="text-xs uppercase tracking-wider text-muted-foreground">Selected interface</p><p className="mt-1 font-mono text-sm">{diagnostics?.selected_interface ?? 'Unavailable'} · {diagnostics?.local_ip ?? 'No local IP'}</p></Card>
           <Card className="p-4"><Radio className="mb-3 size-5 text-primary" /><p className="text-xs uppercase tracking-wider text-muted-foreground">Discovery</p><p className="mt-1 text-sm">{diagnostics?.discovery_status ?? 'Checking'}</p></Card>
-          <Card className="p-4"><ShieldCheck className="mb-3 size-5 text-primary" /><p className="text-xs uppercase tracking-wider text-muted-foreground">Pairing</p><p className="mt-1 text-sm">{diagnostics?.pairing_status ?? 'Checking'}</p></Card>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2">{diagnostics?.checks.map((check) => <Card key={check.name} className="flex items-start gap-3 p-4"><span className={`mt-1 size-2 shrink-0 rounded-full ${check.status === 'pass' ? 'bg-green-500' : check.status === 'fail' ? 'bg-red-500' : 'bg-amber-500'}`} /><div><p className="font-medium">{check.name}</p><p className="mt-1 text-sm text-muted-foreground">{check.detail}</p></div></Card>)}</div>
         <div className="mt-4 space-y-2">{diagnostics?.hints.map((hint) => <div key={hint} className="rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">{hint}</div>)}</div>

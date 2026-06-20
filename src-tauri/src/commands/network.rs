@@ -163,31 +163,6 @@ pub async fn get_network_diagnostics(
             status: if peer_count > 0 || identity.role == DeviceRole::Controller { "pass" } else { "warning" }.to_string(),
             detail: if peer_count > 0 { format!("{peer_count} controller service(s) visible") } else if identity.role == DeviceRole::Controller { "Controller advertisement is enabled".to_string() } else { "No controller advertisement is visible".to_string() },
         },
-        DiagnosticCheck {
-            name: "Authentication".to_string(),
-            status: if identity.role == DeviceRole::Controller || identity.auth_token.is_some() { "pass" } else { "warning" }.to_string(),
-            detail: if identity.role == DeviceRole::Controller { "Controller approves one-time pairing codes".to_string() } else if identity.auth_token.is_some() { "Player has a scoped device token".to_string() } else { "Player has not completed pairing".to_string() },
-        },
-        DiagnosticCheck {
-            name: "Asset download".to_string(),
-            status: if identity.role == DeviceRole::Controller || last_sync.is_some() { "pass" } else { "warning" }.to_string(),
-            detail: if identity.role == DeviceRole::Controller {
-                "Assets are checksum-addressed before publication".to_string()
-            } else if last_sync.is_some() {
-                "At least one checksum-verified sync completed".to_string()
-            } else {
-                "No checksum-verified asset sync has completed yet".to_string()
-            },
-        },
-        DiagnosticCheck {
-            name: "Revision application".to_string(),
-            status: if identity.role == DeviceRole::Controller || last_sync.is_some() { "pass" } else { "warning" }.to_string(),
-            detail: if let Some(last_sync) = last_sync.as_deref() {
-                format!("Revision {} last applied at {last_sync}", identity.current_revision)
-            } else {
-                format!("Current local revision: {}", identity.current_revision)
-            },
-        },
     ];
     if let Some(controller) = identity.controller_url.as_deref() {
         let health_url = format!("{}/v1/health", controller.trim_end_matches('/'));
