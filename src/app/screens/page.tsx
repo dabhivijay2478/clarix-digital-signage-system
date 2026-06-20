@@ -537,19 +537,6 @@ export default function ScreensPage() {
               ✎ Settings
             </button>
             <button
-              className="btn btn-secondary"
-              onClick={() => {
-                const playerUrl = `${getBrowserControllerOrigin()}/player?screenId=${encodeURIComponent(selectedScreen.id)}`;
-                localStorage.setItem('clarix_player_screen_id', selectedScreen.id);
-                const opened = window.open(playerUrl, 'clarix-player', 'popup,width=1280,height=720');
-                if (!opened) {
-                  window.location.href = playerUrl;
-                }
-              }}
-            >
-              🔗 Launch Player
-            </button>
-            <button
               className="btn btn-primary"
               disabled={isSyncing}
               onClick={() => handleForceSync(selectedScreen.id)}
