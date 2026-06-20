@@ -150,7 +150,13 @@ export function createWidget(table: ProductionTable, type: ProductionWidget['cha
   const sourceKey = date?.key ?? firstText?.key ?? table.columns[0]?.key ?? null
   const series = numeric.slice(0, 3).map((column) => column.key)
   return {
-    id: crypto.randomUUID(),
+    id: typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+          const r = (Math.random() * 16) | 0
+          const v = c === 'x' ? r : (r & 0x3) | 0x8
+          return v.toString(16)
+        }),
     title: type === 'kpi-table' ? `${table.name} Table` : `${table.name} Chart`,
     widget_type: type === 'kpi-table' ? 'table' : 'chart',
     chart_type: type,

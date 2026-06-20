@@ -58,9 +58,13 @@ export function previewTruckStatusUpdate(truck: Truck, field: TruckStatusField, 
 
 export function createTruckScreenAlert(truck: Truck, changedAt = new Date().toISOString()): TruckScreenAlert {
   const status = getTruckStatusInfo(truck);
-  const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+  const id = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
-    : `${truck.id}-${Date.now()}`;
+    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0
+        const v = c === 'x' ? r : (r & 0x3) | 0x8
+        return v.toString(16)
+      });
 
   return {
     id,
