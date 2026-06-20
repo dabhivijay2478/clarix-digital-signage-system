@@ -72,6 +72,25 @@ pub fn init_db(app_data_dir: &str) -> Result<DbPool> {
         )?;
     }
 
+    let screen_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM screens",
+        [],
+        |row| row.get(0),
+    )?;
+    if screen_count == 0 {
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT INTO screens (id, name, location, resolution_w, resolution_h, brightness, power_on, orientation, created_at, pairing_status)
+             VALUES ('d4-gate-screen', 'D4 Gate Screen', 'Gate D4', 1920, 1080, 80, 1, 'Landscape', ?1, 'unpaired')",
+            rusqlite::params![now],
+        )?;
+        conn.execute(
+            "INSERT INTO screens (id, name, location, resolution_w, resolution_h, brightness, power_on, orientation, created_at, pairing_status)
+             VALUES ('d5-gate-screen', 'D5 Gate Screen', 'Gate D5', 1920, 1080, 80, 1, 'Landscape', ?1, 'unpaired')",
+            rusqlite::params![now],
+        )?;
+    }
+
     // Reset stale ports left by old port-scanning fallback logic.
     // The canonical default is 7420; runtime overrides use CLARIX_PORT or SIGNALOS_PORT env var.
     let _ = conn.execute(

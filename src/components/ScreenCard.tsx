@@ -23,7 +23,6 @@ function ScreenCard({ screen, onDelete, onEdit, onSync, onManage, isSyncing = fa
       <CardHeader className="relative p-6 pb-2">
         <div className="absolute right-4 top-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200" onClick={(event) => event.stopPropagation()}>
           {onEdit && <Button aria-label="Edit screen" variant="ghost" size="icon-sm" onClick={() => onEdit(screen)}><Pencil /></Button>}
-          <Button aria-label="Delete screen" variant="ghost" size="icon-sm" className="hover:text-destructive" onClick={() => onDelete(screen.id)}><Trash2 /></Button>
         </div>
         <CardTitle className="pr-20 text-base">{screen.name}</CardTitle>
         <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">

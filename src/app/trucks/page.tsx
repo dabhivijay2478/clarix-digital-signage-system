@@ -164,6 +164,7 @@ export default function TrucksPage() {
   } = useTrucks()
 
   const [search, setSearch] = useState('')
+  const [activeTab, setActiveTab] = useState<'all' | 'd4' | 'd5' | 'manual'>('all')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // ── Modal states ────────────────────────────────────────────────────────
@@ -257,6 +258,17 @@ export default function TrucksPage() {
 
     try {
       await truckAlertsApi.publish(createTruckScreenAlert(preview))
+
+      // Trigger a force sync on all paired screens by default
+      const { screensApi, localNetworkApi } = await import('@/lib/tauri')
+      const screens = await screensApi.getAll()
+      for (const screen of screens) {
+        if (screen.pairing_status === 'paired') {
+          await localNetworkApi.forceSyncScreen(screen.id).catch((err) =>
+            console.warn(`Failed to force sync screen ${screen.id}:`, err)
+          )
+        }
+      }
     } catch (error) {
       console.warn('Failed to publish truck alert:', error)
     }
@@ -318,11 +330,16 @@ export default function TrucksPage() {
 
   // ── Filtered data ───────────────────────────────────────────────────────
 
-  const filteredTrucks = trucks.filter(
-    (t) =>
-      t.registration_number.toLowerCase().includes(search.toLowerCase()) ||
-      (t.gate_no ?? '').toLowerCase().includes(search.toLowerCase())
-  )
+  const filteredTrucks = trucks.filter((t) => {
+    const matchesSearch = t.registration_number.toLowerCase().includes(search.toLowerCase()) ||
+                         (t.gate_no ?? '').toLowerCase().includes(search.toLowerCase())
+    if (!matchesSearch) return false
+
+    if (activeTab === 'd4') return t.gate_no === 'd4'
+    if (activeTab === 'd5') return t.gate_no === 'd5'
+    if (activeTab === 'manual') return !t.gate_no
+    return true
+  })
 
   // ── Truck Form Modal Body ───────────────────────────────────────────────
 
@@ -412,6 +429,25 @@ export default function TrucksPage() {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex border-b border-border">
+        {(['all', 'd4', 'd5', 'manual'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer ${
+              activeTab === tab
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {tab === 'all' ? 'All Trucks' :
+             tab === 'd4' ? 'Gate D4' :
+             tab === 'd5' ? 'Gate D5' : 'Manual Entry'}
+          </button>
+        ))}
       </div>
 
       {/* Action bar */}

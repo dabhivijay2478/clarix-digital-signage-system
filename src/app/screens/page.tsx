@@ -1018,15 +1018,6 @@ export default function ScreensPage() {
               />
             </div>
             <div>
-              <label className="input-label">Location</label>
-              <input
-                className="input"
-                placeholder="e.g., Building A, Floor 1"
-                value={editFormLocation}
-                onChange={(e) => setEditFormLocation(e.target.value)}
-              />
-            </div>
-            <div>
               <label className="input-label">IP Address (optional)</label>
               <input
                 className="input"
@@ -1034,42 +1025,6 @@ export default function ScreensPage() {
                 value={editFormIp}
                 onChange={(e) => setEditFormIp(e.target.value)}
               />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
-              <div>
-                <label className="input-label">Orientation</label>
-                <select
-                  className="input"
-                  value={editFormOrientation}
-                  onChange={(e) => setEditFormOrientation(e.target.value)}
-                  style={{ background: 'var(--bg-tertiary)', color: 'var(--foreground)', border: '1px solid var(--border)' }}
-                >
-                  <option value="Landscape" style={{ background: 'var(--bg-primary)' }}>Landscape</option>
-                  <option value="Portrait" style={{ background: 'var(--bg-primary)' }}>Portrait</option>
-                  <option value="LandscapeFlipped" style={{ background: 'var(--bg-primary)' }}>Landscape Flipped</option>
-                  <option value="PortraitFlipped" style={{ background: 'var(--bg-primary)' }}>Portrait Flipped</option>
-                </select>
-              </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                <label className="input-label">Width Resolution (px)</label>
-                <input
-                  className="input"
-                  type="number"
-                  value={editFormWidth}
-                  onChange={(e) => setEditFormWidth(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="input-label">Height Resolution (px)</label>
-                <input
-                  className="input"
-                  type="number"
-                  value={editFormHeight}
-                  onChange={(e) => setEditFormHeight(e.target.value)}
-                />
-              </div>
             </div>
           </div>
         </Modal>
@@ -1190,7 +1145,6 @@ export default function ScreensPage() {
             {screens.length} screen{screens.length !== 1 ? 's' : ''} registered
           </p>
         </div>
-        <Button className="w-full sm:w-auto" onClick={() => setShowAdd(true)}><Plus />Add Screen</Button>
       </div>
 
       {loading ? (
@@ -1200,8 +1154,7 @@ export default function ScreensPage() {
           <CardContent className="flex min-h-80 flex-col items-center justify-center px-6 py-16 text-center">
             <div className="mb-5 flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Monitor className="size-6" /></div>
             <CardTitle>No screens yet</CardTitle>
-            <CardDescription className="mt-2 max-w-md">Add your first display to start managing playback, schedules, and screen health.</CardDescription>
-            <Button className="mt-6" onClick={() => setShowAdd(true)}><Plus />Add Screen</Button>
+            <CardDescription className="mt-2 max-w-md">The pre-configured gate screens will appear here.</CardDescription>
           </CardContent>
         </Card>
       ) : (
@@ -1222,82 +1175,6 @@ export default function ScreensPage() {
           })}
         </div>
       )}
-
-      {/* Add Screen Modal */}
-      <Modal
-        isOpen={showAdd}
-        onClose={() => setShowAdd(false)}
-        title="Add Screen"
-        actions={
-          <>
-            <Button variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
-            <Button onClick={handleAdd}>Add Screen</Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="screen-name">Screen Name *</Label>
-            <Input
-              id="screen-name"
-              placeholder="e.g., Lobby Display"
-              value={formName}
-              onChange={(e) => setFormName(e.target.value)}
-              autoFocus
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="screen-location">Location</Label>
-            <Input
-              id="screen-location"
-              placeholder="e.g., Building A, Floor 1"
-              value={formLocation}
-              onChange={(e) => setFormLocation(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="screen-ip">IP Address (optional)</Label>
-            <Input
-              id="screen-ip"
-              placeholder="e.g., 192.168.1.100"
-              value={formIp}
-              onChange={(e) => setFormIp(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="screen-orientation">Orientation</Label>
-            <Select value={formOrientation} onValueChange={setFormOrientation}>
-              <SelectTrigger id="screen-orientation" className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Landscape">Landscape</SelectItem>
-                <SelectItem value="Portrait">Portrait</SelectItem>
-                <SelectItem value="LandscapeFlipped">Landscape Flipped</SelectItem>
-                <SelectItem value="PortraitFlipped">Portrait Flipped</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="screen-width">Width Resolution (px)</Label>
-              <Input
-                id="screen-width"
-                type="number"
-                value={formWidth}
-                onChange={(e) => setFormWidth(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="screen-height">Height Resolution (px)</Label>
-              <Input
-                id="screen-height"
-                type="number"
-                value={formHeight}
-                onChange={(e) => setFormHeight(e.target.value)}
-              />
-            </div>
-          </div>
-        </div>
-      </Modal>
 
       {/* Edit Screen Modal */}
       <Modal
@@ -1327,15 +1204,6 @@ export default function ScreensPage() {
             />
           </div>
           <div>
-            <label className="input-label">Location</label>
-            <input
-              className="input"
-              placeholder="e.g., Building A, Floor 1"
-              value={editFormLocation}
-              onChange={(e) => setEditFormLocation(e.target.value)}
-            />
-          </div>
-          <div>
             <label className="input-label">IP Address (optional)</label>
             <input
               className="input"
@@ -1343,42 +1211,6 @@ export default function ScreensPage() {
               value={editFormIp}
               onChange={(e) => setEditFormIp(e.target.value)}
             />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
-            <div>
-              <label className="input-label">Orientation</label>
-              <select
-                className="input"
-                value={editFormOrientation}
-                onChange={(e) => setEditFormOrientation(e.target.value)}
-                style={{ background: 'var(--bg-tertiary)', color: 'var(--foreground)', border: '1px solid var(--border)' }}
-              >
-                <option value="Landscape" style={{ background: 'var(--bg-primary)' }}>Landscape</option>
-                <option value="Portrait" style={{ background: 'var(--bg-primary)' }}>Portrait</option>
-                <option value="LandscapeFlipped" style={{ background: 'var(--bg-primary)' }}>Landscape Flipped</option>
-                <option value="PortraitFlipped" style={{ background: 'var(--bg-primary)' }}>Portrait Flipped</option>
-              </select>
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label className="input-label">Width Resolution (px)</label>
-              <input
-                className="input"
-                type="number"
-                value={editFormWidth}
-                onChange={(e) => setEditFormWidth(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="input-label">Height Resolution (px)</label>
-              <input
-                className="input"
-                type="number"
-                value={editFormHeight}
-                onChange={(e) => setEditFormHeight(e.target.value)}
-              />
-            </div>
           </div>
         </div>
       </Modal>
