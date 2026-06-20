@@ -3,9 +3,8 @@ import type { Truck, TruckScreenAlert, TruckStatus } from './types';
 export type TruckStatusField = 'is_waiting' | 'is_loading' | 'is_in' | 'is_out';
 
 export function getTruckStatusInfo(truck: Truck): { status: TruckStatus; status_label: string } {
-  if (truck.is_out) return { status: 'out', status_label: 'Gate Out' };
-  if (truck.is_in) return { status: 'in', status_label: 'Gate In' };
-  if (truck.is_loading) return { status: 'loading', status_label: 'Loading' };
+  if (truck.is_out) return { status: 'out', status_label: 'Loading Out.' };
+  if (truck.is_loading || truck.is_in) return { status: 'loading', status_label: 'Loading in.' };
   if (truck.is_waiting) return { status: 'waiting', status_label: 'Waiting' };
   return { status: 'registered', status_label: 'Registered' };
 }
@@ -14,15 +13,25 @@ export function previewTruckStatusUpdate(truck: Truck, field: TruckStatusField, 
   const time = new Date().toISOString();
   const updated: Truck = { ...truck, [field]: value };
 
+  if (field === 'is_loading') {
+    updated.is_in = value;
+  } else if (field === 'is_in') {
+    updated.is_loading = value;
+  }
+
   if (value) {
     if (field === 'is_waiting') updated.waiting_at = time;
-    if (field === 'is_loading') updated.loading_at = time;
-    if (field === 'is_in') updated.in_at = time;
+    if (field === 'is_loading' || field === 'is_in') {
+      updated.loading_at = time;
+      updated.in_at = time;
+    }
     if (field === 'is_out') updated.out_at = time;
   } else {
     if (field === 'is_waiting') updated.waiting_at = null;
-    if (field === 'is_loading') updated.loading_at = null;
-    if (field === 'is_in') updated.in_at = null;
+    if (field === 'is_loading' || field === 'is_in') {
+      updated.loading_at = null;
+      updated.in_at = null;
+    }
     if (field === 'is_out') updated.out_at = null;
   }
 
@@ -34,12 +43,11 @@ export function previewTruckStatusUpdate(truck: Truck, field: TruckStatusField, 
       updated.in_at = null;
       updated.is_out = false;
       updated.out_at = null;
-    } else if (field === 'is_loading') {
+    } else if (field === 'is_loading' || field === 'is_in') {
+      updated.is_loading = false;
+      updated.loading_at = null;
       updated.is_in = false;
       updated.in_at = null;
-      updated.is_out = false;
-      updated.out_at = null;
-    } else if (field === 'is_in') {
       updated.is_out = false;
       updated.out_at = null;
     }

@@ -90,17 +90,27 @@ export const useTruckStore = create<TruckStore>()(
 
             const updated = { ...t, [field]: value }
 
+            if (field === 'is_loading') {
+              updated.is_in = value
+            } else if (field === 'is_in') {
+              updated.is_loading = value
+            }
+
             // Update timestamps based on the value changed
             const time = now()
             if (value) {
               if (field === 'is_waiting') updated.waiting_at = time
-              else if (field === 'is_loading') updated.loading_at = time
-              else if (field === 'is_in') updated.in_at = time
+              else if (field === 'is_loading' || field === 'is_in') {
+                updated.loading_at = time
+                updated.in_at = time
+              }
               else if (field === 'is_out') updated.out_at = time
             } else {
               if (field === 'is_waiting') updated.waiting_at = null
-              else if (field === 'is_loading') updated.loading_at = null
-              else if (field === 'is_in') updated.in_at = null
+              else if (field === 'is_loading' || field === 'is_in') {
+                updated.loading_at = null
+                updated.in_at = null
+              }
               else if (field === 'is_out') updated.out_at = null
             }
 
@@ -113,12 +123,11 @@ export const useTruckStore = create<TruckStore>()(
                 updated.in_at = null
                 updated.is_out = false
                 updated.out_at = null
-              } else if (field === 'is_loading') {
+              } else if (field === 'is_loading' || field === 'is_in') {
+                updated.is_loading = false
+                updated.loading_at = null
                 updated.is_in = false
                 updated.in_at = null
-                updated.is_out = false
-                updated.out_at = null
-              } else if (field === 'is_in') {
                 updated.is_out = false
                 updated.out_at = null
               }

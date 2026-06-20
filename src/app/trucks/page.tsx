@@ -517,9 +517,8 @@ export default function TrucksPage() {
                   <TableHead className="text-center">Up/Down</TableHead>
                   <TableHead>Gate No</TableHead>
                   <TableHead className="text-center">Waiting</TableHead>
-                  <TableHead className="text-center">Loading</TableHead>
-                  <TableHead className="text-center">In</TableHead>
-                  <TableHead className="text-center">Out</TableHead>
+                  <TableHead className="text-center">Loading In</TableHead>
+                  <TableHead className="text-center">Loading Out</TableHead>
                   <TableHead className="w-[120px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -527,14 +526,12 @@ export default function TrucksPage() {
                 {filteredTrucks.map((truck, index) => {
                   // Sequential enable logic: each step requires the previous step to be checked
                   const canLoading = truck.is_waiting === true
-                  const canIn = truck.is_loading === true
-                  const canOut = truck.is_in === true
+                  const canOut = truck.is_loading === true
 
                   const getStatusColor = (status: string) => {
                     switch (status) {
-                      case 'Gate Out': return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
-                      case 'Gate In': return 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20'
-                      case 'Loading': return 'bg-blue-500/10 text-blue-600 border-blue-500/20'
+                      case 'Loading Out.': return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+                      case 'Loading in.': return 'bg-blue-500/10 text-blue-600 border-blue-500/20'
                       case 'Waiting': return 'bg-amber-500/10 text-amber-600 border-amber-500/20'
                       default: return 'bg-muted text-muted-foreground'
                     }
@@ -608,7 +605,7 @@ export default function TrucksPage() {
                           onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_waiting', checked === true)}
                         />
                       </TableCell>
-                      {/* Step 2: Loading — enabled only after Waiting is checked */}
+                      {/* Step 2: Loading In — enabled only after Waiting is checked */}
                       <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           checked={truck.is_loading ?? false}
@@ -616,15 +613,7 @@ export default function TrucksPage() {
                           onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_loading', checked === true)}
                         />
                       </TableCell>
-                      {/* Step 3: In — enabled only after Loading is checked */}
-                      <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                        <Checkbox
-                          checked={truck.is_in ?? false}
-                          disabled={!canIn}
-                          onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_in', checked === true)}
-                        />
-                      </TableCell>
-                      {/* Step 4: Out — enabled only after In is checked */}
+                      {/* Step 3: Loading Out — enabled only after Loading In is checked */}
                       <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           checked={truck.is_out ?? false}
@@ -748,7 +737,7 @@ export default function TrucksPage() {
                   </div>
                 </div>
 
-                {/* Step 2: Loading */}
+                {/* Step 2: Loading In */}
                 <div className="relative">
                   <div className={`absolute left-[-31px] top-0.5 flex size-5 items-center justify-center rounded-full border text-[10px] font-bold ${
                     selectedTruckForDetails.is_loading 
@@ -758,11 +747,11 @@ export default function TrucksPage() {
                     2
                   </div>
                   <div>
-                    <h5 className="font-medium text-sm">Loading</h5>
+                    <h5 className="font-medium text-sm">Loading In</h5>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {selectedTruckForDetails.loading_at ? (
                         <>
-                          Started Loading at:{' '}
+                          Started Loading In at:{' '}
                           <span className="font-medium text-foreground">
                             {new Date(selectedTruckForDetails.loading_at).toLocaleString()}
                           </span>
@@ -774,47 +763,21 @@ export default function TrucksPage() {
                   </div>
                 </div>
 
-                {/* Step 3: In */}
-                <div className="relative">
-                  <div className={`absolute left-[-31px] top-0.5 flex size-5 items-center justify-center rounded-full border text-[10px] font-bold ${
-                    selectedTruckForDetails.is_in 
-                      ? 'bg-indigo-500 border-indigo-500 text-white' 
-                      : 'bg-muted border-muted-foreground/30 text-muted-foreground'
-                  }`}>
-                    3
-                  </div>
-                  <div>
-                    <h5 className="font-medium text-sm">Gate In</h5>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {selectedTruckForDetails.in_at ? (
-                        <>
-                          Checked In at:{' '}
-                          <span className="font-medium text-foreground">
-                            {new Date(selectedTruckForDetails.in_at).toLocaleString()}
-                          </span>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground/60 italic">Not reached yet</span>
-                      )}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Step 4: Out */}
+                {/* Step 3: Loading Out */}
                 <div className="relative">
                   <div className={`absolute left-[-31px] top-0.5 flex size-5 items-center justify-center rounded-full border text-[10px] font-bold ${
                     selectedTruckForDetails.is_out 
                       ? 'bg-emerald-500 border-emerald-500 text-white' 
                       : 'bg-muted border-muted-foreground/30 text-muted-foreground'
                   }`}>
-                    4
+                    3
                   </div>
                   <div>
-                    <h5 className="font-medium text-sm">Gate Out</h5>
+                    <h5 className="font-medium text-sm">Loading Out</h5>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {selectedTruckForDetails.out_at ? (
                         <>
-                          Checked Out at:{' '}
+                          Dispatched / Loading Out at:{' '}
                           <span className="font-medium text-foreground">
                             {new Date(selectedTruckForDetails.out_at).toLocaleString()}
                           </span>

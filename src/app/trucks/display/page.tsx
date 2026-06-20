@@ -32,9 +32,9 @@ function GateDisplayContent() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'Gate In':
+      case 'Loading Out.':
         return 'from-emerald-500 to-teal-600 text-white shadow-emerald-500/20'
-      case 'Loading':
+      case 'Loading in.':
         return 'from-cyan-500 to-blue-600 text-white shadow-cyan-500/20'
       case 'Waiting':
         return 'from-amber-500 to-orange-600 text-white shadow-amber-500/20'
@@ -48,60 +48,47 @@ function GateDisplayContent() {
 
   return (
     <div 
-      className="fixed inset-0 flex flex-col justify-between bg-black text-white p-12 select-none font-sans"
+      className="fixed inset-0 flex flex-col justify-between bg-black text-white p-6 select-none font-sans"
       style={{
         backgroundImage: 'radial-gradient(circle at center, #0B0F19 0%, #030406 100%)',
       }}
     >
-      {/* Header with pulsing status dot */}
-      <div className="flex items-center justify-between border-b border-white/5 pb-8">
-        <div className="flex items-center gap-4">
-          <div className="h-4 w-4 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_15px_#10b981]" />
-          <h1 className="text-3xl font-black tracking-widest text-white/90 uppercase">
-            GATE {gate.toUpperCase()} DISPLAY
-          </h1>
-        </div>
-        <div className="text-xl font-mono font-medium text-white/40">
-          Live Feed Queue
-        </div>
-      </div>
-
-      {/* Main Grid: Active vs Next */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 my-auto items-stretch">
+      {/* Main Flex Stack: Active on top, Next on bottom */}
+      <div className="flex flex-col gap-6 flex-1 w-full justify-stretch h-full">
         
         {/* Active Truck Column */}
         <div 
-          className="flex flex-col justify-between p-12 rounded-[2.5rem] border border-white/5 bg-zinc-950/20 backdrop-blur-3xl relative overflow-hidden"
+          className="flex-1 flex flex-col justify-between p-8 md:p-10 rounded-4xl border border-white/5 bg-zinc-950/20 backdrop-blur-3xl relative overflow-hidden"
           style={{
-            boxShadow: activeTruck ? '0 30px 100px rgba(6, 182, 212, 0.08)' : 'none',
+            boxShadow: activeTruck ? '0 20px 80px rgba(6, 182, 212, 0.08)' : 'none',
           }}
         >
           {activeTruck && (
             <div className="absolute top-0 right-0 h-40 w-40 rounded-full bg-cyan-500/5 blur-[50px] pointer-events-none" />
           )}
           <div>
-            <span className="text-sm font-bold tracking-[0.3em] uppercase text-white/30 block mb-6">
-              CURRENT TRUCK
+            <span className="text-sm font-bold tracking-[0.3em] uppercase text-white/30 block mb-3">
+              CURRENT TRUCK (LOADING)
             </span>
             {activeTruck ? (
-              <h2 className="text-6xl md:text-8xl font-black font-mono tracking-tight text-white leading-none break-all">
+              <h2 className="text-7xl md:text-9xl font-black font-mono tracking-tight text-white leading-none break-all">
                 {activeTruck.registration_number.toUpperCase()}
               </h2>
             ) : (
-              <h2 className="text-5xl font-black tracking-tight text-zinc-700 leading-none">
+              <h2 className="text-4xl md:text-6xl font-black tracking-tight text-zinc-700 leading-none">
                 NO ACTIVE VEHICLE
               </h2>
             )}
           </div>
 
-          <div className="mt-12">
+          <div className="mt-4">
             {activeTruck ? (
               <span className={`inline-flex items-center justify-center px-8 py-3 rounded-full text-2xl font-black uppercase tracking-wider bg-linear-to-r shadow-lg ${getStatusColor(activeStatusLabel)}`}>
                 {activeStatusLabel}
               </span>
             ) : (
               <span className="inline-flex items-center justify-center px-8 py-3 rounded-full text-xl font-bold uppercase tracking-wider bg-zinc-900 border border-white/5 text-zinc-500">
-                Awaiting Gate In
+                Awaiting Loading In
               </span>
             )}
           </div>
@@ -109,30 +96,30 @@ function GateDisplayContent() {
 
         {/* Next Truck Column */}
         <div 
-          className="flex flex-col justify-between p-12 rounded-[2.5rem] border border-white/5 bg-zinc-950/20 backdrop-blur-3xl relative overflow-hidden"
+          className="flex-1 flex flex-col justify-between p-8 md:p-10 rounded-4xl border border-white/5 bg-zinc-950/20 backdrop-blur-3xl relative overflow-hidden"
           style={{
-            boxShadow: nextTruck ? '0 30px 100px rgba(245, 158, 11, 0.05)' : 'none',
+            boxShadow: nextTruck ? '0 20px 80px rgba(245, 158, 11, 0.05)' : 'none',
           }}
         >
           {nextTruck && (
             <div className="absolute top-0 right-0 h-40 w-40 rounded-full bg-amber-500/5 blur-[50px] pointer-events-none" />
           )}
           <div>
-            <span className="text-sm font-bold tracking-[0.3em] uppercase text-white/30 block mb-6">
-              NEXT VEHICLE
+            <span className="text-sm font-bold tracking-[0.3em] uppercase text-white/30 block mb-3">
+              NEXT VEHICLE (WAITING)
             </span>
             {nextTruck ? (
-              <h2 className="text-6xl md:text-8xl font-black font-mono tracking-tight text-white/90 leading-none break-all">
+              <h2 className="text-7xl md:text-9xl font-black font-mono tracking-tight text-white/90 leading-none break-all">
                 {nextTruck.registration_number.toUpperCase()}
               </h2>
             ) : (
-              <h2 className="text-5xl font-black tracking-tight text-zinc-700 leading-none">
+              <h2 className="text-4xl md:text-6xl font-black tracking-tight text-zinc-700 leading-none">
                 NO VEHICLE WAITING
               </h2>
             )}
           </div>
 
-          <div className="mt-12">
+          <div className="mt-4">
             {nextTruck ? (
               <span className={`inline-flex items-center justify-center px-8 py-3 rounded-full text-2xl font-black uppercase tracking-wider bg-linear-to-r shadow-lg ${getStatusColor(nextStatusLabel)}`}>
                 {nextStatusLabel}
@@ -145,12 +132,6 @@ function GateDisplayContent() {
           </div>
         </div>
 
-      </div>
-
-      {/* Footer System Info */}
-      <div className="flex items-center justify-between border-t border-white/5 pt-8 text-xs font-mono text-white/20">
-        <span>GATE MONITORING UNIT</span>
-        <span>SYSTEM ONLINE</span>
       </div>
     </div>
   )
