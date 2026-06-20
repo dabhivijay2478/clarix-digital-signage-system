@@ -351,6 +351,8 @@ export default function TrucksPage() {
   // ── Filtered data ───────────────────────────────────────────────────────
 
   const filteredTrucks = trucks.filter((t) => {
+    if (t.is_out) return false
+
     const matchesSearch = t.registration_number.toLowerCase().includes(search.toLowerCase()) ||
                          (t.gate_no ?? '').toLowerCase().includes(search.toLowerCase())
     if (!matchesSearch) return false
@@ -416,7 +418,7 @@ export default function TrucksPage() {
           <CardContent className="flex items-center gap-4 p-5">
             <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-xl">🚛</div>
             <div>
-              <p className="text-2xl font-bold">{trucks.length}</p>
+              <p className="text-2xl font-bold">{trucks.filter(t => !t.is_out).length}</p>
               <p className="text-sm text-muted-foreground">Total Trucks</p>
             </div>
           </CardContent>
@@ -425,7 +427,7 @@ export default function TrucksPage() {
           <CardContent className="flex items-center gap-4 p-5">
             <div className="flex size-11 items-center justify-center rounded-xl bg-amber-500/10 text-xl">⏳</div>
             <div>
-              <p className="text-2xl font-bold">{trucks.filter(t => t.is_waiting).length}</p>
+              <p className="text-2xl font-bold">{trucks.filter(t => t.is_waiting && !t.is_out).length}</p>
               <p className="text-sm text-muted-foreground">Waiting</p>
             </div>
           </CardContent>
@@ -434,7 +436,7 @@ export default function TrucksPage() {
           <CardContent className="flex items-center gap-4 p-5">
             <div className="flex size-11 items-center justify-center rounded-xl bg-blue-500/10 text-xl">📦</div>
             <div>
-              <p className="text-2xl font-bold">{trucks.filter(t => t.is_loading).length}</p>
+              <p className="text-2xl font-bold">{trucks.filter(t => t.is_loading && !t.is_out).length}</p>
               <p className="text-sm text-muted-foreground">Loading</p>
             </div>
           </CardContent>

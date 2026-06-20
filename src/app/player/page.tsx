@@ -578,90 +578,85 @@ export default function PlayerPage() {
 
     return (
       <div 
-        className="fixed inset-0 z-100 flex flex-col justify-between bg-black text-white p-6 select-none font-sans"
+        className="fixed inset-0 z-100 grid grid-rows-2 gap-6 bg-black text-white p-6 select-none font-sans"
         style={{
           backgroundImage: 'radial-gradient(circle at center, #0B0F19 0%, #030406 100%)',
         }}
       >
-        {/* Main Flex Stack: Active on top, Next on bottom */}
-        <div className="flex flex-col gap-6 flex-1 w-full justify-stretch h-full">
-          
-          {/* Active Truck Column */}
-          <div 
-            className="flex-1 flex flex-col justify-between p-8 md:p-10 rounded-4xl border border-white/5 bg-zinc-950/20 backdrop-blur-3xl relative overflow-hidden"
-            style={{
-              boxShadow: activeTruckNum ? '0 20px 80px rgba(6, 182, 212, 0.08)' : 'none',
-            }}
-          >
-            {activeTruckNum && (
-              <div className="absolute top-0 right-0 h-40 w-40 rounded-full bg-cyan-500/5 blur-[50px] pointer-events-none" />
+        {/* Active Truck Row */}
+        <div 
+          className="flex flex-col justify-between p-8 md:p-10 rounded-4xl border border-white/5 bg-zinc-950/20 backdrop-blur-3xl relative overflow-hidden"
+          style={{
+            boxShadow: activeTruckNum ? '0 20px 80px rgba(6, 182, 212, 0.08)' : 'none',
+          }}
+        >
+          {activeTruckNum && (
+            <div className="absolute top-0 right-0 h-40 w-40 rounded-full bg-cyan-500/5 blur-[50px] pointer-events-none" />
+          )}
+          <div>
+            <span className="text-sm font-bold tracking-[0.3em] uppercase text-white/30 block mb-3">
+              CURRENT TRUCK (LOADING)
+            </span>
+            {activeTruckNum ? (
+              <h2 className="text-7xl md:text-9xl font-black font-mono tracking-tight text-white leading-none break-all">
+                {activeTruckNum.toUpperCase()}
+              </h2>
+            ) : (
+              <h2 className="text-4xl md:text-6xl font-black tracking-tight text-zinc-700 leading-none">
+                NO ACTIVE VEHICLE
+              </h2>
             )}
-            <div>
-              <span className="text-sm font-bold tracking-[0.3em] uppercase text-white/30 block mb-3">
-                CURRENT TRUCK (LOADING)
-              </span>
-              {activeTruckNum ? (
-                <h2 className="text-7xl md:text-9xl font-black font-mono tracking-tight text-white leading-none break-all">
-                  {activeTruckNum.toUpperCase()}
-                </h2>
-              ) : (
-                <h2 className="text-4xl md:text-6xl font-black tracking-tight text-zinc-700 leading-none">
-                  NO ACTIVE VEHICLE
-                </h2>
-              )}
-            </div>
-
-            <div className="mt-4">
-              {activeTruckNum ? (
-                <span className={`inline-flex items-center justify-center px-8 py-3 rounded-full text-2xl font-black uppercase tracking-wider bg-linear-to-r shadow-lg ${getStatusColor(activeTruckStatus)}`}>
-                  {activeTruckStatus}
-                </span>
-              ) : (
-                <span className="inline-flex items-center justify-center px-8 py-3 rounded-full text-xl font-bold uppercase tracking-wider bg-zinc-900 border border-white/5 text-zinc-500">
-                  Awaiting Loading In
-                </span>
-              )}
-            </div>
           </div>
 
-          {/* Next Truck Column */}
-          <div 
-            className="flex-1 flex flex-col justify-between p-8 md:p-10 rounded-4xl border border-white/5 bg-zinc-950/20 backdrop-blur-3xl relative overflow-hidden"
-            style={{
-              boxShadow: nextTruckNum ? '0 20px 80px rgba(245, 158, 11, 0.05)' : 'none',
-            }}
-          >
-            {nextTruckNum && (
-              <div className="absolute top-0 right-0 h-40 w-40 rounded-full bg-amber-500/5 blur-[50px] pointer-events-none" />
-            )}
-            <div>
-              <span className="text-sm font-bold tracking-[0.3em] uppercase text-white/30 block mb-3">
-                NEXT VEHICLE (WAITING)
+          <div className="mt-4">
+            {activeTruckNum ? (
+              <span className={`inline-flex items-center justify-center px-8 py-3 rounded-full text-2xl font-black uppercase tracking-wider bg-linear-to-r shadow-lg ${getStatusColor(activeTruckStatus)}`}>
+                {activeTruckStatus}
               </span>
-              {nextTruckNum ? (
-                <h2 className="text-7xl md:text-9xl font-black font-mono tracking-tight text-white/90 leading-none break-all">
-                  {nextTruckNum.toUpperCase()}
-                </h2>
-              ) : (
-                <h2 className="text-4xl md:text-6xl font-black tracking-tight text-zinc-700 leading-none">
-                  NO VEHICLE WAITING
-                </h2>
-              )}
-            </div>
+            ) : (
+              <span className="inline-flex items-center justify-center px-8 py-3 rounded-full text-xl font-bold uppercase tracking-wider bg-zinc-900 border border-white/5 text-zinc-500">
+                Awaiting Loading In
+              </span>
+            )}
+          </div>
+        </div>
 
-            <div className="mt-4">
-              {nextTruckNum ? (
-                <span className={`inline-flex items-center justify-center px-8 py-3 rounded-full text-2xl font-black uppercase tracking-wider bg-linear-to-r shadow-lg ${getStatusColor(nextTruckStatus)}`}>
-                  {nextTruckStatus}
-                </span>
-              ) : (
-                <span className="inline-flex items-center justify-center px-8 py-3 rounded-full text-xl font-bold uppercase tracking-wider bg-zinc-900 border border-white/5 text-zinc-500">
-                  Queue Empty
-                </span>
-              )}
-            </div>
+        {/* Next Truck Row */}
+        <div 
+          className="flex flex-col justify-between p-8 md:p-10 rounded-4xl border border-white/5 bg-zinc-950/20 backdrop-blur-3xl relative overflow-hidden"
+          style={{
+            boxShadow: nextTruckNum ? '0 20px 80px rgba(245, 158, 11, 0.05)' : 'none',
+          }}
+        >
+          {nextTruckNum && (
+            <div className="absolute top-0 right-0 h-40 w-40 rounded-full bg-amber-500/5 blur-[50px] pointer-events-none" />
+          )}
+          <div>
+            <span className="text-sm font-bold tracking-[0.3em] uppercase text-white/30 block mb-3">
+              NEXT VEHICLE (WAITING)
+            </span>
+            {nextTruckNum ? (
+              <h2 className="text-7xl md:text-9xl font-black font-mono tracking-tight text-white/90 leading-none break-all">
+                {nextTruckNum.toUpperCase()}
+              </h2>
+            ) : (
+              <h2 className="text-4xl md:text-6xl font-black tracking-tight text-zinc-700 leading-none">
+                NO VEHICLE WAITING
+              </h2>
+            )}
           </div>
 
+          <div className="mt-4">
+            {nextTruckNum ? (
+              <span className={`inline-flex items-center justify-center px-8 py-3 rounded-full text-2xl font-black uppercase tracking-wider bg-linear-to-r shadow-lg ${getStatusColor(nextTruckStatus)}`}>
+                {nextTruckStatus}
+              </span>
+            ) : (
+              <span className="inline-flex items-center justify-center px-8 py-3 rounded-full text-xl font-bold uppercase tracking-wider bg-zinc-900 border border-white/5 text-zinc-500">
+                Queue Empty
+              </span>
+            )}
+          </div>
         </div>
       </div>
     );
