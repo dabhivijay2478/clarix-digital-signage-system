@@ -2,15 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { MonitorPlay, Palette, Radio, RefreshCw, Server, Settings2, ShieldCheck, Upload, Wifi } from 'lucide-react'
+import { MonitorPlay, Radio, RefreshCw, Server, Settings2, ShieldCheck, Wifi } from 'lucide-react'
 import { SettingsRow, SettingsSection } from '@/components/SettingsSection'
 import { showToast } from '@/components/Toast'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { APP_VERSION } from '@/lib/constants'
 import { localNetworkApi, networkApi, screensApi } from '@/lib/tauri'
@@ -26,9 +24,6 @@ export default function SettingsPage() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
   const branding = useBrandingStore()
   const sidebar = useSidebarStore()
-  const [customAppName, setCustomAppName] = useState(branding.appName)
-  const [customAppIcon, setCustomAppIcon] = useState<string | null>(branding.appIcon)
-  const [customFavicon, setCustomFavicon] = useState<string | null>(branding.customFavicon)
   const [identity, setIdentity] = useState<DeviceIdentity | null>(null)
   const [diagnostics, setDiagnostics] = useState<ConnectionDiagnostic | null>(null)
   const [pairingRequests, setPairingRequests] = useState<PairingRequest[]>([])
@@ -37,8 +32,6 @@ export default function SettingsPage() {
   const [activePairing, setActivePairing] = useState<PairingRequest | null>(null)
   const [pairingSelections, setPairingSelections] = useState<Record<string, string>>({})
   const [discoveredControllers, setDiscoveredControllers] = useState<PeerScreen[]>([])
-  const [iconFileName, setIconFileName] = useState('')
-  const [faviconFileName, setFaviconFileName] = useState('')
 
   const loadNetworkState = useCallback(async () => {
     try {
@@ -67,35 +60,6 @@ export default function SettingsPage() {
     const interval = window.setInterval(loadNetworkState, 5000)
     return () => window.clearInterval(interval)
   }, [loadNetworkState])
-
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>, type: 'icon' | 'favicon') => {
-    const file = event.target.files?.[0]
-    if (!file) return
-    if (type === 'icon') {
-      setIconFileName(file.name)
-    } else {
-      setFaviconFileName(file.name)
-    }
-    const reader = new FileReader()
-    reader.onloadend = () => type === 'icon' ? setCustomAppIcon(reader.result as string) : setCustomFavicon(reader.result as string)
-    reader.readAsDataURL(file)
-  }
-
-  const handleSaveBranding = () => {
-    branding.save(customAppName, customAppIcon, customFavicon)
-    showToast('Branding preferences saved successfully', 'success')
-  }
-
-  const handleResetBranding = () => {
-    const defaultName = process.env.NEXT_PUBLIC_APP_NAME || 'Clarix'
-    setCustomAppName(defaultName)
-    setCustomAppIcon(null)
-    setCustomFavicon(null)
-    setIconFileName('')
-    setFaviconFileName('')
-    branding.save(defaultName, null, null)
-    showToast('Branding reset to system defaults', 'success')
-  }
 
   const handleModeChange = async (role: 'Controller' | 'Player') => {
     try {
@@ -137,7 +101,7 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6 lg:space-y-8">
-      <div className="page-header"><Badge variant="outline" className="mb-3 border-primary/20 bg-primary/5 text-primary"><Settings2 /> Workspace preferences</Badge><h1 className="page-title">Settings</h1><p className="page-subtitle">Tune the controller, branding, and network behavior.</p></div>
+      <div className="page-header"><Badge variant="outline" className="mb-3 border-primary/20 bg-primary/5 text-primary"><Settings2 /> Workspace preferences</Badge><h1 className="page-title">Settings</h1><p className="page-subtitle">Tune the controller and network behavior.</p></div>
 
       <SettingsSection className="overflow-hidden" title="Device Operation Mode" description="Choose one controller per site. Player devices connect outward and keep the last valid playlist offline.">
         <div className="grid gap-4 lg:grid-cols-2">
@@ -187,50 +151,6 @@ export default function SettingsPage() {
         <div className="mt-4 space-y-2">{diagnostics?.hints.map((hint) => <div key={hint} className="rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">{hint}</div>)}</div>
       </SettingsSection>
 
-      <SettingsSection className="overflow-hidden" title="Brand Customization" description="Customize the name, icon, and tab favicon of this management system.">
-        <div className="space-y-6">
-          <div className="flex items-center gap-3 text-sm text-muted-foreground"><Palette className="size-4 text-primary" />Branding updates appear throughout the desktop controller.</div>
-          <div className="space-y-2"><Label htmlFor="app-name">Custom App Name</Label><Input id="app-name" className="max-w-xl" value={customAppName} onChange={(event) => setCustomAppName(event.target.value)} /></div>
-          <div className="grid gap-4 md:grid-cols-2">
-            {(['icon', 'favicon'] as const).map((type) => {
-              const image = type === 'icon' ? customAppIcon : customFavicon
-              const fileName = type === 'icon' ? iconFileName : faviconFileName
-              return (
-                <div key={type} className="space-y-2">
-                  <Label htmlFor={`${type}-upload`}>{type === 'icon' ? 'App Icon' : 'Favicon'}</Label>
-                  <div className="flex min-w-0 items-center gap-3 rounded-xl border border-dashed border-border bg-muted/20 p-3">
-                    <Avatar className="size-12 shrink-0 rounded-xl border border-border bg-card">
-                      {image && <AvatarImage src={image} alt="" />}
-                      <AvatarFallback className="rounded-xl">{type === 'icon' ? 'S' : 'F'}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-                      <label
-                        htmlFor={`${type}-upload`}
-                        className="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-input bg-background px-3.5 text-xs font-semibold text-foreground shadow-xs transition-all hover:bg-muted active:scale-98"
-                      >
-                        <Upload className="size-3.5 text-muted-foreground" />
-                        Choose Image
-                      </label>
-                      <input
-                        id={`${type}-upload`}
-                        type="file"
-                        accept="image/*"
-                        className="sr-only"
-                        onChange={(event) => handleImageUpload(event, type)}
-                      />
-                      <span className="truncate text-xs text-muted-foreground">
-                        {fileName ? fileName : image ? 'Using custom image' : 'No file selected'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row"><Button onClick={handleSaveBranding}>Save Branding Preferences</Button><Button variant="outline" onClick={handleResetBranding}>Reset to Default</Button></div>
-        </div>
-      </SettingsSection>
-
       <div className="grid gap-6 xl:grid-cols-2">
         <SettingsSection title="General">
           <SettingsRow label="Auto-start on boot" description={`Launch ${branding.appName} automatically when the system starts`}><Switch checked={autoStart} onCheckedChange={setAutoStart} /></SettingsRow>
@@ -245,7 +165,7 @@ export default function SettingsPage() {
 
         <SettingsSection title="Local Network & Discovery" description="Discover the controller and sync players connected to the same Wi-Fi router.">
           <SettingsRow label="Controller Discovery" description={`Automatically find the ${branding.appName} controller on the same local network`}><Switch checked={discoveryEnabled} onCheckedChange={setDiscoveryEnabled} /></SettingsRow>
-          <SettingsRow label="Service Type" monoValue="_clarix._tcp.local." />
+          <SettingsRow label="Service Type" monoValue="_mgenterprise._tcp.local." />
           <SettingsRow label="Controller Port" monoValue={port || 'Player outbound only'} />
           <SettingsRow label="Device ID" monoValue={identity?.device_id ?? 'Loading'} />
           <SettingsRow label="Protocol" monoValue={identity?.protocol_version ?? '1'} />

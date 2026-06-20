@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { screensApi, playlistsApi, contentApi, scheduleApi, analyticsApi, localNetworkApi, customConfirm, getBrowserControllerOrigin } from '../../lib/tauri';
-import type { Screen, Playlist, ContentItem, ScheduleSlot, PlaylistItem } from '../../lib/types';
+import { screensApi, playlistsApi, contentApi, analyticsApi, localNetworkApi, customConfirm, getBrowserControllerOrigin } from '../../lib/tauri';
+import type { Screen, Playlist, ContentItem, PlaylistItem, TruckScreenAlert } from '../../lib/types';
+import { isPlaylistItemScheduleActive, isScreenWithinOperatingHours } from '../../lib/signage-schedule';
 import { showToast } from '../../components/Toast';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { useBrandingStore } from '../../store/ui';
@@ -23,17 +24,11 @@ function playlistPlaybackSignature(playlist: Playlist): string {
   });
 }
 
-function getLocalDateKey(date = new Date()): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
 export default function PlayerPage() {
   const router = useRouter();
   const branding = useBrandingStore();
-  const appName = branding.appName || 'Clarix';
+  const appName = branding.appName;
+  const appLogo = branding.appIcon;
   const [screenId, setScreenId] = useState<string | null>(null);
   const [screensList, setScreensList] = useState<Screen[]>([]);
   const [port, setPort] = useState<number>(7420);
@@ -107,7 +102,6 @@ export default function PlayerPage() {
   }, []);
 
   // Signage states
-  const [activeSlot, setActiveSlot] = useState<ScheduleSlot | null>(null);
   const [activePlaylist, setActivePlaylist] = useState<Playlist | null>(null);
   const [contentItems, setContentItems] = useState<ContentItem[]>([]);
   const [currentItemIndex, setCurrentItemIndex] = useState<number>(0);
@@ -117,12 +111,14 @@ export default function PlayerPage() {
   const [activeScreen, setActiveScreen] = useState<Screen | null>(null);
   const [isViewportLandscape, setIsViewportLandscape] = useState<boolean>(true);
   const [isScreenBlanked, setIsScreenBlanked] = useState<boolean>(false);
+  const [truckAlert, setTruckAlert] = useState<TruckScreenAlert | null>(null);
 
   // Time tracker for schedules
   const [currentTimeStr, setCurrentTimeStr] = useState<string>('');
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const playStartTimeRef = useRef<number>(0);
+  const truckAlertTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Detect physical viewport aspect ratio (landscape vs portrait)
   useEffect(() => {
@@ -236,13 +232,6 @@ export default function PlayerPage() {
     syncRemoteFullscreen();
   }, [activeScreen]);
 
-  // Helper to map weekday
-  const getAppWeekday = (): string => {
-    const day = new Date().getDay();
-    const map = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    return map[day];
-  };
-
   // Time formatting helper
   const getLocalTimeStr = (): string => {
     const now = new Date();
@@ -258,28 +247,10 @@ export default function PlayerPage() {
 
       if (activeScreen && activeScreen.operating_hours) {
         const oh = activeScreen.operating_hours;
-        if (oh.blank_when_not_in_use && oh.days) {
-          const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-          const todayIndex = new Date().getDay();
-          const todayName = weekdays[todayIndex];
-          const todayHours = oh.days[todayName];
-
-          if (todayHours) {
-            const now = new Date();
-            const nowMinutes = now.getHours() * 60 + now.getMinutes();
-
-            const parseToMinutes = (timeStr: string) => {
-              const parts = timeStr.split(':');
-              return (parseInt(parts[0]) || 0) * 60 + (parseInt(parts[1]) || 0);
-            };
-
-            const startMinutes = parseToMinutes(todayHours.start || '00:00');
-            const endMinutes = parseToMinutes(todayHours.end || '23:59');
-
-            if (nowMinutes < startMinutes || nowMinutes > endMinutes) {
-              setIsScreenBlanked(true);
-              return;
-            }
+        if (oh.blank_when_not_in_use) {
+          if (!isScreenWithinOperatingHours(oh, new Date())) {
+            setIsScreenBlanked(true);
+            return;
           }
         }
       }
@@ -300,45 +271,12 @@ export default function PlayerPage() {
       const currentScreen = screens.find((s) => s.id === screenId) || null;
       setActiveScreen(currentScreen);
 
-      const schedules = await scheduleApi.getAll();
       const playlists = await playlistsApi.getAll();
       const items = await contentApi.getAll();
       setContentItems(items);
 
-      // 2. Find active schedule slot for this screen covering today & current time
-      const now = new Date();
-      const nowHours = now.getHours();
-      const nowMinutes = now.getMinutes();
-      const nowSecs = nowHours * 3600 + nowMinutes * 60 + now.getSeconds();
-      const currentDay = getAppWeekday();
-
-      const candidates = schedules.filter((slot) => {
-        if (!slot.is_active) return false;
-        if (!slot.screen_ids.includes(screenId)) return false;
-        if (!slot.days_of_week.includes(currentDay as any)) return false;
-
-        // Parse slot start_time (format: "HH:MM:SS" or "HH:MM")
-        const timeParts = slot.start_time.split(':');
-        const startH = parseInt(timeParts[0] || '0', 10);
-        const startM = parseInt(timeParts[1] || '0', 10);
-        const startS = parseInt(timeParts[2] || '0', 10);
-        const startSecs = startH * 3600 + startM * 60 + startS;
-
-        const endSecs = startSecs + slot.duration_mins * 60;
-
-        return nowSecs >= startSecs && nowSecs < endSecs;
-      });
-
-      // Sort by priority descending
-      candidates.sort((a, b) => b.priority - a.priority);
-      const matchedSlot = candidates[0] || null;
-
-      setActiveSlot(matchedSlot);
-
       let playlistToPlay: Playlist | null = null;
-      if (matchedSlot) {
-        playlistToPlay = playlists.find((p) => p.id === matchedSlot.playlist_id) || null;
-      } else if (currentScreen && currentScreen.playlist_id) {
+      if (currentScreen && currentScreen.playlist_id) {
         playlistToPlay = playlists.find((p) => p.id === currentScreen.playlist_id) || null;
       }
 
@@ -403,44 +341,38 @@ export default function PlayerPage() {
     return () => events.close();
   }, [screenId, resolveActiveSignage]);
 
+  // Transient truck status alerts are pushed by the controller and overlay playback.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.location.protocol.startsWith('http')) return;
+    const events = new EventSource(`${getBrowserControllerOrigin()}/v1/browser/truck-alerts`);
+    events.addEventListener('truck-alert', (event) => {
+      try {
+        const alert = JSON.parse((event as MessageEvent).data) as TruckScreenAlert;
+        setTruckAlert(alert);
+        if (truckAlertTimeoutRef.current) {
+          clearTimeout(truckAlertTimeoutRef.current);
+        }
+        truckAlertTimeoutRef.current = setTimeout(() => {
+          setTruckAlert((current) => (current?.id === alert.id ? null : current));
+        }, Math.max(alert.duration_secs || 30, 1) * 1000);
+      } catch (error) {
+        console.warn('Failed to parse truck alert event:', error);
+      }
+    });
+    return () => {
+      events.close();
+      if (truckAlertTimeoutRef.current) {
+        clearTimeout(truckAlertTimeoutRef.current);
+        truckAlertTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   // Derived helper for active items matching schedule
   const getPlayableItems = useCallback((): PlaylistItem[] => {
     if (!activePlaylist) return [];
-    
-    return activePlaylist.items.filter((item) => {
-      if (!item.display_schedule) return true;
-      const sched = item.display_schedule;
-      
-      const now = new Date();
-      
-      // 1. Date restriction check
-      if (sched.date_restricted) {
-        const todayStr = getLocalDateKey(now);
-        if (sched.start_date && todayStr < sched.start_date) return false;
-        if (sched.end_date && todayStr > sched.end_date) return false;
-      }
-      
-      // 2. Weekday check
-      if (sched.time_restricted && sched.days && sched.days.length > 0) {
-        const dayMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        const todayDayStr = dayMap[now.getDay()];
-        if (!sched.days.includes(todayDayStr)) return false;
-      }
-      
-      // 3. Time of day check
-      if (sched.time_restricted && sched.start_time && sched.end_time) {
-        const nowMinutes = now.getHours() * 60 + now.getMinutes();
-        const parseToMinutes = (timeStr: string) => {
-          const parts = timeStr.split(':');
-          return (parseInt(parts[0]) || 0) * 60 + (parseInt(parts[1]) || 0);
-        };
-        const startMin = parseToMinutes(sched.start_time);
-        const endMin = parseToMinutes(sched.end_time);
-        if (nowMinutes < startMin || nowMinutes > endMin) return false;
-      }
-      
-      return true;
-    });
+
+    return activePlaylist.items.filter((item) => isPlaylistItemScheduleActive(item.display_schedule));
   }, [activePlaylist]);
 
   // Handle slide duration and transition loop
@@ -602,6 +534,42 @@ export default function PlayerPage() {
     );
   };
 
+  const renderTruckAlertOverlay = () => {
+    if (!truckAlert) return null;
+    const changedAt = new Date(truckAlert.changed_at);
+    const changedAtLabel = Number.isNaN(changedAt.getTime()) ? 'just now' : changedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    return (
+      <div className="pointer-events-none absolute inset-x-0 top-8 z-[80] flex justify-center px-6">
+        <div className="w-full max-w-4xl overflow-hidden rounded-[2rem] border border-primary/40 bg-black/80 shadow-[0_24px_90px_rgba(0,0,0,0.65)] backdrop-blur-2xl">
+          <div className="flex items-stretch">
+            <div className="hidden w-3 bg-linear-to-b from-primary via-secondary to-emerald-400 sm:block" />
+            <div className="flex flex-1 flex-col gap-5 p-7 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-5">
+                <div className="flex size-20 shrink-0 items-center justify-center rounded-3xl bg-primary/15 text-4xl shadow-[0_0_40px_rgba(34,211,238,0.25)]">
+                  🚚
+                </div>
+                <div>
+                  <p className="text-sm font-bold uppercase tracking-[0.35em] text-primary">Truck status update</p>
+                  <h2 className="mt-1 text-4xl font-black tracking-tight text-white sm:text-5xl">
+                    {truckAlert.truck_number}
+                  </h2>
+                  <p className="mt-2 text-lg font-semibold text-white/70">
+                    {truckAlert.gate ? `Gate ${truckAlert.gate.toUpperCase()}` : 'Gate not assigned'} · {changedAtLabel}
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-3xl border border-white/10 bg-white/10 px-7 py-5 text-center">
+                <p className="text-sm uppercase tracking-[0.25em] text-white/50">Now</p>
+                <p className="mt-1 text-3xl font-black text-emerald-300 sm:text-4xl">{truckAlert.status_label}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ── RENDER BLANK STANDBY SCREEN ───────────────────────────────────────────
   if (screenId && isScreenBlanked) {
     return (
@@ -621,8 +589,12 @@ export default function PlayerPage() {
 
         <div className="max-w-md w-full bg-bg-secondary/40 backdrop-blur-2xl border border-white/5 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center animate-fadeIn">
           {/* Logo anim */}
-          <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-linear-to-br from-primary via-primary/80 to-secondary font-bold text-primary-foreground shadow-[0_0_25px_var(--accent-glow)] animate-pulse">
-            <span className="text-2xl">{appName[0]}</span>
+          <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-white p-2 shadow-[0_0_25px_var(--accent-glow)] animate-pulse">
+            {appLogo ? (
+              <img src={appLogo} alt={`${appName} logo`} className="h-full w-full object-contain" />
+            ) : (
+              <span className="text-2xl font-bold text-primary">{appName[0]}</span>
+            )}
           </div>
 
           <h1 className="text-2xl font-bold text-white mb-2">{appName} Player</h1>
@@ -688,6 +660,7 @@ export default function PlayerPage() {
 
     return (
       <div className="w-screen h-screen bg-black flex flex-col items-center justify-center p-8 select-none font-sans relative overflow-hidden">
+        {renderTruckAlertOverlay()}
         {/* Modern glowing background lines */}
         <div className="pointer-events-none absolute left-1/4 top-1/4 h-[500px] w-[500px] rounded-full bg-primary/10 blur-[120px]" />
         <div className="pointer-events-none absolute bottom-1/4 right-1/4 h-[500px] w-[500px] rounded-full bg-secondary/10 blur-[120px]" />
@@ -717,7 +690,7 @@ export default function PlayerPage() {
           <div className="glass-card-static max-w-sm px-6 py-4 mb-8">
             <h2 className="text-sm font-semibold text-white mb-2">Awaiting Content Feed</h2>
             <p className="text-xs text-text-secondary leading-relaxed">
-              No active schedules or playlists resolved at this time. Assign content in the controller and publish a new revision.
+              No playlist item is allowed to play right now. Update this screen&apos;s playlist or content schedule, then publish a new revision.
             </p>
           </div>
 
@@ -800,6 +773,7 @@ export default function PlayerPage() {
       <div style={getRotationStyle()}>
         {renderContentItem()}
       </div>
+      {renderTruckAlertOverlay()}
     </div>
   );
 }

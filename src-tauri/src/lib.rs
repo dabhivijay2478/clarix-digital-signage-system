@@ -69,6 +69,9 @@ pub fn run() {
             let (event_sender, _) = tokio::sync::broadcast::channel(64);
             let event_bus = lan::server::SyncEventBus(event_sender);
             app.manage(event_bus.clone());
+            let (truck_alert_sender, _) = tokio::sync::broadcast::channel(64);
+            let truck_alert_bus = lan::server::TruckAlertBus(truck_alert_sender);
+            app.manage(truck_alert_bus.clone());
             let bundled_browser_assets = app.path().resource_dir()
                 .map(|directory| directory.join("browser-player"))
                 .ok()
@@ -83,6 +86,7 @@ pub fn run() {
                     bundled_browser_assets,
                     identity.clone(),
                     event_bus,
+                    truck_alert_bus,
                 )) {
                     Ok(port) => port,
                     Err(error) => {
@@ -193,6 +197,8 @@ pub fn run() {
             commands::production::delete_production_dashboard,
             commands::production::delete_production_dataset,
             commands::production::add_production_dashboard_to_content,
+            // Truck screen alerts
+            commands::trucks::publish_truck_alert,
             // Database viewer & backups
             commands::database::get_db_tables,
             commands::database::get_db_table_data,

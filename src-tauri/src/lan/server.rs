@@ -21,7 +21,7 @@ use crate::{
     models::{
         AppWeekday, ContentItem, ContentType, DeviceIdentity, DeviceRole, Orientation, PairingRequest,
         Playlist, PlaylistItem, Screen, ScreenResolution, SyncAck, SyncAsset, SyncManifest,
-        TransitionEffect,
+        TransitionEffect, TruckScreenAlert,
     },
 };
 
@@ -37,11 +37,15 @@ pub struct SyncPayload {
 pub struct SyncEventBus(pub broadcast::Sender<i64>);
 
 #[derive(Clone)]
+pub struct TruckAlertBus(pub broadcast::Sender<TruckScreenAlert>);
+
+#[derive(Clone)]
 struct AppState {
     pool: DbPool,
     media_dir: PathBuf,
     identity: DeviceIdentity,
     events: SyncEventBus,
+    truck_alerts: TruckAlertBus,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -71,6 +75,7 @@ pub async fn start_controller_server(
     browser_assets_dir: PathBuf,
     mut identity: DeviceIdentity,
     events: SyncEventBus,
+    truck_alerts: TruckAlertBus,
 ) -> anyhow::Result<u16> {
     let port = std::env::var("CLARIX_PORT")
         .ok()
@@ -92,10 +97,11 @@ pub async fn start_controller_server(
 
     let media_dir = PathBuf::from(app_data_dir).join("media");
     tokio::fs::create_dir_all(&media_dir).await?;
-    let state = AppState { pool, media_dir, identity, events };
+    let state = AppState { pool, media_dir, identity, events, truck_alerts };
 
     let browser_routes = Router::new()
         .route("/v1/browser/events", get(stream_browser_events))
+        .route("/v1/browser/truck-alerts", get(stream_browser_truck_alerts))
         .route("/api/screens", get(read_screens))
         .route("/api/playlists", get(read_playlists))
         .route("/api/content", get(read_content))
@@ -116,6 +122,7 @@ pub async fn start_controller_server(
         .route("/v1/assets/{sha256}", get(asset))
         .route("/v1/sync/ack", post(sync_ack))
         .route("/v1/events", get(stream_events))
+        .route("/v1/truck-alerts", get(stream_truck_alerts))
         .route("/status", get(health))
         .merge(browser_routes)
         .route_service("/player", ServeFile::new(browser_assets_dir.join("player.html")))
@@ -303,6 +310,39 @@ async fn stream_browser_events(
     let stream = BroadcastStream::new(state.events.0.subscribe()).filter_map(|message| async move {
         match message {
             Ok(revision) => Some(Ok(Event::default().event("revision").data(revision.to_string()))),
+            Err(_) => None,
+        }
+    });
+    Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+}
+
+async fn stream_truck_alerts(
+    State(state): State<AppState>,
+    Query(query): Query<TokenQuery>,
+    headers: HeaderMap,
+) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)> {
+    authenticate(&state.pool, &headers, query.token.as_deref())?;
+    let stream = BroadcastStream::new(state.truck_alerts.0.subscribe()).filter_map(|message| async move {
+        match message {
+            Ok(alert) => {
+                let payload = serde_json::to_string(&alert).unwrap_or_else(|_| "{}".to_string());
+                Some(Ok(Event::default().event("truck-alert").data(payload)))
+            }
+            Err(_) => None,
+        }
+    });
+    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
+}
+
+async fn stream_browser_truck_alerts(
+    State(state): State<AppState>,
+) -> Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>> {
+    let stream = BroadcastStream::new(state.truck_alerts.0.subscribe()).filter_map(|message| async move {
+        match message {
+            Ok(alert) => {
+                let payload = serde_json::to_string(&alert).unwrap_or_else(|_| "{}".to_string());
+                Some(Ok(Event::default().event("truck-alert").data(payload)))
+            }
             Err(_) => None,
         }
     });

@@ -17,7 +17,13 @@ import {
 import { useTrucks } from '@/hooks/useTrucks'
 import { showToast } from '@/components/Toast'
 import Modal from '@/components/Modal'
-import { customConfirm, productionApi } from '@/lib/tauri'
+import { customConfirm, productionApi, truckAlertsApi } from '@/lib/tauri'
+import {
+  createTruckScreenAlert,
+  getTruckStatusInfo,
+  previewTruckStatusUpdate,
+  type TruckStatusField,
+} from '@/lib/truck-alerts'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -238,6 +244,24 @@ export default function TrucksPage() {
     }
   }
 
+  const handleTruckStatusChange = async (truck: TruckType, field: TruckStatusField, value: boolean) => {
+    if (truck[field] === value) return
+
+    const before = getTruckStatusInfo(truck)
+    const preview = previewTruckStatusUpdate(truck, field, value)
+    const after = getTruckStatusInfo(preview)
+
+    updateTruckChecks(truck.id, field, value)
+
+    if (before.status === after.status) return
+
+    try {
+      await truckAlertsApi.publish(createTruckScreenAlert(preview))
+    } catch (error) {
+      console.warn('Failed to publish truck alert:', error)
+    }
+  }
+
   // ── CSV Import ──────────────────────────────────────────────────────────
 
   const handleFileSelect = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -452,17 +476,9 @@ export default function TrucksPage() {
                   const canIn = truck.is_loading === true
                   const canOut = truck.is_in === true
 
-                  const getStatusLabel = (t: TruckType) => {
-                    if (t.is_out) return 'Dispatched'
-                    if (t.is_in) return 'Gate In'
-                    if (t.is_loading) return 'Loading'
-                    if (t.is_waiting) return 'Waiting'
-                    return 'Registered'
-                  }
-
                   const getStatusColor = (status: string) => {
                     switch (status) {
-                      case 'Dispatched': return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+                      case 'Gate Out': return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
                       case 'Gate In': return 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20'
                       case 'Loading': return 'bg-blue-500/10 text-blue-600 border-blue-500/20'
                       case 'Waiting': return 'bg-amber-500/10 text-amber-600 border-amber-500/20'
@@ -470,7 +486,7 @@ export default function TrucksPage() {
                     }
                   }
 
-                  const statusLabel = getStatusLabel(truck)
+                  const statusLabel = getTruckStatusInfo(truck).status_label
                   const isWaiting = statusLabel === 'Waiting'
                   const fullIndex = trucks.findIndex((t) => t.id === truck.id)
                   const canMoveUp = trucks.slice(0, fullIndex).some((t) => t.is_waiting)
@@ -535,7 +551,7 @@ export default function TrucksPage() {
                       <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           checked={truck.is_waiting ?? false}
-                          onCheckedChange={(checked) => updateTruckChecks(truck.id, 'is_waiting', checked === true)}
+                          onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_waiting', checked === true)}
                         />
                       </TableCell>
                       {/* Step 2: Loading — enabled only after Waiting is checked */}
@@ -543,7 +559,7 @@ export default function TrucksPage() {
                         <Checkbox
                           checked={truck.is_loading ?? false}
                           disabled={!canLoading}
-                          onCheckedChange={(checked) => updateTruckChecks(truck.id, 'is_loading', checked === true)}
+                          onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_loading', checked === true)}
                         />
                       </TableCell>
                       {/* Step 3: In — enabled only after Loading is checked */}
@@ -551,7 +567,7 @@ export default function TrucksPage() {
                         <Checkbox
                           checked={truck.is_in ?? false}
                           disabled={!canIn}
-                          onCheckedChange={(checked) => updateTruckChecks(truck.id, 'is_in', checked === true)}
+                          onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_in', checked === true)}
                         />
                       </TableCell>
                       {/* Step 4: Out — enabled only after In is checked */}
@@ -559,7 +575,7 @@ export default function TrucksPage() {
                         <Checkbox
                           checked={truck.is_out ?? false}
                           disabled={!canOut}
-                          onCheckedChange={(checked) => updateTruckChecks(truck.id, 'is_out', checked === true)}
+                          onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_out', checked === true)}
                         />
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>

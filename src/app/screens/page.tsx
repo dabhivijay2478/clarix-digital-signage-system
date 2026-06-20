@@ -7,8 +7,16 @@ import { useContent } from '../../hooks/useContent';
 import ScreenCard from '../../components/ScreenCard';
 import Modal from '../../components/Modal';
 import { showToast } from '../../components/Toast';
-import type { Screen, PlaylistItem, ContentItem } from '../../lib/types';
+import type { AppWeekday, ContentItem, PlaylistItem, PlaylistItemDaySchedule, PlaylistItemSchedule, Screen, TransitionEffect } from '../../lib/types';
 import { customConfirm, getBrowserControllerOrigin } from '../../lib/tauri';
+import {
+  APP_WEEKDAYS,
+  defaultPlaylistItemDayTimes,
+  defaultPlaylistItemSchedule,
+  formatPlaylistScheduleSummary,
+  normalizePlaylistItemSchedule,
+  validatePlaylistItemSchedule,
+} from '../../lib/signage-schedule';
 import { Monitor, Plus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,6 +25,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+
+const ITEM_SCHEDULE_DAY_LABELS: Record<AppWeekday, string> = {
+  Mon: 'Monday',
+  Tue: 'Tuesday',
+  Wed: 'Wednesday',
+  Thu: 'Thursday',
+  Fri: 'Friday',
+  Sat: 'Saturday',
+  Sun: 'Sunday',
+};
 
 export default function ScreensPage() {
   const { screens, loading, addScreen, editScreen, updateOperatingHours, deleteScreen, refresh } = useScreens();
@@ -68,11 +86,13 @@ export default function ScreensPage() {
   const [itemSchedTimeRestricted, setItemSchedTimeRestricted] = useState(false);
   const [itemSchedStartTime, setItemSchedStartTime] = useState('09:00');
   const [itemSchedEndTime, setItemSchedEndTime] = useState('17:00');
-  const [itemSchedDays, setItemSchedDays] = useState<string[]>(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+  const [itemSchedDayTimes, setItemSchedDayTimes] = useState<Record<AppWeekday, PlaylistItemDaySchedule>>(
+    () => defaultPlaylistItemDayTimes()
+  );
   const [itemSchedDateRestricted, setItemSchedDateRestricted] = useState(false);
   const [itemSchedStartDate, setItemSchedStartDate] = useState('');
   const [itemSchedEndDate, setItemSchedEndDate] = useState('');
-  const [itemSchedTransition, setItemSchedTransition] = useState('Fade');
+  const [itemSchedTransition, setItemSchedTransition] = useState<TransitionEffect>('Fade');
 
   const selectedScreen = useMemo(
     () => screens.find((s) => s.id === selectedScreenId) || null,
@@ -146,16 +166,7 @@ export default function ScreensPage() {
       content_id: contentId,
       order: nextOrder,
       override_duration: null,
-      display_schedule: {
-        time_restricted: false,
-        start_time: '09:00',
-        end_time: '17:00',
-        days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-        date_restricted: false,
-        start_date: '',
-        end_date: '',
-        transition: 'Fade'
-      }
+      display_schedule: defaultPlaylistItemSchedule()
     };
     setLocalPlaylistItems(prev => [...prev, newItem]);
     setHasUnsavedChanges(true);
@@ -214,12 +225,50 @@ export default function ScreensPage() {
     setHasUnsavedChanges(true);
   };
 
+  const buildItemScheduleFromModal = (): PlaylistItemSchedule => {
+    const enabledDays = APP_WEEKDAYS.filter((day) => itemSchedDayTimes[day]?.enabled);
+    const firstEnabled = enabledDays[0] ? itemSchedDayTimes[enabledDays[0]] : null;
+    return {
+      time_restricted: itemSchedTimeRestricted,
+      start_time: firstEnabled?.start ?? itemSchedStartTime,
+      end_time: firstEnabled?.end ?? itemSchedEndTime,
+      days: enabledDays,
+      day_times: itemSchedDayTimes,
+      date_restricted: itemSchedDateRestricted,
+      start_date: itemSchedStartDate,
+      end_date: itemSchedEndDate,
+      transition: itemSchedTransition,
+    };
+  };
+
+  const validatePlaylistItems = (items: PlaylistItem[]): string | null => {
+    for (const [index, item] of items.entries()) {
+      const schedule = normalizePlaylistItemSchedule(item.display_schedule);
+      const error = validatePlaylistItemSchedule(schedule);
+      if (error) return `Item #${index + 1}: ${error}`;
+    }
+    return null;
+  };
+
+  const normalizePlaylistItemsForSave = (items: PlaylistItem[]): PlaylistItem[] =>
+    items.map((item, index) => ({
+      ...item,
+      order: index,
+      display_schedule: normalizePlaylistItemSchedule(item.display_schedule),
+    }));
+
   const handleSavePlaylist = async () => {
     if (!selectedScreen || !selectedScreen.playlist_id) return;
 
+    const normalizedItems = normalizePlaylistItemsForSave(localPlaylistItems);
+    const validationError = validatePlaylistItems(normalizedItems);
+    if (validationError) {
+      showToast(validationError, 'error');
+      return;
+    }
+
     setSyncingScreenIds((prev) => prev.includes(selectedScreen.id) ? prev : [...prev, selectedScreen.id]);
     try {
-      const normalizedItems = localPlaylistItems.map((item, index) => ({ ...item, order: index }));
       await updateItems(selectedScreen.playlist_id, normalizedItems);
       setLocalPlaylistItems(normalizedItems);
       setHasUnsavedChanges(false);
@@ -241,35 +290,32 @@ export default function ScreensPage() {
     if (!item) return;
     
     setEditingItemIndex(index);
-    const sched = item.display_schedule || {};
+    const sched = normalizePlaylistItemSchedule(item.display_schedule);
     
-    setItemSchedTimeRestricted(sched.time_restricted ?? false);
-    setItemSchedStartTime(sched.start_time ?? '09:00');
-    setItemSchedEndTime(sched.end_time ?? '17:00');
-    setItemSchedDays(sched.days ?? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
-    setItemSchedDateRestricted(sched.date_restricted ?? false);
-    setItemSchedStartDate(sched.start_date ?? '');
-    setItemSchedEndDate(sched.end_date ?? '');
-    setItemSchedTransition(sched.transition ?? 'Fade');
+    setItemSchedTimeRestricted(sched.time_restricted);
+    setItemSchedStartTime(sched.start_time);
+    setItemSchedEndTime(sched.end_time);
+    setItemSchedDayTimes((sched.day_times as Record<AppWeekday, PlaylistItemDaySchedule>) ?? defaultPlaylistItemDayTimes(sched.start_time, sched.end_time, sched.days));
+    setItemSchedDateRestricted(sched.date_restricted);
+    setItemSchedStartDate(sched.start_date);
+    setItemSchedEndDate(sched.end_date);
+    setItemSchedTransition(sched.transition);
   };
 
   const saveItemSettings = () => {
     if (editingItemIndex === null) return;
+    const nextSchedule = buildItemScheduleFromModal();
+    const validationError = validatePlaylistItemSchedule(nextSchedule);
+    if (validationError) {
+      showToast(validationError, 'error');
+      return;
+    }
     
     setLocalPlaylistItems(prev => {
       const copy = [...prev];
       copy[editingItemIndex] = {
         ...copy[editingItemIndex],
-        display_schedule: {
-          time_restricted: itemSchedTimeRestricted,
-          start_time: itemSchedStartTime,
-          end_time: itemSchedEndTime,
-          days: itemSchedDays,
-          date_restricted: itemSchedDateRestricted,
-          start_date: itemSchedStartDate,
-          end_date: itemSchedEndDate,
-          transition: itemSchedTransition,
-        }
+        display_schedule: nextSchedule
       };
       return copy;
     });
@@ -344,7 +390,12 @@ export default function ScreensPage() {
     showToast(`Force syncing "${screen.name}"...`, 'info');
     try {
       if (selectedScreen?.id === id && selectedScreen.playlist_id && hasUnsavedChanges) {
-        const normalizedItems = localPlaylistItems.map((item, index) => ({ ...item, order: index }));
+        const normalizedItems = normalizePlaylistItemsForSave(localPlaylistItems);
+        const validationError = validatePlaylistItems(normalizedItems);
+        if (validationError) {
+          showToast(validationError, 'error');
+          return;
+        }
         await updateItems(selectedScreen.playlist_id, normalizedItems);
         setLocalPlaylistItems(normalizedItems);
         setHasUnsavedChanges(false);
@@ -582,8 +633,9 @@ export default function ScreensPage() {
                     if (!contentItem) return null;
 
                     const mediaUrl = getMediaUrl(contentItem);
-                    const sched = playlistItem.display_schedule || {};
+                    const sched = normalizePlaylistItemSchedule(playlistItem.display_schedule);
                     const hasRules = sched.time_restricted || sched.date_restricted;
+                    const scheduleSummary = formatPlaylistScheduleSummary(sched);
 
                     return (
                       <div 
@@ -624,11 +676,9 @@ export default function ScreensPage() {
                             <span style={{ fontSize: '9px', padding: '2px 6px', background: 'var(--border)', borderRadius: '4px', color: 'var(--text-secondary)' }}>
                               {contentItem.content_type}
                             </span>
-                            {hasRules && (
-                              <span style={{ fontSize: '9px', padding: '2px 6px', background: 'rgba(99,102,241,0.2)', color: 'var(--accent-secondary)', borderRadius: '4px' }}>
-                                📅 Scheduled
-                              </span>
-                            )}
+                            <span style={{ fontSize: '9px', padding: '2px 6px', background: hasRules ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.06)', color: hasRules ? 'var(--accent-secondary)' : 'var(--text-muted)', borderRadius: '4px' }}>
+                              📅 {scheduleSummary}
+                            </span>
                             {sched.transition && sched.transition !== 'Fade' && (
                               <span style={{ fontSize: '9px', padding: '2px 6px', background: 'rgba(168,85,247,0.2)', color: '#c084fc', borderRadius: '4px' }}>
                                 ⚡ {sched.transition}
@@ -809,7 +859,7 @@ export default function ScreensPage() {
         <Modal
           isOpen={editingItemIndex !== null}
           onClose={() => setEditingItemIndex(null)}
-          title="PlaylistItem Scheduling & Rules"
+          title="Content Schedule & Rules"
           actions={
             <>
               <button className="btn btn-secondary" onClick={() => setEditingItemIndex(null)}>
@@ -821,95 +871,96 @@ export default function ScreensPage() {
             </>
           }
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', color: 'var(--foreground)' }}>
-            
-            {/* Custom Transition */}
-            <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
-              <label className="input-label" style={{ marginBottom: '8px' }}>Custom Transition Override</label>
-              <select
-                className="input"
-                value={itemSchedTransition}
-                onChange={(e) => setItemSchedTransition(e.target.value)}
-                style={{ background: 'var(--bg-tertiary)', color: 'var(--foreground)', border: '1px solid var(--border)' }}
-              >
-                <option value="Fade" style={{ background: 'var(--bg-primary)' }}>Fade</option>
-                <option value="Slide" style={{ background: 'var(--bg-primary)' }}>Slide</option>
-                <option value="Zoom" style={{ background: 'var(--bg-primary)' }}>Zoom</option>
-                <option value="None" style={{ background: 'var(--bg-primary)' }}>None</option>
-              </select>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', color: 'var(--foreground)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 190px', gap: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                <span style={{ fontSize: '14px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>This content</span>
+                <select
+                  className="input"
+                  value={itemSchedTimeRestricted ? 'scheduled' : 'always'}
+                  onChange={(e) => setItemSchedTimeRestricted(e.target.value === 'scheduled')}
+                  style={{ width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--foreground)', padding: '8px 12px', fontSize: '13px' }}
+                >
+                  <option value="always" style={{ background: 'var(--bg-primary)' }}>can play whenever playlist runs</option>
+                  <option value="scheduled" style={{ background: 'var(--bg-primary)' }}>is allowed during these times</option>
+                </select>
+              </div>
+              <div>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '5px' }}>Transition</span>
+                <select
+                  className="input"
+                  value={itemSchedTransition}
+                  onChange={(e) => setItemSchedTransition(e.target.value as TransitionEffect)}
+                  style={{ background: 'var(--bg-tertiary)', color: 'var(--foreground)', border: '1px solid var(--border)', fontSize: '13px' }}
+                >
+                  <option value="Fade" style={{ background: 'var(--bg-primary)' }}>Fade</option>
+                  <option value="Slide" style={{ background: 'var(--bg-primary)' }}>Slide</option>
+                  <option value="Zoom" style={{ background: 'var(--bg-primary)' }}>Zoom</option>
+                  <option value="None" style={{ background: 'var(--bg-primary)' }}>None</option>
+                </select>
+              </div>
             </div>
 
-            {/* Daily display hours */}
-            <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: 600, fontSize: '14px', marginBottom: '12px' }}>
-                <input
-                  type="checkbox"
-                  checked={itemSchedTimeRestricted}
-                  onChange={(e) => setItemSchedTimeRestricted(e.target.checked)}
-                  style={{ width: '16px', height: '16px', accentColor: 'var(--accent-primary)' }}
-                />
-                Restrict display by time/weekdays
-              </label>
-
-              {itemSchedTimeRestricted && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingLeft: '26px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Start Time</span>
-                      <input
-                        type="time"
-                        className="input"
-                        value={itemSchedStartTime}
-                        onChange={(e) => setItemSchedStartTime(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>End Time</span>
-                      <input
-                        type="time"
-                        className="input"
-                        value={itemSchedEndTime}
-                        onChange={(e) => setItemSchedEndTime(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>Active Weekdays</span>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                      {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => {
-                        const active = itemSchedDays.includes(day);
-                        return (
-                          <button
-                            key={day}
-                            type="button"
-                            onClick={() => {
-                              setItemSchedDays(prev => 
-                                prev.includes(day)
-                                  ? prev.filter(d => d !== day)
-                                  : [...prev, day]
-                              );
+            {itemSchedTimeRestricted && (
+              <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '18px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {APP_WEEKDAYS.map((day) => {
+                    const daySchedule = itemSchedDayTimes[day] || { enabled: true, start: '09:00', end: '17:00' };
+                    return (
+                      <div key={day} style={{ display: 'grid', gridTemplateColumns: '140px 1fr 1fr', alignItems: 'center', gap: '12px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', fontWeight: 600, color: daySchedule.enabled ? 'var(--foreground)' : 'var(--text-muted)' }}>
+                          <input
+                            type="checkbox"
+                            checked={daySchedule.enabled}
+                            onChange={(e) => {
+                              setItemSchedDayTimes((prev) => ({
+                                ...prev,
+                                [day]: { ...prev[day], enabled: e.target.checked },
+                              }));
                             }}
-                            style={{
-                              padding: '6px 10px',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              borderRadius: '6px',
-                              background: active ? 'var(--accent-primary)' : 'var(--border)',
-                              color: active ? 'white' : 'var(--text-secondary)',
-                              border: active ? 'none' : '1px solid var(--border)',
-                              cursor: 'pointer',
+                            style={{ width: '16px', height: '16px', accentColor: 'var(--accent-primary)' }}
+                          />
+                          {ITEM_SCHEDULE_DAY_LABELS[day]}
+                        </label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '7px 10px', opacity: daySchedule.enabled ? 1 : 0.45 }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Start</span>
+                          <input
+                            type="time"
+                            value={daySchedule.start}
+                            disabled={!daySchedule.enabled}
+                            onChange={(e) => {
+                              setItemSchedDayTimes((prev) => ({
+                                ...prev,
+                                [day]: { ...prev[day], start: e.target.value },
+                              }));
                             }}
-                          >
-                            {day}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                            style={{ background: 'transparent', border: 'none', color: 'var(--foreground)', width: '100%', fontSize: '13px', outline: 'none', colorScheme: 'dark' }}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '7px 10px', opacity: daySchedule.enabled ? 1 : 0.45 }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>End</span>
+                          <input
+                            type="time"
+                            value={daySchedule.end}
+                            disabled={!daySchedule.enabled}
+                            onChange={(e) => {
+                              setItemSchedDayTimes((prev) => ({
+                                ...prev,
+                                [day]: { ...prev[day], end: e.target.value },
+                              }));
+                            }}
+                            style={{ background: 'transparent', border: 'none', color: 'var(--foreground)', width: '100%', fontSize: '13px', outline: 'none', colorScheme: 'dark' }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
-            </div>
+                <p style={{ margin: '12px 0 0', fontSize: '11px', color: 'var(--text-muted)' }}>
+                  Content timezone: Asia/Calcutta. Overnight windows like 10:00 PM to 6:00 AM are supported.
+                </p>
+              </div>
+            )}
 
             {/* Periodic Date Range */}
             <div>

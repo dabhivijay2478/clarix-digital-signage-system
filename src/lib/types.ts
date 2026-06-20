@@ -12,7 +12,7 @@ export interface Screen {
   power_on: boolean;
   orientation: Orientation;
   group_id: string | null;
-  operating_hours?: any;
+  operating_hours?: ScreenOperatingHours | null;
   playlist_id: string | null;
   device_id: string | null;
   endpoint: string | null;
@@ -34,6 +34,18 @@ export type Orientation =
   | "Portrait"
   | "LandscapeFlipped"
   | "PortraitFlipped";
+
+export interface ScreenOperatingHoursDay {
+  start: string;
+  end: string;
+}
+
+export interface ScreenOperatingHours {
+  mode?: string;
+  days?: Record<string, ScreenOperatingHoursDay>;
+  blank_when_not_in_use?: boolean;
+  timezone?: string;
+}
 
 // ── Content ─────────────────────────────────────────────────────────────────
 
@@ -156,10 +168,28 @@ export interface PlaylistItem {
   content_id: string;
   order: number;
   override_duration: number | null;
-  display_schedule?: any;
+  display_schedule?: PlaylistItemSchedule | null;
 }
 
 export type TransitionEffect = "None" | "Fade" | "Slide" | "Zoom";
+
+export interface PlaylistItemDaySchedule {
+  enabled: boolean;
+  start: string;
+  end: string;
+}
+
+export interface PlaylistItemSchedule {
+  time_restricted: boolean;
+  start_time: string;
+  end_time: string;
+  days: AppWeekday[];
+  day_times?: Partial<Record<AppWeekday, PlaylistItemDaySchedule>>;
+  date_restricted: boolean;
+  start_date: string;
+  end_date: string;
+  transition: TransitionEffect;
+}
 
 // ── Schedule ────────────────────────────────────────────────────────────────
 
@@ -293,4 +323,17 @@ export interface Truck {
   in_at: string | null;
   out_at: string | null;
   created_at: string;
+}
+
+export type TruckStatus = "waiting" | "loading" | "in" | "out" | "registered";
+
+export interface TruckScreenAlert {
+  id: string;
+  truck_id: string;
+  truck_number: string;
+  gate: string | null;
+  status: TruckStatus;
+  status_label: string;
+  changed_at: string;
+  duration_secs: number;
 }

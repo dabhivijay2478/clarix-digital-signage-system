@@ -19,7 +19,9 @@ import type {
   ProductionDatasetSummary,
   ProductionImportResult,
   ProductionRow,
+  TruckScreenAlert,
 } from './types';
+import { APP_NAME } from './branding';
 
 // ── Safe invoke wrapper ─────────────────────────────────────────────────────
 // Tauri APIs are only available in the browser (WebView), not during SSG build.
@@ -116,9 +118,10 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
       case 'force_sync_screen':
         return 1 as unknown as T;
       case 'update_screen_fullscreen':
+      case 'publish_truck_alert':
         return undefined as T;
       default:
-        throw new Error(`Controller administration is available only in the packaged ${process.env.NEXT_PUBLIC_APP_NAME || 'Clarix'} desktop app.`);
+        throw new Error(`Controller administration is available only in the packaged ${APP_NAME} desktop app.`);
     }
     
     const response = await fetch(url);
@@ -317,6 +320,13 @@ export const productionApi = {
     tauriInvoke<ContentItem>('add_production_dashboard_to_content', { dashboardId, durationSecs }),
 };
 
+// ── Truck Alert API ────────────────────────────────────────────────────────
+
+export const truckAlertsApi = {
+  publish: (alert: TruckScreenAlert) =>
+    tauriInvoke<void>('publish_truck_alert', { alert }),
+};
+
 // ── Playlists API ───────────────────────────────────────────────────────────
 
 export const playlistsApi = {
@@ -390,7 +400,7 @@ export const analyticsApi = {
 // Screens discover and sync with each other while connected to the same router.
 
 export const localNetworkApi = {
-  /** Returns all Clarix screens discovered via mDNS on the same router. */
+  /** Returns all MG Enterprise screens discovered via mDNS on the same router. */
   getPeers: () => tauriInvoke<PeerScreen[]>('get_network_peers'),
 
   /** Checks a stable screen identity using its most recent heartbeat. */
@@ -401,7 +411,7 @@ export const localNetworkApi = {
   checkAllOnline: () =>
     tauriInvoke<[string, boolean][]>('check_all_screens_online'),
 
-  /** Returns the active port of the local Clarix HTTP service. */
+  /** Returns the active port of the local MG Enterprise HTTP service. */
   getServerPort: () => tauriInvoke<number>('get_lan_server_port'),
 
   /** Syncs all playlists, schedules, and assets to a screen on the same router. */

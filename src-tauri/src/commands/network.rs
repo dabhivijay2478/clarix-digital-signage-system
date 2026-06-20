@@ -141,7 +141,7 @@ pub async fn get_network_diagnostics(
         hints.push("No controller was discovered. Confirm both devices use the same non-guest Wi-Fi and disable client isolation.".to_string());
     }
     if identity.role == DeviceRole::Controller {
-        hints.push("Allow Clarix inbound TCP access in the controller firewall. Players only require outbound access.".to_string());
+        hints.push("Allow MG Enterprise inbound TCP access in the controller firewall. Players only require outbound access.".to_string());
     }
     if let (Some((_, local_ip)), Some(controller)) = (interface.as_ref(), identity.controller_url.as_deref()) {
         let controller_ip = reqwest::Url::parse(controller).ok()

@@ -43,8 +43,8 @@ function Brand({ compact = false }: { compact?: boolean }) {
   const { appName, appIcon } = useBrandingStore()
   return (
     <div className={cn('flex h-18 items-center gap-3 px-5', !compact && 'px-6')}>
-      <Avatar className="size-9 rounded-xl shadow-lg shadow-primary/15">
-        {appIcon && <AvatarImage src={appIcon} alt="" />}
+      <Avatar className="size-9 rounded-xl bg-white shadow-lg shadow-primary/15">
+        {appIcon && <AvatarImage src={appIcon} alt={`${appName} logo`} className="object-contain p-1" />}
         <AvatarFallback className="rounded-xl bg-linear-to-br from-primary via-primary/80 to-secondary font-bold text-primary-foreground">
           {appName.charAt(0).toUpperCase()}
         </AvatarFallback>

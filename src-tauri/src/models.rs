@@ -373,3 +373,17 @@ pub struct AnalyticsSummary {
     pub avg_dwell_secs: f64,
     pub uptime_pct: f64,
 }
+
+// ── Truck Screen Alerts ────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TruckScreenAlert {
+    pub id: String,
+    pub truck_id: String,
+    pub truck_number: String,
+    pub gate: Option<String>,
+    pub status: String,
+    pub status_label: String,
+    pub changed_at: String,
+    pub duration_secs: u32,
+}

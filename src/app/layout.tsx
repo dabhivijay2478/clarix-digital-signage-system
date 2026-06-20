@@ -4,11 +4,17 @@ import AppLayoutWrapper from "../components/AppLayoutWrapper";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "../components/ThemeProvider";
+import { APP_LOGO, APP_TITLE } from "@/lib/branding";
 
 export const metadata: Metadata = {
-  title: `${process.env.NEXT_PUBLIC_APP_NAME || "Clarix"} — Digital Signage Management`,
+  title: APP_TITLE,
   description:
     "Cross-platform digital signage management desktop application. Control screens, schedule content, and manage playlists.",
+  icons: {
+    icon: APP_LOGO,
+    shortcut: APP_LOGO,
+    apple: APP_LOGO,
+  },
 };
 
 export default function RootLayout({

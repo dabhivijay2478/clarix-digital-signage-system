@@ -2,6 +2,7 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { APP_LOGO, APP_NAME } from '@/lib/branding'
 
 interface SidebarState {
   isCollapsed: boolean
@@ -29,36 +30,11 @@ export const useSidebarStore = create<SidebarState>()(
 )
 
 export const useBrandingStore = create<BrandingState>()(
-  persist(
-    (set, get) => ({
-      appName: process.env.NEXT_PUBLIC_APP_NAME || 'Clarix',
-      appIcon: process.env.NEXT_PUBLIC_APP_ICON || null,
-      customFavicon: process.env.NEXT_PUBLIC_CUSTOM_FAVICON || null,
-      load: () => set({ ...get() }),
-      save: (appName, appIcon, customFavicon) =>
-        set({
-          appName: appName || process.env.NEXT_PUBLIC_APP_NAME || 'Clarix',
-          appIcon: appIcon || process.env.NEXT_PUBLIC_APP_ICON || null,
-          customFavicon: customFavicon || process.env.NEXT_PUBLIC_CUSTOM_FAVICON || null,
-        }),
-    }),
-    {
-      name: 'clarix-branding',
-      partialize: ({ appName, appIcon, customFavicon }) => ({
-        appName,
-        appIcon,
-        customFavicon,
-      }),
-      merge: (persistedState, currentState) => {
-        const persisted = (persistedState as Partial<BrandingState>) || {}
-        return {
-          ...currentState,
-          ...persisted,
-          appName: process.env.NEXT_PUBLIC_APP_NAME || persisted.appName || 'Clarix',
-          appIcon: process.env.NEXT_PUBLIC_APP_ICON || persisted.appIcon || null,
-          customFavicon: process.env.NEXT_PUBLIC_CUSTOM_FAVICON || persisted.customFavicon || null,
-        }
-      },
-    }
-  )
+  (set) => ({
+    appName: APP_NAME,
+    appIcon: APP_LOGO,
+    customFavicon: APP_LOGO,
+    load: () => set({ appName: APP_NAME, appIcon: APP_LOGO, customFavicon: APP_LOGO }),
+    save: () => set({ appName: APP_NAME, appIcon: APP_LOGO, customFavicon: APP_LOGO }),
+  })
 )

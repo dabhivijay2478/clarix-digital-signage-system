@@ -7,3 +7,4 @@ pub mod playlists;
 pub mod production;
 pub mod schedule;
 pub mod screens;
+pub mod trucks;

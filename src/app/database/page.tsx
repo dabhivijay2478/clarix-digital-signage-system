@@ -40,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { databaseApi } from '@/lib/tauri'
+import { APP_NAME } from '@/lib/branding'
 
 const tablesMetadata: Record<string, { label: string; desc: string }> = {
   screens: { label: 'Screens', desc: 'Registered signage screens, location, resolution, and configurations' },
@@ -225,7 +226,7 @@ export default function DatabasePage() {
     try {
       if (isTauriRuntime()) {
         const { invoke } = await import('@tauri-apps/api/core')
-        const appNameLower = (process.env.NEXT_PUBLIC_APP_NAME || 'Clarix').toLowerCase()
+        const appNameLower = APP_NAME.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
         const savePath = await invoke<string | null>('plugin:dialog|save', {
           options: {
             title: 'Backup Content Library as ZIP',

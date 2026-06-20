@@ -3,12 +3,9 @@
 import { memo } from 'react'
 import { Pencil, Trash2 } from 'lucide-react'
 import type { Screen } from '@/lib/types'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
-import { cn } from '@/lib/utils'
 
 interface ScreenCardProps {
   screen: Screen
@@ -21,12 +18,6 @@ interface ScreenCardProps {
 }
 
 function ScreenCard({ screen, onDelete, onEdit, onSync, onManage, isSyncing = false }: ScreenCardProps) {
-  const pairingBadgeStyle = screen.pairing_status === 'paired'
-    ? 'bg-green-500/10 text-green-600 border-green-500/20 dark:text-green-400'
-    : screen.pairing_status === 'unpaired'
-      ? 'bg-muted text-muted-foreground border-border'
-      : 'bg-amber-500/10 text-amber-600 border-amber-500/20 dark:text-amber-400'
-
   return (
     <Card className="group cursor-pointer border-border bg-card transition-colors hover:border-border/80 shadow-xs p-0 gap-0" onClick={() => onManage?.(screen.id)}>
       <CardHeader className="relative p-6 pb-2">
@@ -39,18 +30,11 @@ function ScreenCard({ screen, onDelete, onEdit, onSync, onManage, isSyncing = fa
           {screen.location || 'No location set'}
         </div>
       </CardHeader>
-      <CardContent className="px-6 pb-4 pt-2" onClick={(event) => event.stopPropagation()}>
-        <Table>
-          <TableBody>
-            <TableRow><TableCell className="py-1.5 text-muted-foreground">Resolution</TableCell><TableCell className="py-1.5 text-right font-mono text-xs">{screen.resolution?.width ?? 1920} × {screen.resolution?.height ?? 1080}</TableCell></TableRow>
-            <TableRow><TableCell className="py-1.5 text-muted-foreground">Orientation</TableCell><TableCell className="py-1.5 text-right">{screen.orientation ?? 'Landscape'}</TableCell></TableRow>
-            <TableRow><TableCell className="py-1.5 text-muted-foreground">Pairing</TableCell><TableCell className="py-1.5 text-right"><Badge variant="outline" className={cn('text-[9px] px-1.5 py-0 font-medium capitalize', pairingBadgeStyle)}>{screen.pairing_status.replace('_', ' ')}</Badge></TableCell></TableRow>
-            <TableRow><TableCell className="py-1.5 text-muted-foreground">Device</TableCell><TableCell className="py-1.5 max-w-48 truncate text-right font-mono text-xs">{screen.device_id ?? 'Not paired'}</TableCell></TableRow>
-            <TableRow><TableCell className="py-1.5 text-muted-foreground">Revision</TableCell><TableCell className="py-1.5 text-right font-mono text-xs">{screen.last_sync_revision}</TableCell></TableRow>
-          </TableBody>
-        </Table>
-        {isSyncing && <Progress value={undefined} className="animate-pulse mt-3" />}
-      </CardContent>
+      {isSyncing && (
+        <CardContent className="px-6 pb-4 pt-2" onClick={(event) => event.stopPropagation()}>
+          <Progress value={undefined} className="animate-pulse" />
+        </CardContent>
+      )}
       <CardFooter className="flex-col gap-2 p-6 pt-2" onClick={(event) => event.stopPropagation()}>
         {onSync && <Button className="w-full text-xs py-2 h-9" disabled={isSyncing} onClick={() => onSync(screen.id)}>{isSyncing ? 'Syncing…' : 'Force Sync'}</Button>}
         {onManage && <Button variant="link" className="self-end px-0 text-xs h-auto py-0" onClick={() => onManage(screen.id)}>Manage →</Button>}
