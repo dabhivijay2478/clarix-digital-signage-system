@@ -10,11 +10,11 @@ import {
   Menu,
   Monitor,
   PlaySquare,
-  Server,
   Settings,
   Truck,
   Users,
   LogOut,
+  ChevronDown,
 } from 'lucide-react'
 import { usePeers } from '@/hooks/usePeers'
 import { APP_VERSION } from '@/lib/constants'
@@ -27,13 +27,22 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { ScrollArea } from '@/components/ui/scroll-area'
 
-const navItems = [
+interface NavItem {
+  href: string
+  label: string
+  icon: React.ElementType
+  badge?: string
+  developerOnly?: boolean
+}
+
+const navItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/screens', label: 'Screens', icon: Monitor },
   { href: '/content', label: 'Content', icon: PlaySquare },
   { href: '/production-data', label: 'Production Data', icon: FileSpreadsheet },
-  { href: '/trucks', label: 'Truck Token', icon: Truck },
+  { href: '/trucks', label: 'Fleet', icon: Truck },
   { href: '/team', label: 'Team', icon: Users },
   { href: '/settings', label: 'Settings', icon: Settings, developerOnly: true },
 ]
@@ -46,17 +55,17 @@ interface SidebarProps {
 function Brand({ compact = false }: { compact?: boolean }) {
   const { appName, appIcon } = useBrandingStore()
   return (
-    <div className={cn('flex h-18 items-center gap-3 px-5', !compact && 'px-6')}>
-      <Avatar className="size-9 rounded-xl bg-white shadow-lg shadow-primary/15">
-        {appIcon && <AvatarImage src={appIcon} alt={`${appName} logo`} className="object-contain p-1" />}
-        <AvatarFallback className="rounded-xl bg-linear-to-br from-primary via-primary/80 to-secondary font-bold text-primary-foreground">
+    <div className={cn('flex h-16 items-center gap-3 px-4', compact && 'justify-center px-3')}>
+      <Avatar className={cn('rounded-xl bg-gradient-to-br from-primary to-secondary shadow-lg shadow-primary/20', compact ? 'size-9' : 'size-10')}>
+        {appIcon && <AvatarImage src={appIcon} alt={`${appName} logo`} className="object-contain p-1.5" />}
+        <AvatarFallback className="rounded-xl bg-gradient-to-br from-primary to-secondary font-bold text-primary-foreground text-sm">
           {appName.charAt(0).toUpperCase()}
         </AvatarFallback>
       </Avatar>
       {!compact && (
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold tracking-tight">{appName}</p>
-          <p className="font-mono text-[10px] text-muted-foreground">Control center · v{APP_VERSION}</p>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold tracking-tight text-foreground">{appName}</p>
+          <p className="font-mono text-[10px] text-muted-foreground">v{APP_VERSION}</p>
         </div>
       )}
     </div>
@@ -66,41 +75,51 @@ function Brand({ compact = false }: { compact?: boolean }) {
 function NavLinks({ compact = false, mobile = false }: { compact?: boolean; mobile?: boolean }) {
   const pathname = usePathname()
   const user = useAuthStore((state) => state.user)
+  
   return (
-    <nav className="flex flex-1 flex-col gap-1.5 overflow-y-auto p-3 scrollbar-none">
+    <nav className="flex flex-1 flex-col gap-1 p-3">
       {navItems.map((item) => {
         if (item.developerOnly && !user?.is_developer) return null
+        
         const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
-        const link = (
+        
+        const linkContent = (
           <Button
             asChild
             variant="ghost"
             className={cn(
-              'relative h-11 w-full justify-start rounded-xl text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors duration-200',
+              'relative h-10 w-full justify-start gap-3 rounded-lg px-3 text-sm font-medium transition-all duration-200',
+              'hover:bg-muted/80 hover:text-foreground',
               compact && 'justify-center px-0',
-              isActive && 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+              isActive && 'bg-primary/10 text-primary hover:bg-primary/15'
             )}
           >
-            <Link
-              href={item.href}
-              aria-label={item.label}
-              className={cn('flex items-center w-full h-full', compact ? 'justify-center' : 'gap-3')}
-            >
-              <item.icon className="size-4.5 shrink-0" />
+            <Link href={item.href} aria-label={item.label}>
+              <item.icon className={cn('shrink-0', compact ? 'size-5' : 'size-4')} />
               {!compact && <span>{item.label}</span>}
+              {!compact && isActive && (
+                <div className="absolute left-0 top-1/2 h-6 w-0.5 -translate-y-1/2 rounded-full bg-primary" />
+              )}
             </Link>
           </Button>
         )
-        if (mobile) return <SheetClose key={item.href} asChild>{link}</SheetClose>
-        if (!compact) return <div key={item.href}>{link}</div>
-        return (
-          <div key={item.href}>
-            <Tooltip>
-              <TooltipTrigger asChild>{link}</TooltipTrigger>
-              <TooltipContent side="right">{item.label}</TooltipContent>
+        
+        if (mobile) {
+          return <SheetClose key={item.href} asChild>{linkContent}</SheetClose>
+        }
+        
+        if (compact) {
+          return (
+            <Tooltip key={item.href} delayDuration={0}>
+              <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+              <TooltipContent side="right" className="border-border bg-popover">
+                {item.label}
+              </TooltipContent>
             </Tooltip>
-          </div>
-        )
+          )
+        }
+        
+        return <div key={item.href}>{linkContent}</div>
       })}
     </nav>
   )
@@ -109,30 +128,94 @@ function NavLinks({ compact = false, mobile = false }: { compact?: boolean; mobi
 function PeerStatus({ compact = false }: { compact?: boolean }) {
   const { peerCount } = usePeers()
   if (peerCount < 1) return null
+  
   return (
-    <div className={cn('flex items-center justify-center gap-2', !compact && 'justify-start px-2')}>
+    <div className={cn('flex items-center gap-2 px-3', compact && 'justify-center px-2')}>
       <span className="relative flex size-2">
-        <span className="absolute inline-flex size-full animate-ping rounded-full bg-green-500 opacity-75" />
-        <span className="relative inline-flex size-2 rounded-full bg-green-500" />
+        <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+        <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
       </span>
-      {!compact && <Badge variant="secondary">{peerCount} peers online</Badge>}
+      {!compact && (
+        <span className="text-xs font-medium text-muted-foreground">
+          {peerCount} peer{peerCount !== 1 ? 's' : ''} online
+        </span>
+      )}
+    </div>
+  )
+}
+
+function UserSection({ compact = false }: { compact?: boolean }) {
+  const { user, logout } = useAuthStore()
+  if (!user) return null
+  
+  if (compact) {
+    return (
+      <Tooltip delayDuration={0}>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-10 w-full rounded-lg"
+            onClick={() => void logout()}
+          >
+            <LogOut className="size-4 text-muted-foreground" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="right">Logout</TooltipContent>
+      </Tooltip>
+    )
+  }
+  
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 p-3">
+      <div className="flex items-center gap-3 mb-3">
+        <Avatar className="size-8 rounded-lg">
+          <AvatarFallback className="rounded-lg bg-primary/10 text-primary text-sm font-medium">
+            {user.name?.charAt(0).toUpperCase() || 'U'}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">{user.name}</p>
+          <p className="truncate text-xs text-muted-foreground">{user.role}</p>
+        </div>
+      </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
+        onClick={() => void logout()}
+      >
+        <LogOut className="size-3.5" />
+        <span className="text-xs">Logout</span>
+      </Button>
     </div>
   )
 }
 
 export function MobileSidebar() {
   return (
-    <div className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-border/60 bg-background/80 px-4 backdrop-blur-xl lg:hidden">
+    <div className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur-xl lg:hidden">
       <Brand />
       <Sheet>
-        <SheetTrigger asChild><Button aria-label="Open navigation" variant="outline" size="icon"><Menu /></Button></SheetTrigger>
-        <SheetContent side="left" className="w-[280px] gap-0 border-border/70 bg-card/95 p-0 backdrop-blur-xl">
+        <SheetTrigger asChild>
+          <Button variant="outline" size="icon" className="h-9 w-9">
+            <Menu className="size-4" />
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="left" className="w-[280px] gap-0 border-r-border bg-background p-0">
           <SheetTitle className="sr-only">Navigation</SheetTitle>
-          <Brand />
-          <Separator />
-          <NavLinks mobile />
-          <Separator />
-          <div className="p-4"><PeerStatus /></div>
+          <div className="flex h-full flex-col">
+            <Brand />
+            <Separator />
+            <ScrollArea className="flex-1">
+              <NavLinks mobile />
+            </ScrollArea>
+            <Separator />
+            <div className="p-4 space-y-4">
+              <PeerStatus />
+              <UserSection />
+            </div>
+          </div>
         </SheetContent>
       </Sheet>
     </div>
@@ -140,30 +223,36 @@ export function MobileSidebar() {
 }
 
 export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
-  const { user, logout } = useAuthStore()
   return (
     <aside
-      className="fixed inset-y-0 left-0 z-50 hidden flex-col border-r border-border/60 bg-card/75 shadow-2xl shadow-black/10 backdrop-blur-xl transition-[width] duration-300 lg:flex"
-      style={{ width: isCollapsed ? 'var(--sidebar-collapsed)' : 'var(--sidebar-width)' }}
+      className={cn(
+        'fixed inset-y-0 left-0 z-50 hidden flex-col border-r border-border bg-card/95 backdrop-blur-xl transition-all duration-300 lg:flex',
+        isCollapsed ? 'w-[72px]' : 'w-[260px]'
+      )}
     >
       <Brand compact={isCollapsed} />
       <Separator />
-      <NavLinks compact={isCollapsed} />
+      
+      <ScrollArea className="flex-1">
+        <NavLinks compact={isCollapsed} />
+      </ScrollArea>
+      
       <Separator />
+      
       <div className="space-y-3 p-3">
         <PeerStatus compact={isCollapsed} />
-        {user && (
-          <div className={cn('rounded-xl border border-border bg-background/40 p-2 text-xs', isCollapsed && 'hidden')}>
-            <p className="truncate font-medium">{user.name}</p>
-            <p className="truncate text-muted-foreground">{user.role}</p>
-            <Button variant="ghost" size="sm" className="mt-2 h-8 w-full justify-start px-2 text-muted-foreground" onClick={() => void logout()}>
-              <LogOut className="mr-1.5 size-3.5" /> Logout
-            </Button>
-          </div>
-        )}
-        <Button variant="ghost" className={cn('h-10 w-full justify-start rounded-xl', isCollapsed && 'justify-center px-0')} onClick={onToggle}>
-          {isCollapsed ? <ChevronRight /> : <ChevronLeft />}
-          {!isCollapsed && <span>Collapse menu</span>}
+        <UserSection compact={isCollapsed} />
+        
+        <Button
+          variant="ghost"
+          className={cn(
+            'h-9 w-full gap-2 text-muted-foreground hover:text-foreground',
+            isCollapsed && 'justify-center px-0'
+          )}
+          onClick={onToggle}
+        >
+          {isCollapsed ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
+          {!isCollapsed && <span className="text-xs">Collapse</span>}
         </Button>
       </div>
     </aside>

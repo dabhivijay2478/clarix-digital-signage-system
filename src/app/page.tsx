@@ -3,30 +3,37 @@
 import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { CircleStop, Clock3, Monitor, Network, PlaySquare, Rows3, Sparkles, Loader2 } from 'lucide-react'
+import { 
+  CircleStop, 
+  Clock, 
+  Monitor, 
+  PlaySquare, 
+  Rows3, 
+  Sparkles, 
+  Loader2,
+  Zap,
+  ArrowRight
+} from 'lucide-react'
 import StatCard from '@/components/StatCard'
 import { showToast } from '@/components/Toast'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { usePeers } from '@/hooks/usePeers'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { playlistsApi, scheduleApi, screensApi } from '@/lib/tauri'
 import type { ScheduleSlot } from '@/lib/types'
+import { cn } from '@/lib/utils'
 
 const ScheduleTimeline = dynamic(() => import('@/components/ScheduleTimeline'), {
   loading: () => (
     <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
       <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      <span className="text-xs font-semibold tracking-wide uppercase">Loading schedule...</span>
+      <span className="text-sm font-medium">Loading schedule...</span>
     </div>
   ),
 })
 
 export default function DashboardPage() {
   const router = useRouter()
-  const { peerCount } = usePeers()
   const [time, setTime] = useState('')
   const [screensCount, setScreensCount] = useState(0)
   const [playlistsCount, setPlaylistsCount] = useState(0)
@@ -34,7 +41,14 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const update = () => setTime(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
+    const update = () => {
+      setTime(new Date().toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit',
+        hour12: false
+      }))
+    }
     update()
     const interval = setInterval(update, 1000)
     return () => clearInterval(interval)
@@ -43,7 +57,11 @@ export default function DashboardPage() {
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
-        const [screens, playlists, schedules] = await Promise.all([screensApi.getAll(), playlistsApi.getAll(), scheduleApi.getAll()])
+        const [screens, playlists, schedules] = await Promise.all([
+          screensApi.getAll(), 
+          playlistsApi.getAll(), 
+          scheduleApi.getAll()
+        ])
         setScreensCount(screens.length)
         setPlaylistsCount(playlists.length)
         setScheduleSlots(schedules)
@@ -59,7 +77,10 @@ export default function DashboardPage() {
   const handleEmergencyStop = async () => {
     try {
       const screens = await screensApi.getAll()
-      if (!screens.length) return showToast('No registered screens to stop', 'info')
+      if (!screens.length) {
+        showToast('No registered screens to stop', 'info')
+        return
+      }
       showToast('Shutting down all screens...', 'warning')
       await Promise.all(screens.map((screen) => screensApi.setPower(screen.id, false)))
       showToast('All screens powered off successfully', 'success')
@@ -69,54 +90,128 @@ export default function DashboardPage() {
     }
   }
 
+  const quickActions = [
+    {
+      icon: Monitor,
+      label: 'Add Screen',
+      description: 'Register a new display',
+      href: '/screens',
+      variant: 'default' as const,
+    },
+    {
+      icon: PlaySquare,
+      label: 'Upload Content',
+      description: 'Add media to library',
+      href: '/content',
+      variant: 'secondary' as const,
+    },
+    {
+      icon: Rows3,
+      label: 'Create Playlist',
+      description: 'Organize your content',
+      href: '/playlists',
+      variant: 'outline' as const,
+    },
+    {
+      icon: CircleStop,
+      label: 'Emergency Stop',
+      description: 'Power off all screens',
+      onClick: handleEmergencyStop,
+      variant: 'destructive' as const,
+      danger: true,
+    },
+  ]
+
   return (
-    <div className="space-y-7 lg:space-y-9">
+    <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <Badge variant="outline" className="mb-3 border-primary/20 bg-primary/5 text-primary"><Sparkles /> Control center</Badge>
-          <h1 className="page-title">Dashboard</h1>
-          <p className="page-subtitle">A live view of your signage network and scheduled playback.</p>
+          <Badge variant="outline" className="mb-2 border-primary/20 bg-primary/5 text-primary">
+            <Sparkles className="mr-1 h-3 w-3" />
+            Control Center
+          </Badge>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            Dashboard
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            A live view of your signage network and scheduled playback.
+          </p>
         </div>
-        <Badge variant="outline" className="h-9 gap-2 self-start rounded-lg bg-card/60 px-3 font-mono sm:self-auto"><Clock3 />{time}</Badge>
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
+          <Clock className="h-4 w-4 text-muted-foreground" />
+          <span className="font-mono text-sm font-medium tabular-nums">{time}</span>
+        </div>
       </div>
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
+        <div className="flex flex-col items-center justify-center py-24 gap-4 text-muted-foreground">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
-          <span className="text-sm font-semibold tracking-wide uppercase">Loading dashboard...</span>
+          <span className="text-sm font-medium">Loading dashboard...</span>
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:gap-4">
-            <StatCard icon="▣" value={screensCount} label="Active Screens" compact />
+          {/* Compact Stats Row */}
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard icon="▣" value={screensCount} label="Screens" compact />
             <StatCard icon="☰" value={playlistsCount} label="Playlists" color="info" compact />
           </div>
+
+          {/* Quick Actions - Above Timeline */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Zap className="h-4 w-4 text-primary" />
+                Quick Actions
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Jump into the most common workflows
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {quickActions.map((action) => (
+                  <Button
+                    key={action.label}
+                    variant={action.variant}
+                    className={cn(
+                      'h-auto justify-start gap-2 p-3 text-left',
+                      action.danger && 'border-red-500/50 hover:bg-red-500/10'
+                    )}
+                    onClick={action.onClick || (() => router.push(action.href!))}
+                  >
+                    <span className={cn(
+                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-md',
+                      action.danger 
+                        ? 'bg-red-500/10 text-red-500' 
+                        : 'bg-primary/10 text-primary'
+                    )}>
+                      <action.icon className="h-3.5 w-3.5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className={cn(
+                        'text-sm font-medium',
+                        action.danger && 'text-red-500'
+                      )}>
+                        {action.label}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground truncate">
+                        {action.description}
+                      </p>
+                    </div>
+                    {!action.danger && (
+                      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    )}
+                  </Button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Schedule Timeline */}
           <ScheduleTimeline slots={scheduleSlots} />
         </>
       )}
-
-      <div className="grid gap-5 xl:grid-cols-[1.35fr_1fr]">
-        <Card className="overflow-hidden">
-          <CardHeader className="flex flex-row items-center justify-between border-b border-border/50 pb-5"><div><CardTitle>Quick Actions</CardTitle><p className="mt-1 text-sm text-muted-foreground">Jump into the most common workflows.</p></div><Sparkles className="size-5 text-primary" /></CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2">
-            <Button className="group h-14 justify-start px-4" onClick={() => router.push('/screens')}><span className="flex size-8 items-center justify-center rounded-lg bg-white/10 text-white transition-colors group-hover:bg-white/20"><Monitor className="size-4" /></span>Add a screen</Button>
-            <Button className="group h-14 justify-start px-4" variant="accent" onClick={() => router.push('/content')}><span className="flex size-8 items-center justify-center rounded-lg bg-white/10 text-white transition-colors group-hover:bg-white/20"><PlaySquare className="size-4" /></span>Upload content</Button>
-            <Button className="group h-14 justify-start px-4" variant="outline" onClick={() => router.push('/playlists')}><span className="flex size-8 items-center justify-center rounded-lg bg-muted text-foreground/70 transition-colors group-hover:bg-white/20 group-hover:text-white"><Rows3 className="size-4" /></span>Create playlist</Button>
-            <Tooltip><TooltipTrigger asChild><Button className="group h-14 justify-start px-4" variant="destructive" onClick={handleEmergencyStop}><span className="flex size-8 items-center justify-center rounded-lg bg-black/10 text-white transition-colors group-hover:bg-black/20"><CircleStop className="size-4" /></span>Emergency stop</Button></TooltipTrigger><TooltipContent>Immediately powers off every registered screen</TooltipContent></Tooltip>
-          </CardContent>
-        </Card>
-        <Card className="overflow-hidden">
-          <CardHeader className="flex flex-row items-center justify-between border-b border-border/50 pb-5"><div><CardTitle>Network Status</CardTitle><p className="mt-1 text-sm text-muted-foreground">Discovery and sync health.</p></div><Network className="size-5 text-chart-2" /></CardHeader>
-          <CardContent>
-            <Table><TableBody>
-              <TableRow><TableCell className="text-muted-foreground">Nearby Wi-Fi Devices</TableCell><TableCell className="text-right font-bold">{peerCount}</TableCell></TableRow>
-              <TableRow><TableCell className="text-muted-foreground">Discovery</TableCell><TableCell className="text-right"><Badge className="bg-green-600">Active</Badge></TableCell></TableRow>
-              <TableRow><TableCell className="text-muted-foreground">Service</TableCell><TableCell className="text-right"><code className="rounded bg-muted px-1 font-mono text-xs">_mgenterprise._tcp.local</code></TableCell></TableRow>
-              <TableRow><TableCell className="text-muted-foreground">Sync Mode</TableCell><TableCell className="text-right font-medium">mDNS + TCP</TableCell></TableRow>
-            </TableBody></Table>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   )
 }

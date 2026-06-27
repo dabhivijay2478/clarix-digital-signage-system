@@ -35,6 +35,47 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { ProductionImportResult, ProductionRow, TruckDispatchSummary, TruckScreenAlert, Truck as TruckType } from '@/lib/types'
 import { useGateStore, isValidGateNumber, normalizeGateNumber } from '@/store/gateStore'
+import { cn } from '@/lib/utils'
+
+// ── Compact Stat Component ──────────────────────────────────────────────────
+
+function CompactStat({ 
+  icon, 
+  value, 
+  label, 
+  color = 'emerald' 
+}: { 
+  icon: string
+  value: number | string
+  label: string
+  color?: 'emerald' | 'amber' | 'blue' | 'violet' | 'cyan' | 'red'
+}) {
+  const colorStyles = {
+    emerald: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500',
+    amber: 'bg-amber-500/10 border-amber-500/20 text-amber-500',
+    blue: 'bg-blue-500/10 border-blue-500/20 text-blue-500',
+    violet: 'bg-violet-500/10 border-violet-500/20 text-violet-500',
+    cyan: 'bg-cyan-500/10 border-cyan-500/20 text-cyan-500',
+    red: 'bg-red-500/10 border-red-500/20 text-red-500',
+  }
+
+  return (
+    <Card className="border-border bg-card transition-all duration-200 hover:shadow-md hover:border-border/60 hover:-translate-y-0.5">
+      <CardContent className="p-3 flex items-center gap-3">
+        <div className={cn(
+          "flex size-8 items-center justify-center rounded-lg border text-sm font-medium shrink-0",
+          colorStyles[color]
+        )}>
+          {icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-muted-foreground">{label}</p>
+          <p className="text-lg font-bold tracking-tight">{value}</p>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -491,84 +532,69 @@ export default function TrucksPage() {
         </div>
       </div>
 
-      {/* Stats row */}
-      <div className="grid gap-4 sm:grid-cols-4 xl:grid-cols-6">
-        <Card>
-          <CardContent className="flex items-center gap-4 p-5">
-            <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-xl">🚛</div>
-            <div>
-              <p className="text-2xl font-bold">{trucks.filter(t => !t.is_out).length}</p>
-              <p className="text-sm text-muted-foreground">Total Trucks</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-5">
-            <div className="flex size-11 items-center justify-center rounded-xl bg-amber-500/10 text-xl">⏳</div>
-            <div>
-              <p className="text-2xl font-bold">{trucks.filter(t => t.is_waiting && !t.is_out).length}</p>
-              <p className="text-sm text-muted-foreground">Waiting</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-5">
-            <div className="flex size-11 items-center justify-center rounded-xl bg-blue-500/10 text-xl">📦</div>
-            <div>
-              <p className="text-2xl font-bold">{trucks.filter(t => t.is_loading && !t.is_out).length}</p>
-              <p className="text-sm text-muted-foreground">Loading</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-5">
-            <div className="flex size-11 items-center justify-center rounded-xl bg-emerald-500/10 text-xl">✅</div>
-            <div>
-              <p className="text-2xl font-bold">{trucks.filter(t => t.is_out).length}</p>
-              <p className="text-sm text-muted-foreground">Dispatched</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-5">
-            <div className="flex size-11 items-center justify-center rounded-xl bg-emerald-500/10 text-xl">24h</div>
-            <div>
-              <p className="text-2xl font-bold">{dispatchSummary?.last_24h ?? 0}</p>
-              <p className="text-sm text-muted-foreground">Dispatch 24h</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-5">
-            <div className="flex size-11 items-center justify-center rounded-xl bg-cyan-500/10 text-xl">M</div>
-            <div>
-              <p className="text-2xl font-bold">{dispatchSummary?.this_month ?? 0}</p>
-              <p className="text-sm text-muted-foreground">Dispatch Month</p>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Stats row - Compact */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <CompactStat 
+          icon="🚛" 
+          value={trucks.filter(t => !t.is_out).length} 
+          label="Total" 
+          color="emerald"
+        />
+        <CompactStat 
+          icon="⏳" 
+          value={trucks.filter(t => t.is_waiting && !t.is_out).length} 
+          label="Waiting" 
+          color="amber"
+        />
+        <CompactStat 
+          icon="📦" 
+          value={trucks.filter(t => t.is_loading && !t.is_out).length} 
+          label="Loading" 
+          color="blue"
+        />
+        <CompactStat 
+          icon="✅" 
+          value={trucks.filter(t => t.is_out).length} 
+          label="Dispatched" 
+          color="emerald"
+        />
+        <CompactStat 
+          icon="24h" 
+          value={dispatchSummary?.last_24h ?? 0} 
+          label="24h Dispatch" 
+          color="violet"
+        />
+        <CompactStat 
+          icon="M" 
+          value={dispatchSummary?.this_month ?? 0} 
+          label="Month" 
+          color="cyan"
+        />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground">Last player alert</p>
-            <p className="mt-1 font-mono text-lg font-bold">{lastAlert?.truck_number ?? 'No alert yet'}</p>
-            <p className="text-xs text-muted-foreground">{lastAlert ? `${lastAlert.status_label} · Gate ${lastAlert.gate?.toUpperCase() ?? '—'}` : 'Status changes will appear on players for 30 seconds.'}</p>
+      {/* Info Cards - Compact */}
+      <div className="grid gap-3 md:grid-cols-3">
+        <Card className="border-border bg-card">
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground mb-1">Last Alert</p>
+            <p className="font-mono text-base font-semibold truncate">{lastAlert?.truck_number ?? 'No alert yet'}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+              {lastAlert ? `${lastAlert.status_label} · Gate ${lastAlert.gate?.toUpperCase() ?? '—'}` : 'Status changes appear for 30s'}
+            </p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground">Average loading duration</p>
-            <p className="mt-1 font-mono text-lg font-bold">{formatDurationSeconds(dispatchSummary?.avg_loading_secs)}</p>
-            <p className="text-xs text-muted-foreground">Calculated from Loading In to Loading Out.</p>
+        <Card className="border-border bg-card">
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground mb-1">Avg Loading Time</p>
+            <p className="font-mono text-base font-semibold">{formatDurationSeconds(dispatchSummary?.avg_loading_secs)}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">From Loading In to Out</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground">Queue rule</p>
-            <p className="mt-1 text-lg font-bold">First 2 trucks only</p>
-            <p className="text-xs text-muted-foreground">Status controls are locked for lower queue positions.</p>
+        <Card className="border-border bg-card">
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground mb-1">Queue Rule</p>
+            <p className="text-base font-semibold">First 2 trucks only</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Lower positions are locked</p>
           </CardContent>
         </Card>
       </div>

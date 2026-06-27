@@ -1,12 +1,11 @@
 'use client'
 
-import { memo, useRef, useState } from 'react'
+import { memo } from 'react'
 import { Trash2, Film, Image as ImageIcon, Globe, Megaphone, Presentation, FileText, FileSpreadsheet } from 'lucide-react'
-import { convertFileSrc } from '@tauri-apps/api/core'
 import type { ContentItem } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
@@ -16,14 +15,14 @@ interface ContentCardProps {
 }
 
 const typeIcons: Record<string, React.ReactNode> = {
-  Video: <Film className="size-5 text-primary" />,
-  Image: <ImageIcon className="size-5 text-blue-500" />,
-  WebApp: <Globe className="size-5 text-indigo-500" />,
-  Ad: <Megaphone className="size-5 text-amber-500" />,
-  Slideshow: <Presentation className="size-5 text-emerald-500" />,
-  Presentation: <Presentation className="size-5 text-purple-500" />,
-  Document: <FileText className="size-5 text-rose-500" />,
-  Spreadsheet: <FileSpreadsheet className="size-5 text-green-500" />,
+  Video: <Film className="size-4 text-primary" />,
+  Image: <ImageIcon className="size-4 text-blue-500" />,
+  WebApp: <Globe className="size-4 text-indigo-500" />,
+  Ad: <Megaphone className="size-4 text-amber-500" />,
+  Slideshow: <Presentation className="size-4 text-emerald-500" />,
+  Presentation: <Presentation className="size-4 text-purple-500" />,
+  Document: <FileText className="size-4 text-rose-500" />,
+  Spreadsheet: <FileSpreadsheet className="size-4 text-green-500" />,
 }
 
 const typeStyles: Record<string, string> = {
@@ -35,87 +34,70 @@ const typeStyles: Record<string, string> = {
 }
 
 function ContentCard({ item, onDelete }: ContentCardProps) {
-  const { id, name, content_type, file_path, url, duration_secs, tags } = item
+  const { id, name, content_type, url, duration_secs, tags } = item
   const variant = content_type === 'Image' ? 'secondary' : content_type === 'Video' ? 'default' : 'outline'
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const [previewError, setPreviewError] = useState(false)
-
-  const getMediaUrl = (): string => {
-    if (url) return url
-    if (file_path) {
-      const tauriWindow = typeof window !== 'undefined' ? (window as typeof window & { __TAURI_INTERNALS__?: unknown }) : null
-      if (tauriWindow?.__TAURI_INTERNALS__) {
-        try {
-          return convertFileSrc(file_path)
-        } catch (e) {
-          console.error('Failed to convert file source', e)
-        }
-      }
-      const filename = file_path.split(/[/\\]/).pop() || ''
-      const origin = typeof window !== 'undefined'
-        ? (window.location.port === '7420' ? window.location.origin : `http://${window.location.hostname}:7420`)
-        : 'http://localhost:7420'
-      return `${origin}/media/${encodeURIComponent(filename)}`
-    }
-    return ''
-  }
-
-  const mediaUrl = getMediaUrl()
-
-  const handleMouseEnter = () => {
-    if (content_type === 'Video' && videoRef.current) {
-      videoRef.current.play().catch(() => {})
-    }
-  }
-
-  const handleMouseLeave = () => {
-    if (content_type === 'Video' && videoRef.current) {
-      videoRef.current.pause()
-      videoRef.current.currentTime = 0
-    }
-  }
-
-  const renderPreview = () => {
-    return (
-      <div className="flex size-12 items-center justify-center rounded-2xl bg-secondary/10 text-secondary transition-transform duration-300 group-hover:scale-110">
-        {typeIcons[content_type] || <span>❓</span>}
-      </div>
-    )
-  }
 
   return (
-    <Card className="group relative flex h-full flex-col overflow-hidden border-border bg-card transition-all duration-200 hover:-translate-y-0.5 hover:border-border/80 shadow-xs p-0 gap-0">
-      <div 
-        className="relative flex aspect-video items-center justify-center overflow-hidden border-b border-border bg-muted/20 after:absolute after:inset-0 after:bg-linear-to-t after:from-background/20 after:to-transparent after:opacity-0 after:transition-opacity group-hover:after:opacity-100"
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-      >
-        {renderPreview()}
-      </div>
+    <Card className="group relative overflow-hidden border-border bg-card transition-all duration-200 hover:shadow-md hover:border-border/60 hover:-translate-y-0.5">
+      {/* Delete button */}
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button aria-label="Delete content" variant="glass" size="icon-sm" className="absolute right-2.5 top-2.5 z-10 hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity duration-200" onClick={() => onDelete(id)}>
-            <Trash2 />
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="absolute right-2 top-2 z-10 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => onDelete(id)}
+          >
+            <Trash2 className="size-3.5" />
           </Button>
         </TooltipTrigger>
         <TooltipContent>Delete content</TooltipContent>
       </Tooltip>
-      <CardContent className="flex flex-1 flex-col gap-2.5 p-4">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="line-clamp-2 text-xs font-semibold leading-snug">{name}</h3>
-          <Badge variant={variant} className={cn('shrink-0 text-[9px] px-1.5 py-0.5', typeStyles[content_type])}>{content_type}</Badge>
-        </div>
-        <p className="truncate font-mono text-[9px] text-muted-foreground">{content_type === 'WebApp' ? url : file_path}</p>
-        {!!tags?.length && (
-          <div className="flex flex-wrap gap-1">
-            {tags.slice(0, 2).map((tag) => <Badge key={tag} variant="outline" className="text-[9px] px-1 py-0">#{tag}</Badge>)}
-            {tags.length > 2 && <span className="text-[9px] text-muted-foreground">+{tags.length - 2}</span>}
+
+      <CardContent className="p-3">
+        {/* Icon and Type Badge */}
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className={cn(
+            "flex size-8 items-center justify-center rounded-lg border",
+            "bg-muted/50 border-border/60"
+          )}>
+            {typeIcons[content_type] || <span className="text-xs">❓</span>}
           </div>
-        )}
+          <Badge 
+            variant={variant} 
+            className={cn('text-[10px] px-1.5 py-0 h-5', typeStyles[content_type])}
+          >
+            {content_type}
+          </Badge>
+        </div>
+
+        {/* Name */}
+        <h3 className="font-medium text-sm leading-tight line-clamp-2 mb-1 pr-6" title={name}>
+          {name}
+        </h3>
+
+        {/* Source */}
+        <p className="text-[10px] text-muted-foreground truncate mb-2" title={url || item.file_path || undefined}>
+          {url || item.file_path || 'Local file'}
+        </p>
+
+        {/* Footer: Tags and Duration */}
+        <div className="flex items-center justify-between pt-2 border-t border-border/50">
+          <div className="flex flex-wrap gap-1">
+            {tags?.slice(0, 2).map((tag) => (
+              <span key={tag} className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                #{tag}
+              </span>
+            ))}
+            {tags && tags.length > 2 && (
+              <span className="text-[10px] text-muted-foreground">+{tags.length - 2}</span>
+            )}
+          </div>
+          <span className="text-xs font-mono text-muted-foreground">
+            {duration_secs}s
+          </span>
+        </div>
       </CardContent>
-      <CardFooter className="justify-between border-t border-border px-4 py-2.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-        <span>Duration</span><span className="font-mono text-foreground text-xs">{duration_secs}s</span>
-      </CardFooter>
     </Card>
   )
 }

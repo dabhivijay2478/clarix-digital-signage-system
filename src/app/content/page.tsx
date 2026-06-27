@@ -5,7 +5,7 @@ import { useContent } from '../../hooks/useContent';
 import ContentCard from '../../components/ContentCard';
 import Modal from '../../components/Modal';
 import { showToast } from '../../components/Toast';
-import { LayoutGrid, Plus, Search, UploadCloud, Loader2 } from 'lucide-react';
+import { LayoutGrid, Plus, Search, UploadCloud, Loader2, Table2, Trash2, Film, Image as ImageIcon, Globe, Megaphone, Presentation, FileText, FileSpreadsheet } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,11 +13,33 @@ import { Card, CardContent, CardDescription, CardTitle } from '@/components/ui/c
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { cn } from '@/lib/utils';
 
 const contentTypes = ['Image', 'Video', 'Presentation', 'Document', 'Spreadsheet', 'WebApp', 'Ad', 'Slideshow'];
 
+const typeIcons: Record<string, React.ReactNode> = {
+  Video: <Film className="size-4 text-primary" />,
+  Image: <ImageIcon className="size-4 text-blue-500" />,
+  WebApp: <Globe className="size-4 text-indigo-500" />,
+  Ad: <Megaphone className="size-4 text-amber-500" />,
+  Slideshow: <Presentation className="size-4 text-emerald-500" />,
+  Presentation: <Presentation className="size-4 text-purple-500" />,
+  Document: <FileText className="size-4 text-rose-500" />,
+  Spreadsheet: <FileSpreadsheet className="size-4 text-green-500" />,
+};
+
+const typeStyles: Record<string, string> = {
+  Ad: 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  Slideshow: 'border-primary/30 bg-primary/10 text-primary',
+  Presentation: 'border-purple-500/30 bg-purple-500/10 text-purple-600 dark:text-purple-400',
+  Document: 'border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400',
+  Spreadsheet: 'border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400',
+};
+
 export default function ContentPage() {
   const { items, loading, search, setSearch, addItem, deleteItem } = useContent();
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [showAdd, setShowAdd] = useState(false);
   const [formName, setFormName] = useState('');
   const [formType, setFormType] = useState('Image');
@@ -130,38 +152,170 @@ export default function ContentPage() {
   const isUploadType = formType === 'Image' || formType === 'Video' || formType === 'Presentation' || formType === 'Document' || formType === 'Spreadsheet' || formType === 'Ad' || formType === 'Slideshow' || formType === 'WebApp';
 
   return (
-    <div>
-      <div className="page-header flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="page-title">Content Library</h1>
-          <div className="mt-2"><Badge variant="secondary">{items.length} item{items.length !== 1 ? 's' : ''}</Badge></div>
+          <h1 className="text-2xl font-bold tracking-tight">Content Library</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {items.length} item{items.length !== 1 ? 's' : ''} in library
+          </p>
         </div>
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-          <div className="relative sm:w-72"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input
-            className="w-full pl-9"
-            placeholder="Search content..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          /></div>
-          <Button onClick={() => setShowAdd(true)}><Plus />Add Content</Button>
+        <div className="flex items-center gap-3">
+          {/* View Toggle */}
+          <ToggleGroup
+            type="single"
+            value={viewMode}
+            onValueChange={(v) => v && setViewMode(v as 'grid' | 'table')}
+            className="border rounded-lg p-1"
+          >
+            <ToggleGroupItem value="grid" aria-label="Grid view">
+              <LayoutGrid className="size-4" />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="table" aria-label="Table view">
+              <Table2 className="size-4" />
+            </ToggleGroupItem>
+          </ToggleGroup>
+          
+          {/* Search */}
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              className="w-full pl-9"
+              placeholder="Search content..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          
+          {/* Add Button */}
+          <Button onClick={() => setShowAdd(true)}>
+            <Plus className="size-4 mr-1.5" />
+            Add Content
+          </Button>
         </div>
       </div>
 
+      {/* Content */}
       {loading ? (
         <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
-          <span className="text-sm font-semibold tracking-wide uppercase">Loading content...</span>
+          <span className="text-sm font-medium">Loading content...</span>
         </div>
       ) : items.length === 0 ? (
-        <Card className="border-dashed bg-transparent"><CardContent className="flex flex-col items-center py-16 text-center"><LayoutGrid className="mb-4 size-12 text-muted-foreground/40" /><CardTitle>No content yet</CardTitle><CardDescription className="mt-1">Upload videos, images, ads, and web apps to your local content library.</CardDescription><Button className="mt-6" onClick={() => setShowAdd(true)}>+ Add Content</Button></CardContent></Card>
+        <Card className="border-dashed bg-transparent">
+          <CardContent className="flex flex-col items-center py-16 text-center">
+            <LayoutGrid className="mb-4 size-12 text-muted-foreground/40" />
+            <CardTitle>No content yet</CardTitle>
+            <CardDescription className="mt-1">
+              Upload videos, images, ads, and web apps to your local content library.
+            </CardDescription>
+            <Button className="mt-6" onClick={() => setShowAdd(true)}>
+              <Plus className="size-4 mr-1.5" />
+              Add Content
+            </Button>
+          </CardContent>
+        </Card>
+      ) : viewMode === 'grid' ? (
+        /* Grid View - Compact */
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
+          {items.map((item) => (
+            <ContentCard key={item.id} item={item} onDelete={setDeleteId} />
+          ))}
+        </div>
       ) : (
-        <div className="grid-auto-sm stagger">
-          {items.map((item) => <ContentCard key={item.id} item={item} onDelete={setDeleteId} />)}
+        /* Table View */
+        <div className="border border-border rounded-lg overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium">Name</th>
+                <th className="px-4 py-3 text-left font-medium">Type</th>
+                <th className="px-4 py-3 text-left font-medium">Source</th>
+                <th className="px-4 py-3 text-left font-medium">Tags</th>
+                <th className="px-4 py-3 text-right font-medium">Duration</th>
+                <th className="px-4 py-3 text-right font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {items.map((item) => {
+                const variant = item.content_type === 'Image' ? 'secondary' : item.content_type === 'Video' ? 'default' : 'outline';
+                return (
+                  <tr key={item.id} className="hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex size-8 items-center justify-center rounded-lg bg-muted">
+                          {typeIcons[item.content_type] || <span>❓</span>}
+                        </div>
+                        <span className="font-medium">{item.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge 
+                        variant={variant} 
+                        className={cn('text-xs', typeStyles[item.content_type])}
+                      >
+                        {item.content_type}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">
+                      {item.url || item.file_path || '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      {item.tags?.length ? (
+                        <div className="flex flex-wrap gap-1">
+                          {item.tags.slice(0, 3).map((tag) => (
+                            <Badge key={tag} variant="outline" className="text-xs">
+                              #{tag}
+                            </Badge>
+                          ))}
+                          {item.tags.length > 3 && (
+                            <span className="text-xs text-muted-foreground">+{item.tags.length - 3}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-muted-foreground">
+                      {item.duration_secs}s
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-8 text-destructive hover:text-destructive"
+                          onClick={() => setDeleteId(item.id)}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
+      {/* Delete Confirmation */}
       <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
-        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete content?</AlertDialogTitle><AlertDialogDescription>This permanently removes “{items.find((item) => item.id === deleteId)?.name}”.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => deleteId && handleDelete(deleteId)}>Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete content?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes &quot;{items.find((item) => item.id === deleteId)?.name}&quot;.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleteId && handleDelete(deleteId)}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
       </AlertDialog>
 
       {/* Add Content Modal */}
@@ -193,7 +347,8 @@ export default function ContentPage() {
                 setFormType(value);
                 setSelectedFile(null);
               }}>
-              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{contentTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>{contentTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
             </Select>
           </div>
 
@@ -210,7 +365,9 @@ export default function ContentPage() {
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
                 <div className="flex flex-col items-center gap-2">
-                  <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary"><UploadCloud className="size-5" /></div>
+                  <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <UploadCloud className="size-5" />
+                  </div>
                   {selectedFile ? (
                     <div>
                       <p className="max-w-[280px] truncate text-sm font-semibold text-foreground">

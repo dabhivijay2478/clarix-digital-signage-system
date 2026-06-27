@@ -17,7 +17,7 @@ import {
   normalizePlaylistItemSchedule,
   validatePlaylistItemSchedule,
 } from '../../lib/signage-schedule';
-import { Monitor, Plus, Loader2, Trash2 } from 'lucide-react';
+import { Monitor, Plus, Loader2, Trash2, Pencil } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -1279,16 +1279,17 @@ export default function ScreensPage() {
       <Tabs defaultValue="all_screens" className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-4">
           <div>
-            <h1 className="page-title">Screens</h1>
-            <p className="page-subtitle">Manage screens and set up gate displays.</p>
+            <h1 className="text-2xl font-bold tracking-tight">Screens</h1>
+            <p className="text-sm text-muted-foreground mt-1">Manage screens and set up gate displays.</p>
           </div>
-          <TabsList className="grid w-[300px] grid-cols-2">
+          <TabsList className="grid w-[280px] grid-cols-2">
             <TabsTrigger value="all_screens">Screens</TabsTrigger>
-            <TabsTrigger value="gates">Gate Setup</TabsTrigger>
+            <TabsTrigger value="gates">Gates</TabsTrigger>
           </TabsList>
         </div>
 
-        <TabsContent value="all_screens" className="space-y-6">
+        {/* Screens Tab */}
+        <TabsContent value="all_screens" className="space-y-4">
           <div className="flex justify-between items-center">
             <p className="text-sm text-muted-foreground">
               {screens.length} screen{screens.length !== 1 ? 's' : ''} registered
@@ -1303,124 +1304,157 @@ export default function ScreensPage() {
           {loading ? (
             <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
               <Loader2 className="h-10 w-10 animate-spin text-primary" />
-              <span className="text-sm font-semibold tracking-wide uppercase">Loading screens...</span>
+              <span className="text-sm font-medium">Loading screens...</span>
             </div>
           ) : screens.length === 0 ? (
-            <Card className="border-dashed bg-transparent">
-              <CardContent className="flex min-h-80 flex-col items-center justify-center px-6 py-16 text-center">
-                <div className="mb-5 flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Monitor className="size-6" /></div>
-                <CardTitle>No screens yet</CardTitle>
-                <CardDescription className="mt-2 max-w-md">The pre-configured gate screens will appear here.</CardDescription>
-              </CardContent>
-            </Card>
+            <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-border rounded-lg">
+              <Monitor className="size-10 text-muted-foreground/40 mb-3" />
+              <p className="font-medium text-foreground">No screens yet</p>
+              <p className="text-sm text-muted-foreground mt-1">Add a screen to get started.</p>
+            </div>
           ) : (
-            <div className="grid-auto stagger">
-              {screens.map((screen) => {
-                return (
-                  <ScreenCard
-                    key={screen.id}
-                    screen={screen}
-                    isSyncing={syncingScreenIds.includes(screen.id)}
-                    onDelete={handleDelete}
-                    onEdit={handleEditClick}
-                    onHours={handleHoursClick}
-                    onSync={handleForceSync}
-                    onManage={(id) => setSelectedScreenId(id)}
-                  />
-                );
-              })}
+            <div className="border border-border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium">Name</th>
+                    <th className="px-4 py-3 text-left font-medium">Location</th>
+                    <th className="px-4 py-3 text-left font-medium">Resolution</th>
+                    <th className="px-4 py-3 text-left font-medium">Status</th>
+                    <th className="px-4 py-3 text-right font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {screens.map((screen) => (
+                    <tr key={screen.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{screen.name}</div>
+                        {screen.ip_address && (
+                          <div className="text-xs text-muted-foreground">{screen.ip_address}</div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {screen.location || '—'}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {screen.resolution?.width ?? 1920}×{screen.resolution?.height ?? 1080}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant={screen.is_online ? 'default' : 'secondary'} className="text-xs">
+                          {screen.is_online ? 'Online' : 'Offline'}
+                        </Badge>
+                        {syncingScreenIds.includes(screen.id) && (
+                          <span className="ml-2 text-xs text-primary">Syncing...</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setSelectedScreenId(screen.id)}
+                          >
+                            Manage
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-8"
+                            onClick={() => handleEditClick(screen)}
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-8 text-destructive hover:text-destructive"
+                            onClick={() => handleDelete(screen.id)}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </TabsContent>
 
-        <TabsContent value="gates" className="space-y-5">
-          {/* ── Gate Screen Manager ─────────────────────────────────────── */}
-          <div className="overflow-hidden rounded-xl border border-border/70 bg-card/80 shadow-xl shadow-black/10">
-            {/* Header */}
-            <div className="flex items-center justify-between gap-4 border-b border-border/60 bg-muted/20 px-6 py-4">
-              <div>
-                <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary">
-                  <Monitor className="size-3" /> Gate Screen Setup
-                </div>
-                <h2 className="text-base font-semibold">Gate display screens</h2>
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  Add gates, then assign display screens to each gate. Each screen can only be assigned to one gate.
-                </p>
-              </div>
-              <Button onClick={() => { setNewGateNumber(''); setShowAddGate(true) }} size="sm">
-                <Plus className="size-3.5" /> Add Gate
-              </Button>
-            </div>
-
-            {/* Body */}
-            <div className="p-5">
-              {gates.length === 0 ? (
-                <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-background/40 py-14 text-center">
-                  <Monitor className="mx-auto mb-3 size-10 text-muted-foreground/40" />
-                  <p className="font-semibold">No gates configured yet</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Click &quot;Add Gate&quot; to create your first gate (e.g. d1, d2).</p>
-                  <Button variant="outline" size="sm" className="mt-4" onClick={() => { setNewGateNumber(''); setShowAddGate(true) }}>
-                    <Plus className="size-3.5" /> Add Gate
-                  </Button>
-                </div>
-              ) : (
-                <div className="overflow-hidden rounded-xl border border-border/60">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-semibold">Gate</th>
-                        <th className="px-4 py-3 text-left font-semibold">Assigned Screens</th>
-                        <th className="px-4 py-3 text-right font-semibold">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/60">
-                      {gates.map((gate) => {
-                        const gateScreenIds = assignments[gate.number] ?? []
-                        const gateScreens = gateScreenIds.map((id) => screens.find((s) => s.id === id)).filter(Boolean) as typeof screens
-                        return (
-                          <tr key={gate.id} className="bg-background/40 hover:bg-muted/30 transition-colors">
-                            <td className="px-4 py-3 font-semibold">Gate {gate.number.toUpperCase()}</td>
-                            <td className="px-4 py-3">
-                              {gateScreens.length === 0 ? (
-                                <span className="text-muted-foreground">No screens assigned</span>
-                              ) : (
-                                <div className="flex flex-wrap gap-1.5">
-                                  {gateScreens.map((screen) => (
-                                    <Badge key={screen.id} variant="secondary" className="text-[11px]">
-                                      {screen.name}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center justify-end">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="text-destructive hover:text-destructive"
-                                  onClick={async () => {
-                                    const confirmed = await customConfirm(`Remove gate "${gate.number.toUpperCase()}"? Screens will be unassigned.`)
-                                    if (confirmed) {
-                                      removeGate(gate.id)
-                                      if (selectedGateForAssign === gate.number) setSelectedGateForAssign(null)
-                                      showToast(`Gate ${gate.number.toUpperCase()} removed`, 'info')
-                                    }
-                                  }}
-                                >
-                                  <Trash2 className="size-3.5" /> Delete
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+        {/* Gates Tab */}
+        <TabsContent value="gates" className="space-y-4">
+          <div className="flex justify-between items-center">
+            <p className="text-sm text-muted-foreground">
+              {gates.length} gate{gates.length !== 1 ? 's' : ''} configured
+            </p>
+            <Button onClick={() => { setNewGateNumber(''); setShowAddGate(true) }} size="sm">
+              <Plus className="size-4 mr-1.5" /> Add Gate
+            </Button>
           </div>
+
+          {gates.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-border rounded-lg">
+              <Monitor className="size-10 text-muted-foreground/40 mb-3" />
+              <p className="font-medium text-foreground">No gates configured</p>
+              <p className="text-sm text-muted-foreground mt-1">Add a gate to assign screens (e.g. d1, d2).</p>
+            </div>
+          ) : (
+            <div className="border border-border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium">Gate</th>
+                    <th className="px-4 py-3 text-left font-medium">Assigned Screens</th>
+                    <th className="px-4 py-3 text-right font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {gates.map((gate) => {
+                    const gateScreenIds = assignments[gate.number] ?? []
+                    const gateScreens = gateScreenIds.map((id) => screens.find((s) => s.id === id)).filter(Boolean) as typeof screens
+                    return (
+                      <tr key={gate.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-4 py-3 font-medium">Gate {gate.number.toUpperCase()}</td>
+                        <td className="px-4 py-3">
+                          {gateScreens.length === 0 ? (
+                            <span className="text-muted-foreground text-sm">No screens assigned</span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1.5">
+                              {gateScreens.map((screen) => (
+                                <Badge key={screen.id} variant="secondary" className="text-xs">
+                                  {screen.name}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive hover:text-destructive"
+                              onClick={async () => {
+                                const confirmed = await customConfirm(`Remove gate "${gate.number.toUpperCase()}"? Screens will be unassigned.`)
+                                if (confirmed) {
+                                  removeGate(gate.id)
+                                  if (selectedGateForAssign === gate.number) setSelectedGateForAssign(null)
+                                  showToast(`Gate ${gate.number.toUpperCase()} removed`, 'info')
+                                }
+                              }}
+                            >
+                              <Trash2 className="size-4 mr-1.5" /> Delete
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Sun, Moon } from 'lucide-react'
+import { Sun, Moon, Loader2 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import Sidebar, { MobileSidebar } from './Sidebar'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { useAuthStore } from '@/store/authStore'
 import { showToast } from '@/components/Toast'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 export default function AppLayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -19,6 +20,7 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
     || pathname?.startsWith('/player/')
     || pathname === '/production-data/view'
     || pathname?.startsWith('/production-data/view/')
+  
   const { isCollapsed, toggle } = useSidebarStore()
   const { appName, customFavicon } = useBrandingStore()
   const { resolvedTheme, setTheme } = useTheme()
@@ -37,7 +39,7 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
   }, [validate])
 
   useEffect(() => {
-    document.title = `${appName} — Digital Signage Management`
+    document.title = `${appName} — Digital Signage`
     if (customFavicon) {
       let link = document.querySelector<HTMLLinkElement>("link[rel*='icon']")
       if (!link) {
@@ -62,7 +64,7 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
         showToast('Invite accepted', 'success')
       } else {
         await login(email, password)
-        showToast('Logged in successfully', 'success')
+        showToast('Welcome back', 'success')
       }
     } catch (error) {
       showToast(`Login failed: ${error}`, 'error')
@@ -72,90 +74,166 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
   }
 
   if (!checked) {
-    return <div className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">Checking session...</div>
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading session...</p>
+        </div>
+      </div>
+    )
   }
 
   if (!user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-4 text-foreground">
-        <form onSubmit={handleLogin} className="w-full max-w-md rounded-3xl border border-border bg-card p-8 shadow-2xl">
-          <Badge variant="outline" className="mb-4 border-primary/20 bg-primary/5 text-primary">MG Enterprise Admin</Badge>
-          <h1 className="text-3xl font-bold">{inviteMode ? 'Accept invite' : 'Sign in'}</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {inviteMode
-              ? 'Enter the invite code from your Super Admin and create your local account.'
-              : 'Use your local controller account. First-run accounts can be set with MG_SUPER_ADMIN_EMAIL/PASSWORD and MG_DEVELOPER_EMAIL/PASSWORD.'}
-          </p>
-          <div className="mt-6 space-y-3">
-            {inviteMode ? (
-              <>
-                <Input placeholder="invite code" value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} required />
-                <Input placeholder="your name" value={inviteName} onChange={(event) => setInviteName(event.target.value)} required />
-              </>
-            ) : (
-              <Input type="email" placeholder="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
-            )}
-            <Input type="password" placeholder="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
-          </div>
-          <Button className="mt-6 w-full" disabled={loggingIn}>
-            {loggingIn ? 'Please wait...' : inviteMode ? 'Create account' : 'Sign in'}
-          </Button>
-          <Button type="button" variant="ghost" className="mt-2 w-full text-muted-foreground" onClick={() => setInviteMode((current) => !current)}>
-            {inviteMode ? 'Back to sign in' : 'I have an invite code'}
-          </Button>
-        </form>
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md border-border">
+          <CardHeader className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
+                {appName}
+              </Badge>
+            </div>
+            <CardTitle className="text-2xl font-bold">
+              {inviteMode ? 'Accept Invite' : 'Sign In'}
+            </CardTitle>
+            <CardDescription>
+              {inviteMode
+                ? 'Enter your invite code to create your account.'
+                : 'Sign in with your credentials to continue.'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleLogin} className="space-y-4">
+              {inviteMode ? (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Invite Code</label>
+                    <Input
+                      placeholder="Enter invite code"
+                      value={inviteCode}
+                      onChange={(e) => setInviteCode(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Your Name</label>
+                    <Input
+                      placeholder="Enter your name"
+                      value={inviteName}
+                      onChange={(e) => setInviteName(e.target.value)}
+                      required
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Email</label>
+                  <Input
+                    type="email"
+                    placeholder="Enter your email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                </div>
+              )}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Password</label>
+                <Input
+                  type="password"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={loggingIn}>
+                {loggingIn ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Please wait...
+                  </>
+                ) : inviteMode ? (
+                  'Create Account'
+                ) : (
+                  'Sign In'
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                onClick={() => setInviteMode(!inviteMode)}
+              >
+                {inviteMode ? 'Back to Sign In' : 'I have an invite code'}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   if (pathname === '/settings' && !user.is_developer) {
     return (
-      <div className="min-h-screen bg-background text-foreground">
+      <div className="min-h-screen bg-background">
         <Sidebar isCollapsed={isCollapsed} onToggle={toggle} />
-        <main className="app-main h-screen" style={{ '--active-sidebar-width': isCollapsed ? 'var(--sidebar-collapsed)' : 'var(--sidebar-width)' } as React.CSSProperties}>
-          <div className="main-content flex min-h-screen items-center justify-center">
-            <div className="max-w-lg rounded-3xl border border-border bg-card p-8 text-center shadow-xl">
-              <h1 className="text-2xl font-bold">Settings locked</h1>
-              <p className="mt-3 text-sm text-muted-foreground">Only developer accounts can access system settings.</p>
-              <Button className="mt-6" variant="outline" onClick={() => void logout()}>Switch account</Button>
-            </div>
-          </div>
+        <main 
+          className="app-main flex min-h-screen items-center justify-center transition-all duration-300"
+          style={{ marginLeft: isCollapsed ? '72px' : '260px' }}
+        >
+          <Card className="max-w-md border-border">
+            <CardHeader>
+              <CardTitle>Settings Locked</CardTitle>
+              <CardDescription>
+                Only developer accounts can access system settings.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button variant="outline" onClick={() => void logout()}>
+                Switch Account
+              </Button>
+            </CardContent>
+          </Card>
         </main>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      {/* Floating Theme Switcher */}
+    <div className="min-h-screen bg-background">
+      {/* Theme Toggle */}
       <div className="fixed top-4 right-4 z-50">
         {mounted ? (
           <Button
-            variant="ghost"
+            variant="outline"
             size="icon"
-            className="size-9 rounded-xl border border-border bg-card shadow-sm hover:bg-muted"
+            className="h-9 w-9 rounded-lg border-border bg-card shadow-sm"
             onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-            aria-label="Toggle theme"
           >
             {resolvedTheme === 'dark' ? (
-              <Sun className="size-4 text-amber-500 transition-transform hover:scale-110" />
+              <Sun className="h-4 w-4 text-amber-500" />
             ) : (
-              <Moon className="size-4 text-indigo-500 transition-transform hover:scale-110" />
+              <Moon className="h-4 w-4 text-indigo-500" />
             )}
           </Button>
         ) : (
-          <div className="size-9 rounded-xl border border-border bg-card shadow-sm animate-pulse" />
+          <div className="h-9 w-9 rounded-lg border border-border bg-card animate-pulse" />
         )}
       </div>
 
       <Sidebar isCollapsed={isCollapsed} onToggle={toggle} />
       <MobileSidebar />
-      <main
-        className="app-main h-[calc(100vh-4rem)] transition-[margin] duration-300 lg:h-screen"
-        style={{ '--active-sidebar-width': isCollapsed ? 'var(--sidebar-collapsed)' : 'var(--sidebar-width)' } as React.CSSProperties}
+      
+      <main 
+        className="app-main h-[calc(100vh-3.5rem)] transition-all duration-300 lg:h-screen"
+        style={{ marginLeft: isCollapsed ? '72px' : '260px' }}
       >
         <ScrollArea className="h-full">
-          <div className="main-content">{children}</div>
+          <div className="main-content">
+            {children}
+          </div>
         </ScrollArea>
       </main>
     </div>
