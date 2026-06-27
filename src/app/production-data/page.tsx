@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import {
   BarChart3,
-  Check,
   FileSpreadsheet,
   LayoutDashboard,
   Plus,
@@ -66,6 +65,7 @@ const aggregations = [
 export default function ProductionDataPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const liveRefreshInputRef = useRef<HTMLInputElement>(null)
+  const importingForGateRef = useRef<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [dashboards, setDashboards] = useState<ProductionDashboard[]>([])
   const [bundle, setBundle] = useState<ProductionDashboardBundle | null>(null)
@@ -85,12 +85,16 @@ export default function ProductionDataPage() {
   const { gates, assignments, updateGateConfig } = useGateStore()
   const [selectedGateForAssign, setSelectedGateForAssign] = useState<string | null>(null)
 
-  const loadDashboards = useCallback(async (preferredId?: string) => {
+  // preferredId: string → load that dashboard
+  //              null   → gate has no dashboard; explicitly clear the bundle
+  //              undefined → no gate context yet; auto-pick items[0] as fallback
+  const loadDashboards = useCallback(async (preferredId?: string | null) => {
     setLoading(true)
     try {
       const items = await productionApi.getDashboards()
       setDashboards(items)
-      const nextId = preferredId ?? items[0]?.id
+      // Explicit null = clear; undefined = fallback to first item only when no gate drives selection
+      const nextId = preferredId === undefined ? items[0]?.id : preferredId
       if (nextId) {
         const nextBundle = await productionApi.getDashboard(nextId)
         setBundle(nextBundle)
@@ -102,7 +106,15 @@ export default function ProductionDataPage() {
         setSelectedWidgetId(null)
       }
     } catch (error) {
-      showToast(`Failed to load production dashboards: ${error}`, 'error')
+      const msg = String(error).toLowerCase()
+      if (msg.includes('not found')) {
+        // Stale reference — the dashboard was deleted; treat the gate as empty
+        setBundle(null)
+        setActiveTableId(null)
+        setSelectedWidgetId(null)
+      } else {
+        showToast(`Failed to load production dashboards: ${error}`, 'error')
+      }
     } finally {
       setLoading(false)
     }
@@ -116,9 +128,8 @@ export default function ProductionDataPage() {
     if (gates.length > 0 && !selectedGateForAssign) {
       const firstGate = gates[0]
       setSelectedGateForAssign(firstGate.number)
-      if (firstGate.productionDashboardId) {
-        loadDashboards(firstGate.productionDashboardId)
-      }
+      // Always pass the gate's dashboard ID — or null to explicitly clear any auto-loaded bundle
+      loadDashboards(firstGate.productionDashboardId ?? null)
     }
   }, [gates, selectedGateForAssign, loadDashboards])
 
@@ -194,6 +205,7 @@ export default function ProductionDataPage() {
       showToast('Enter a dashboard name first', 'warning')
       return
     }
+    const targetGate = importingForGateRef.current ?? importingForGate
     setSaving(true)
     try {
       const nextBundle = await productionApi.saveImport(importName.trim(), importResult)
@@ -202,14 +214,15 @@ export default function ProductionDataPage() {
       setSelectedWidgetId(nextBundle.dashboard.widgets[0]?.id ?? null)
       setImportResult(null)
 
-      if (importingForGate) {
-        const currentGate = gates.find((g) => g.number === importingForGate)
-        updateGateConfig(importingForGate, 'production_dashboard', nextBundle.dashboard.id, currentGate?.playlistId || null)
-        showToast(`Linked "${importName.trim()}" to Gate ${importingForGate.toUpperCase()}`, 'success')
-        setImportingForGate(null)
+      if (targetGate) {
+        const currentGate = gates.find((g) => g.number === targetGate)
+        updateGateConfig(targetGate, 'production_dashboard', nextBundle.dashboard.id, currentGate?.playlistId ?? null)
+        showToast(`Linked "${importName.trim()}" to Gate ${targetGate.toUpperCase()}`, 'success')
       } else {
         showToast('Production dashboard saved', 'success')
       }
+      importingForGateRef.current = null
+      setImportingForGate(null)
       await loadDashboards(nextBundle.dashboard.id)
     } catch (error) {
       showToast(`Failed to save import: ${error}`, 'error')
@@ -404,44 +417,92 @@ export default function ProductionDataPage() {
           <div className="flex flex-wrap gap-2">
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.xlsm,.xlsb,.csv,.tsv,.txt" className="hidden" onChange={handleFileSelect} />
             <input ref={liveRefreshInputRef} type="file" accept=".xlsx,.xls,.xlsm,.xlsb,.csv,.tsv,.txt" className="hidden" onChange={handleLiveRefreshSelect} />
-            <Button onClick={() => { setImportingForGate(selectedGateForAssign); fileInputRef.current?.click() }} disabled={importing}><Upload />{importing ? 'Importing...' : selectedGateForAssign ? `Import for Gate ${selectedGateForAssign.toUpperCase()}` : 'Import Excel / CSV'}</Button>
+            <Button onClick={() => { importingForGateRef.current = selectedGateForAssign; setImportingForGate(selectedGateForAssign); fileInputRef.current?.click() }} disabled={importing}><Upload />{importing ? 'Importing...' : selectedGateForAssign ? `Import for Gate ${selectedGateForAssign.toUpperCase()}` : 'Import Excel / CSV'}</Button>
             <Button variant="outline" onClick={() => loadDashboards()} disabled={loading}><RefreshCw className={loading ? 'animate-spin' : ''} />Refresh</Button>
           </div>
         </div>
       </div>
 
+      {/* Import Preview Modal Overlay */}
       {importResult && (
-        <Card className="border-primary/20 bg-primary/5">
-          <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-base"><Check className="size-4 text-primary" />Import preview</CardTitle>
-              <CardDescription>{importResult.source_name} · {importResult.tables.length} detected table{importResult.tables.length === 1 ? '' : 's'}</CardDescription>
-            </div>
-            <Button variant="ghost" size="icon" aria-label="Discard import preview" onClick={() => setImportResult(null)}><X /></Button>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
-              <div className="space-y-2">
-                <Label htmlFor="production-import-name">Dashboard name</Label>
-                <Input id="production-import-name" value={importName} onChange={(event) => setImportName(event.target.value)} />
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 pt-12">
+          <div className="relative w-full max-w-3xl rounded-2xl border border-border/60 bg-card shadow-2xl">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between px-6 pt-5 pb-4 border-b border-border/40">
+              <div>
+                <p className="text-xs text-muted-foreground mb-0.5">{importResult.source_name}</p>
+                <p className="text-sm font-semibold text-primary">Detected {importResult.tables.length} production table{importResult.tables.length === 1 ? '' : 's'}</p>
               </div>
-              <Button onClick={handleSaveImport} disabled={saving}><Save />{saving ? 'Saving...' : 'Save dashboard'}</Button>
+              <button
+                aria-label="Discard import preview"
+                onClick={() => { importingForGateRef.current = null; setImportingForGate(null); setImportResult(null) }}
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              >
+                <X className="size-4" />
+              </button>
             </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              {importResult.tables.map((table) => <ImportPreviewCard key={table.id} table={table} />)}
-            </div>
-            {!!importResult.detected.length && (
-              <div className="rounded-xl border border-border/60 bg-background/70 p-4 text-xs text-muted-foreground">
-                {importResult.detected.map((message) => <p key={message}>• {message}</p>)}
+
+            <div className="px-6 py-5 space-y-5">
+              {/* Dashboard name + Gate select + Save — all in one row */}
+              <div className="flex items-end gap-3">
+                <div className="flex-1 space-y-1.5">
+                  <Label htmlFor="production-import-name" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Dashboard name</Label>
+                  <Input id="production-import-name" value={importName} onChange={(event) => setImportName(event.target.value)} className="h-10" />
+                </div>
+                {gates.length > 0 && (
+                  <div className="space-y-1.5 shrink-0">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Gate</Label>
+                    <Select
+                      value={importingForGate ?? '__none'}
+                      onValueChange={(val) => {
+                        const next = val === '__none' ? null : val
+                        setImportingForGate(next)
+                        importingForGateRef.current = next
+                      }}
+                    >
+                      <SelectTrigger className="h-10 w-[130px]">
+                        <SelectValue placeholder="Select gate" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">No gate</SelectItem>
+                        {gates.map((gate) => {
+                          const gateDashboard = dashboards.find((d) => d.id === gate.productionDashboardId)
+                          return (
+                            <SelectItem key={gate.id} value={gate.number}>
+                              {gate.number.toUpperCase()}{gateDashboard ? ` · ${gateDashboard.name}` : ' · empty'}
+                            </SelectItem>
+                          )
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <Button onClick={handleSaveImport} disabled={saving} className="shrink-0 self-end">
+                  <Save className="size-4" />{saving ? 'Saving...' : 'Save dashboard'}
+                </Button>
               </div>
-            )}
-          </CardContent>
-        </Card>
+
+              {/* Detected tables grid */}
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {importResult.tables.map((table) => <ImportPreviewCard key={table.id} table={table} />)}
+              </div>
+
+              {/* Detection notes */}
+              {!!importResult.detected.length && (
+                <div className="rounded-xl border border-border/50 bg-muted/30 p-4 text-xs text-muted-foreground space-y-1">
+                  {importResult.detected.map((message) => <p key={message}>• {message}</p>)}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
+
+      {/* Gate navigation tabs */}
       {gates.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mr-1">Gate:</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mr-1">GATE:</span>
           {gates.map((gate) => {
             const isActive = selectedGateForAssign === gate.number
             const gateDashboard = dashboards.find((d) => d.id === gate.productionDashboardId)
@@ -646,12 +707,28 @@ export default function ProductionDataPage() {
 }
 
 function ImportPreviewCard({ table }: { table: ProductionTable }) {
+  const shownCols = table.columns.slice(0, 6)
+  const extraCount = table.columns.length - shownCols.length
   return (
-    <div className="rounded-xl border border-border/70 bg-background/80 p-4">
-      <p className="font-semibold">{table.name}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{table.kind} · {table.rows.length.toLocaleString()} rows · {table.columns.length} columns</p>
-      <div className="mt-3 flex flex-wrap gap-1">
-        {table.columns.slice(0, 6).map((column) => <Badge key={column.key} variant="secondary">{column.label}</Badge>)}
+    <div className="rounded-xl border border-border/60 bg-muted/20 p-4 space-y-2">
+      <p className="font-bold text-sm leading-tight">{table.name}</p>
+      <p className="text-xs text-muted-foreground">
+        {table.kind} · {table.rows.length.toLocaleString()} rows · {table.columns.length} columns
+      </p>
+      <div className="flex flex-wrap gap-1.5 pt-1">
+        {shownCols.map((column) => (
+          <span
+            key={column.key}
+            className="inline-flex items-center rounded-full bg-cyan-500/15 px-2.5 py-0.5 text-[11px] font-medium text-cyan-400 ring-1 ring-inset ring-cyan-500/20"
+          >
+            {column.label}
+          </span>
+        ))}
+        {extraCount > 0 && (
+          <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+            +{extraCount} more
+          </span>
+        )}
       </div>
     </div>
   )

@@ -32,7 +32,6 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { ProductionImportResult, ProductionRow, TruckDispatchSummary, TruckScreenAlert, Truck as TruckType } from '@/lib/types'
 import { useGateStore, isValidGateNumber, normalizeGateNumber } from '@/store/gateStore'
@@ -574,12 +573,7 @@ export default function TrucksPage() {
         </Card>
       </div>
 
-      <Tabs defaultValue="queue" className="space-y-5">
-        <TabsList className="grid w-full grid-cols-1 sm:w-[220px]">
-          <TabsTrigger value="queue"><Truck className="size-4" /> Truck Queue</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="queue" className="space-y-5">
+      <div className="space-y-5">
           {/* Gate sub-filters for truck queue */}
           <div className="flex border-b border-border">
             <button
@@ -791,8 +785,7 @@ export default function TrucksPage() {
               </CardContent>
             </Card>
           )}
-        </TabsContent>
-      </Tabs>
+      </div>
 
       {/* ── ADD TRUCK MODAL ─────────────────────────────────────────────────── */}
       <Modal

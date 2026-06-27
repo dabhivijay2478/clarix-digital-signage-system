@@ -17,7 +17,7 @@ import {
   normalizePlaylistItemSchedule,
   validatePlaylistItemSchedule,
 } from '../../lib/signage-schedule';
-import { Monitor, Plus, Loader2, Trash2, FileSpreadsheet } from 'lucide-react';
+import { Monitor, Plus, Loader2, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -95,7 +95,8 @@ export default function ScreensPage() {
   const [formName, setFormName] = useState('');
 
   // Gate store configuration hooks
-  const { gates, assignments, addGate, removeGate, assignScreen, unassignScreen, getAllAssignedScreenIds, updateGateConfig, unassignScreenFromAll, getAssignedGateForScreen } = useGateStore();
+  const { gates, assignments, addGate, removeGate, assignScreen, unassignScreen, getAllAssignedScreenIds, unassignScreenFromAll, getAssignedGateForScreen } = useGateStore();
+  const authUser = useAuthStore((s) => s.user);
   const [showAddGate, setShowAddGate] = useState(false);
   const [newGateNumber, setNewGateNumber] = useState('');
   const [selectedGateForAssign, setSelectedGateForAssign] = useState<string | null>(null);
@@ -1271,7 +1272,6 @@ export default function ScreensPage() {
     );
   }
 
-  const authUser = useAuthStore((s) => s.user);
   const canAddScreen = authUser?.is_developer === true || authUser?.role === 'SuperAdmin';
 
   return (
@@ -1358,7 +1358,7 @@ export default function ScreensPage() {
                 <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-background/40 py-14 text-center">
                   <Monitor className="mx-auto mb-3 size-10 text-muted-foreground/40" />
                   <p className="font-semibold">No gates configured yet</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Click "Add Gate" to create your first gate (e.g. d1, d2).</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Click &quot;Add Gate&quot; to create your first gate (e.g. d1, d2).</p>
                   <Button variant="outline" size="sm" className="mt-4" onClick={() => { setNewGateNumber(''); setShowAddGate(true) }}>
                     <Plus className="size-3.5" /> Add Gate
                   </Button>
@@ -1370,7 +1370,6 @@ export default function ScreensPage() {
                       <tr>
                         <th className="px-4 py-3 text-left font-semibold">Gate</th>
                         <th className="px-4 py-3 text-left font-semibold">Assigned Screens</th>
-                        <th className="px-4 py-3 text-left font-semibold">Production Dashboard</th>
                         <th className="px-4 py-3 text-right font-semibold">Actions</th>
                       </tr>
                     </thead>
@@ -1378,7 +1377,6 @@ export default function ScreensPage() {
                       {gates.map((gate) => {
                         const gateScreenIds = assignments[gate.number] ?? []
                         const gateScreens = gateScreenIds.map((id) => screens.find((s) => s.id === id)).filter(Boolean) as typeof screens
-                        const gateDashboard = productionDashboards.find((d) => d.id === gate.productionDashboardId)
                         return (
                           <tr key={gate.id} className="bg-background/40 hover:bg-muted/30 transition-colors">
                             <td className="px-4 py-3 font-semibold">Gate {gate.number.toUpperCase()}</td>
@@ -1396,36 +1394,7 @@ export default function ScreensPage() {
                               )}
                             </td>
                             <td className="px-4 py-3">
-                              {gateDashboard ? (
-                                <Badge variant="default" className="text-[11px]">{gateDashboard.name}</Badge>
-                              ) : (
-                                <span className="text-muted-foreground">None</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center justify-end gap-2">
-                                {gateDashboard ? (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="text-destructive hover:text-destructive"
-                                    onClick={async () => {
-                                      const confirmed = await customConfirm(`Unlink production dashboard from Gate ${gate.number.toUpperCase()}?`)
-                                      if (confirmed) {
-                                        updateGateConfig(gate.number, 'playlist', null, gate.playlistId)
-                                        showToast(`Dashboard unlinked from Gate ${gate.number.toUpperCase()}`, 'info')
-                                      }
-                                    }}
-                                  >
-                                    Unlink
-                                  </Button>
-                                ) : (
-                                  <Button size="sm" variant="outline" asChild>
-                                    <a href="/production-data">
-                                      <FileSpreadsheet className="size-3.5" /> Link Dashboard
-                                    </a>
-                                  </Button>
-                                )}
+                              <div className="flex items-center justify-end">
                                 <Button
                                   size="sm"
                                   variant="outline"

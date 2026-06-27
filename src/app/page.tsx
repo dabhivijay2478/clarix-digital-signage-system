@@ -30,7 +30,6 @@ export default function DashboardPage() {
   const [time, setTime] = useState('')
   const [screensCount, setScreensCount] = useState(0)
   const [playlistsCount, setPlaylistsCount] = useState(0)
-  const [uptime, setUptime] = useState('0%')
   const [scheduleSlots, setScheduleSlots] = useState<ScheduleSlot[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -47,8 +46,6 @@ export default function DashboardPage() {
         const [screens, playlists, schedules] = await Promise.all([screensApi.getAll(), playlistsApi.getAll(), scheduleApi.getAll()])
         setScreensCount(screens.length)
         setPlaylistsCount(playlists.length)
-        const onlineScreens = screens.filter((screen) => screen.is_online).length
-        setUptime(screens.length ? `${((onlineScreens / screens.length) * 100).toFixed(1)}%` : '0%')
         setScheduleSlots(schedules)
       } catch (error) {
         console.error('Failed to load dashboard data:', error)
@@ -90,10 +87,9 @@ export default function DashboardPage() {
         </div>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <StatCard icon="▣" value={screensCount} label="Active Screens" />
-            <StatCard icon="☰" value={playlistsCount} label="Playlists" color="info" />
-            <StatCard icon="◔" value={uptime} label="Uptime" color="success" />
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <StatCard icon="▣" value={screensCount} label="Active Screens" compact />
+            <StatCard icon="☰" value={playlistsCount} label="Playlists" color="info" compact />
           </div>
           <ScheduleTimeline slots={scheduleSlots} />
         </>
