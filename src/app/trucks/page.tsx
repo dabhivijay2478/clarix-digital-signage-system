@@ -51,26 +51,26 @@ function CompactStat({
   color?: 'emerald' | 'amber' | 'blue' | 'violet' | 'cyan' | 'red'
 }) {
   const colorStyles = {
-    emerald: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500',
-    amber: 'bg-amber-500/10 border-amber-500/20 text-amber-500',
-    blue: 'bg-blue-500/10 border-blue-500/20 text-blue-500',
-    violet: 'bg-violet-500/10 border-violet-500/20 text-violet-500',
-    cyan: 'bg-cyan-500/10 border-cyan-500/20 text-cyan-500',
-    red: 'bg-red-500/10 border-red-500/20 text-red-500',
+    emerald: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500 shadow-emerald-500/10',
+    amber: 'bg-amber-500/10 border-amber-500/20 text-amber-500 shadow-amber-500/10',
+    blue: 'bg-blue-500/10 border-blue-500/20 text-blue-500 shadow-blue-500/10',
+    violet: 'bg-violet-500/10 border-violet-500/20 text-violet-500 shadow-violet-500/10',
+    cyan: 'bg-cyan-500/10 border-cyan-500/20 text-cyan-500 shadow-cyan-500/10',
+    red: 'bg-red-500/10 border-red-500/20 text-red-500 shadow-red-500/10',
   }
 
   return (
-    <Card className="border-border bg-card transition-all duration-200 hover:shadow-md hover:border-border/60 hover:-translate-y-0.5">
-      <CardContent className="p-3 flex items-center gap-3">
+    <Card className="border-border/60 bg-card/50 transition-all duration-200 hover:shadow-md hover:border-border hover:-translate-y-0.5 hover:bg-card">
+      <CardContent className="p-2.5 flex items-center gap-2.5">
         <div className={cn(
-          "flex size-8 items-center justify-center rounded-lg border text-sm font-medium shrink-0",
+          "flex size-7 items-center justify-center rounded-md border text-xs font-medium shrink-0 shadow-sm",
           colorStyles[color]
         )}>
           {icon}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-xs text-muted-foreground">{label}</p>
-          <p className="text-lg font-bold tracking-tight">{value}</p>
+          <p className="text-[11px] text-muted-foreground leading-tight">{label}</p>
+          <p className="text-base font-bold tracking-tight">{value}</p>
         </div>
       </CardContent>
     </Card>
@@ -513,17 +513,17 @@ export default function TrucksPage() {
       {/* Page Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <Badge variant="outline" className="mb-3 border-primary/20 bg-primary/5 text-primary">
-            <Truck className="mr-1 size-3" /> Fleet Management
+          <Badge variant="outline" className="mb-2 border-primary/20 bg-primary/5 text-primary">
+            <Truck className="mr-1 size-3" /> Truck Token
           </Badge>
-          <h1 className="page-title">Fleet</h1>
-          <p className="page-subtitle">Manage your trucks and track loading status.</p>
+          <h1 className="text-2xl font-bold tracking-tight">Truck Token</h1>
+          <p className="text-sm text-muted-foreground mt-1">Manage your trucks and track loading status.</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search fleet..."
+              placeholder="Search trucks..."
               className="w-[220px] pl-9"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
