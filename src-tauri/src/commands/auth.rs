@@ -304,10 +304,15 @@ pub async fn get_role_permissions(token: String, pool: State<'_, DbPool>) -> Res
         let conn = pool.get()?;
         let user = query_user_by_token(&conn, &token)?
             .ok_or_else(|| anyhow::anyhow!("Please log in again."))?;
+        // Use the serde-serialized role name (e.g. "SuperAdmin") to match the DB,
+        // NOT as_str() which returns "Super Admin" with a space.
+        let role_key = serde_json::to_string(&user.role)
+            .map(|s| s.trim_matches('"').to_string())
+            .unwrap_or_else(|_| "User".to_string());
         let perms_json: String = conn
             .query_row(
                 "SELECT permissions FROM role_permissions WHERE role = ?1",
-                params![user.role.as_str()],
+                params![role_key],
                 |row| row.get(0),
             )
             .optional()?

@@ -110,8 +110,8 @@ pub enum AdminRole {
 impl AdminRole {
     pub fn from_str(value: &str) -> Self {
         match value {
-            "Super Admin" | "super_admin" => Self::SuperAdmin,
-            "Site Super Admin" | "site_super_admin" => Self::SiteSuperAdmin,
+            "SuperAdmin" | "Super Admin" | "super_admin" => Self::SuperAdmin,
+            "SiteSuperAdmin" | "Site Super Admin" | "site_super_admin" => Self::SiteSuperAdmin,
             "Manager" | "manager" => Self::Manager,
             _ => Self::User,
         }
@@ -119,8 +119,8 @@ impl AdminRole {
 
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::SuperAdmin => "Super Admin",
-            Self::SiteSuperAdmin => "Site Super Admin",
+            Self::SuperAdmin => "SuperAdmin",
+            Self::SiteSuperAdmin => "SiteSuperAdmin",
             Self::Manager => "Manager",
             Self::User => "User",
         }
