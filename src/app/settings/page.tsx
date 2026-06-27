@@ -2,7 +2,20 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Megaphone, MonitorPlay, Radio, RefreshCw, Router, Server, Settings2, ShieldCheck, Wifi } from 'lucide-react'
+import {
+  Megaphone,
+  MonitorPlay,
+  Radio,
+  Server,
+  Settings2,
+  ShieldCheck,
+  LayoutGrid,
+  Bell,
+  PanelLeftClose,
+  Database,
+  Info,
+  Cpu,
+} from 'lucide-react'
 import { SettingsRow, SettingsSection } from '@/components/SettingsSection'
 import { showToast } from '@/components/Toast'
 import { Badge } from '@/components/ui/badge'
@@ -12,20 +25,19 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { APP_VERSION } from '@/lib/constants'
 import { appConfigApi, localNetworkApi, networkApi, screensApi } from '@/lib/tauri'
-import type { ConnectionDiagnostic, DeviceIdentity, MarqueeSettings, PairingRequest, PeerScreen, Screen } from '@/lib/types'
+import type { DeviceIdentity, MarqueeSettings, PairingRequest, PeerScreen, Screen } from '@/lib/types'
 import { useBrandingStore, useSidebarStore } from '@/store/ui'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { cn } from '@/lib/utils'
 
 export default function SettingsPage() {
   const router = useRouter()
   const [port, setPort] = useState(7420)
   const [autoStart, setAutoStart] = useState(true)
-  const [discoveryEnabled, setDiscoveryEnabled] = useState(true)
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
   const branding = useBrandingStore()
   const sidebar = useSidebarStore()
   const [identity, setIdentity] = useState<DeviceIdentity | null>(null)
-  const [diagnostics, setDiagnostics] = useState<ConnectionDiagnostic | null>(null)
   const [pairingRequests, setPairingRequests] = useState<PairingRequest[]>([])
   const [screens, setScreens] = useState<Screen[]>([])
   const [controllerUrl, setControllerUrl] = useState('')
@@ -36,17 +48,14 @@ export default function SettingsPage() {
 
   const loadNetworkState = useCallback(async () => {
     try {
-      const [nextIdentity, nextDiagnostics, nextScreens, peers] = await Promise.all([
+      const [nextIdentity, nextScreens, peers] = await Promise.all([
         networkApi.getIdentity(),
-        networkApi.getDiagnostics(),
         screensApi.getAll(),
         localNetworkApi.getPeers(),
       ])
       setIdentity(nextIdentity)
-      setDiagnostics(nextDiagnostics)
       setScreens(nextScreens)
       setControllerUrl(nextIdentity.controller_url ?? '')
-      setPort(nextDiagnostics.service_port ?? 0)
       setDiscoveredControllers(peers.filter((peer) => peer.is_controller))
       if (nextIdentity.role === 'Controller') {
         setPairingRequests(await networkApi.getPairingRequests())
@@ -67,7 +76,7 @@ export default function SettingsPage() {
     try {
       const next = await networkApi.setMode(role, role === 'Player' ? controllerUrl : undefined)
       setIdentity(next)
-      showToast(`Device mode changed to ${role}. Restart ${branding.appName} to apply the networking role.`, 'success')
+      showToast(`Device mode changed to ${role}. Restart ${branding.appName} to apply.`, 'success')
       await loadNetworkState()
     } catch (error) {
       showToast(`Could not change mode: ${error}`, 'error')
@@ -112,106 +121,291 @@ export default function SettingsPage() {
     }
   }
 
-  return (
-    <div className="space-y-6 lg:space-y-8">
-      <div className="page-header"><Badge variant="outline" className="mb-3 border-primary/20 bg-primary/5 text-primary"><Settings2 /> Workspace preferences</Badge><h1 className="page-title">Settings</h1><p className="page-subtitle">Tune the controller and network behavior.</p></div>
+  const pendingPairings = pairingRequests.filter((r) => r.status === 'pending')
 
-      <SettingsSection className="overflow-hidden" title="Device Operation Mode" description="Choose one controller per site. Player devices connect outward and keep the last valid playlist offline.">
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card className={`p-5 ${identity?.role === 'Controller' ? 'border-primary/40 bg-primary/5' : ''}`}>
-            <div className="flex items-start gap-4"><span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary"><Server /></span><div><h3 className="font-semibold">Controller</h3><p className="mt-1 text-sm text-muted-foreground">Hosts the management database, browser player, assets, and pairing service.</p></div></div>
-            <Button className="mt-5 w-full" variant={identity?.role === 'Controller' ? 'default' : 'outline'} onClick={() => handleModeChange('Controller')}>Use as Controller</Button>
+  return (
+    <div className="space-y-6 lg:space-y-8 animate-fadeIn">
+
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center gap-2 mb-1.5">
+          <div className="flex size-7 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
+            <Settings2 className="size-4 text-primary" />
+          </div>
+          <span className="text-[11px] font-semibold uppercase tracking-widest text-primary">Settings</span>
+        </div>
+        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Manage device mode, display preferences, and app configuration.
+        </p>
+      </div>
+
+      {/* ── Device Operation Mode ────────────────────────────────────────────── */}
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Device Operation Mode</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Choose one controller per site. Player devices pull content from the controller.
+          </p>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-2">
+          {/* Controller Card */}
+          <Card className={cn(
+            'p-4 transition-all duration-200',
+            identity?.role === 'Controller'
+              ? 'border-primary/40 bg-primary/5 shadow-sm'
+              : 'border-border/60 hover:border-border'
+          )}>
+            <div className="flex items-start gap-3 mb-4">
+              <span className={cn(
+                'flex size-10 shrink-0 items-center justify-center rounded-xl',
+                identity?.role === 'Controller' ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+              )}>
+                <Server className="size-5" />
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-sm">Controller</h3>
+                  {identity?.role === 'Controller' && (
+                    <Badge className="h-4 px-1.5 text-[10px] bg-primary/10 text-primary border-primary/20">Active</Badge>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Hosts the database, assets, and pairing service for all player devices.
+                </p>
+              </div>
+            </div>
+            <Button
+              className="w-full h-8 text-xs"
+              variant={identity?.role === 'Controller' ? 'default' : 'outline'}
+              onClick={() => handleModeChange('Controller')}
+            >
+              Use as Controller
+            </Button>
           </Card>
-          <Card className={`p-5 ${identity?.role === 'Player' ? 'border-primary/40 bg-primary/5' : ''}`}>
-            <div className="flex items-start gap-4"><span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary"><MonitorPlay /></span><div><h3 className="font-semibold">Packaged Player</h3><p className="mt-1 text-sm text-muted-foreground">Pulls authenticated revisions from the controller and plays cached media offline.</p></div></div>
-            <div className="mt-5 space-y-3"><Input value={controllerUrl} onChange={(event) => setControllerUrl(event.target.value)} placeholder="http://controller-ip:7420" /><Button className="w-full" variant={identity?.role === 'Player' ? 'default' : 'outline'} onClick={() => handleModeChange('Player')}>Use as Player</Button></div>
+
+          {/* Player Card */}
+          <Card className={cn(
+            'p-4 transition-all duration-200',
+            identity?.role === 'Player'
+              ? 'border-primary/40 bg-primary/5 shadow-sm'
+              : 'border-border/60 hover:border-border'
+          )}>
+            <div className="flex items-start gap-3 mb-4">
+              <span className={cn(
+                'flex size-10 shrink-0 items-center justify-center rounded-xl',
+                identity?.role === 'Player' ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+              )}>
+                <MonitorPlay className="size-5" />
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-sm">Player</h3>
+                  {identity?.role === 'Player' && (
+                    <Badge className="h-4 px-1.5 text-[10px] bg-primary/10 text-primary border-primary/20">Active</Badge>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Connects to the controller and plays synced media in offline mode.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Input
+                value={controllerUrl}
+                onChange={(e) => setControllerUrl(e.target.value)}
+                placeholder="http://controller-ip:7420"
+                className="h-8 text-xs"
+              />
+              <Button
+                className="w-full h-8 text-xs"
+                variant={identity?.role === 'Player' ? 'default' : 'outline'}
+                onClick={() => handleModeChange('Player')}
+              >
+                Use as Player
+              </Button>
+            </div>
           </Card>
         </div>
+
+        {/* Pairing section (Player only) */}
         {identity?.role === 'Player' && (
-          <Card className="mt-4 border-primary/20 bg-linear-to-r from-primary/10 via-primary/5 to-transparent p-5">
-            <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
-              <div><h3 className="font-semibold">One-time Pairing</h3><p className="mt-1 text-sm text-muted-foreground">Send a request, then approve it on the controller and assign this device to a screen.</p></div>
-              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row"><Button variant="outline" onClick={handlePairingRequest}><ShieldCheck />Request Pairing</Button><Button onClick={() => router.push('/player')}><MonitorPlay />Launch Player</Button></div>
+          <Card className="p-4 border-primary/20 bg-primary/5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="font-semibold text-sm">Device Pairing</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Send a pairing request to the controller, then approve it there to assign this device to a screen.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handlePairingRequest}>
+                  <ShieldCheck className="size-3.5 mr-1.5" /> Request Pairing
+                </Button>
+                <Button size="sm" className="h-8 text-xs" onClick={() => router.push('/player')}>
+                  <MonitorPlay className="size-3.5 mr-1.5" /> Launch Player
+                </Button>
+              </div>
             </div>
-            {(activePairing || identity.pending_pairing_id) && <div className="mt-4 rounded-xl border border-primary/20 bg-background/60 p-4 font-mono text-sm">Pairing code: <strong className="text-primary">{activePairing?.code ?? 'Waiting for controller approval'}</strong></div>}
-            {discoveredControllers.length > 0 && <div className="mt-4 grid gap-2 sm:grid-cols-2">{discoveredControllers.map((controller) => <Button key={controller.id} variant="secondary" className="justify-start" onClick={() => setControllerUrl(`http://${controller.ip}:${controller.port}`)}><Radio />Use {controller.name} · {controller.ip}:{controller.port}</Button>)}</div>}
+            {(activePairing || identity.pending_pairing_id) && (
+              <div className="mt-3 rounded-lg border border-primary/20 bg-background/60 px-3 py-2 font-mono text-xs">
+                Pairing code:{' '}
+                <strong className="text-primary">
+                  {activePairing?.code ?? 'Waiting for controller approval'}
+                </strong>
+              </div>
+            )}
+            {discoveredControllers.length > 0 && (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {discoveredControllers.map((c) => (
+                  <Button
+                    key={c.id}
+                    variant="secondary"
+                    size="sm"
+                    className="h-8 justify-start text-xs"
+                    onClick={() => setControllerUrl(`http://${c.ip}:${c.port}`)}
+                  >
+                    <Radio className="size-3.5 mr-1.5" />
+                    {c.name} · {c.ip}:{c.port}
+                  </Button>
+                ))}
+              </div>
+            )}
           </Card>
         )}
-      </SettingsSection>
+      </section>
 
-      {identity?.role === 'Controller' && pairingRequests.some((request) => request.status === 'pending') && (
-        <SettingsSection title="Pending Player Pairings" description="Approve only the display devices you recognize.">
-          <div className="space-y-3">
-            {pairingRequests.filter((request) => request.status === 'pending').map((request) => (
-              <Card key={request.id} className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center">
-                <div className="min-w-0 flex-1"><p className="font-semibold">{request.device_name}</p><p className="font-mono text-xs text-muted-foreground">{request.code} · {request.player_kind} · {request.device_id}</p></div>
-                <Select value={pairingSelections[request.id]} onValueChange={(value) => setPairingSelections((current) => ({ ...current, [request.id]: value }))}><SelectTrigger className="w-full lg:w-64"><SelectValue placeholder="Assign to screen" /></SelectTrigger><SelectContent>{screens.map((screen) => <SelectItem key={screen.id} value={screen.id}>{screen.name}</SelectItem>)}</SelectContent></Select>
-                <Button onClick={() => handleApprovePairing(request)}><ShieldCheck />Approve</Button>
+      {/* ── Pending Pairings (Controller only) ──────────────────────────────── */}
+      {identity?.role === 'Controller' && pendingPairings.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold">Pending Player Pairings</h2>
+            <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{pendingPairings.length}</Badge>
+          </div>
+          <div className="space-y-2">
+            {pendingPairings.map((request) => (
+              <Card key={request.id} className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center border-border/60">
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-sm">{request.device_name}</p>
+                  <p className="font-mono text-[11px] text-muted-foreground mt-0.5">
+                    {request.code} · {request.player_kind} · {request.device_id}
+                  </p>
+                </div>
+                <Select
+                  value={pairingSelections[request.id]}
+                  onValueChange={(value) => setPairingSelections((curr) => ({ ...curr, [request.id]: value }))}
+                >
+                  <SelectTrigger className="w-full h-8 text-xs lg:w-52">
+                    <SelectValue placeholder="Assign to screen" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {screens.map((screen) => (
+                      <SelectItem key={screen.id} value={screen.id}>{screen.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button size="sm" className="h-8 text-xs" onClick={() => handleApprovePairing(request)}>
+                  <ShieldCheck className="size-3.5 mr-1.5" /> Approve
+                </Button>
               </Card>
             ))}
           </div>
-        </SettingsSection>
+        </section>
       )}
 
-      <SettingsSection title="Network Diagnostics" description="Separate discovery, pairing, connectivity, and sync state.">
-        <div className="mb-4 flex justify-end"><Button size="sm" variant="outline" onClick={loadNetworkState}><RefreshCw />Refresh</Button></div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card className="p-4"><Wifi className="mb-3 size-5 text-primary" /><p className="text-xs uppercase tracking-wider text-muted-foreground">Selected interface</p><p className="mt-1 font-mono text-sm">{diagnostics?.selected_interface ?? 'Unavailable'} · {diagnostics?.local_ip ?? 'No local IP'}</p></Card>
-          <Card className="p-4"><Radio className="mb-3 size-5 text-primary" /><p className="text-xs uppercase tracking-wider text-muted-foreground">Discovery</p><p className="mt-1 text-sm">{diagnostics?.discovery_status ?? 'Checking'}</p></Card>
+      {/* ── Player Bottom Marquee ────────────────────────────────────────────── */}
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold">Player Bottom Marquee</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Show a custom ticker message at the bottom of all player screens.
+          </p>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2">{diagnostics?.checks.map((check) => <Card key={check.name} className="flex items-start gap-3 p-4"><span className={`mt-1 size-2 shrink-0 rounded-full ${check.status === 'pass' ? 'bg-green-500' : check.status === 'fail' ? 'bg-red-500' : 'bg-amber-500'}`} /><div><p className="font-medium">{check.name}</p><p className="mt-1 text-sm text-muted-foreground">{check.detail}</p></div></Card>)}</div>
-        <div className="mt-4 space-y-2">{diagnostics?.hints.map((hint) => <div key={hint} className="rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">{hint}</div>)}</div>
-      </SettingsSection>
-
-      <SettingsSection title="TP-Link Offline Router Guide" description="Use a router with no internet as a private Wi-Fi network for the controller and players.">
-        <div className="grid gap-3 md:grid-cols-2">
-          <Card className="p-4"><Router className="mb-3 size-5 text-primary" /><p className="font-medium">Router setup</p><p className="mt-1 text-sm text-muted-foreground">Create one SSID, connect the controller and all player PCs to it, and keep client isolation/AP isolation disabled.</p></Card>
-          <Card className="p-4"><Wifi className="mb-3 size-5 text-primary" /><p className="font-medium">Player URL</p><p className="mt-1 font-mono text-sm">{diagnostics?.local_ip ? `http://${diagnostics.local_ip}:${port || 7420}/player` : 'Open /player from the controller IP'}</p></Card>
-          <Card className="p-4"><ShieldCheck className="mb-3 size-5 text-primary" /><p className="font-medium">Firewall</p><p className="mt-1 text-sm text-muted-foreground">Only the controller needs inbound TCP on port {port || 7420}. Players use outbound sync and browser playback.</p></Card>
-          <Card className="p-4"><Radio className="mb-3 size-5 text-primary" /><p className="font-medium">No internet needed</p><p className="mt-1 text-sm text-muted-foreground">mDNS and player sync stay inside the same Wi-Fi router. If discovery fails, enter the controller URL manually.</p></Card>
-        </div>
-      </SettingsSection>
-
-      <SettingsSection title="Player Bottom Marquee" description="Show a custom ticker message at the bottom of all player screens.">
-        <div className="grid gap-4 lg:grid-cols-[auto_1fr_160px_auto] lg:items-end">
-          <div className="flex items-center gap-3 rounded-xl border border-border px-3 py-2.5">
-            <Megaphone className="size-4 text-primary" />
-            <span className="text-sm font-medium">Enabled</span>
-            <Switch checked={marquee?.enabled ?? false} onCheckedChange={(enabled) => setMarquee((current) => current ? { ...current, enabled } : current)} />
+        <Card className="p-4 border-border/60">
+          <div className="flex items-center gap-2 mb-4">
+            <Megaphone className="size-4 text-muted-foreground" />
+            <span className="text-xs font-medium">Marquee Ticker</span>
+            <div className="ml-auto flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Enabled</span>
+              <Switch
+                checked={marquee?.enabled ?? false}
+                onCheckedChange={(enabled) => setMarquee((curr) => curr ? { ...curr, enabled } : curr)}
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <span className="text-sm font-medium">Text</span>
-            <Input value={marquee?.text ?? ''} onChange={(event) => setMarquee((current) => current ? { ...current, text: event.target.value } : current)} placeholder="Enter bottom ticker message..." />
+          <div className="grid gap-3 sm:grid-cols-[1fr_120px] mb-3">
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">Message Text</span>
+              <Input
+                value={marquee?.text ?? ''}
+                onChange={(e) => setMarquee((curr) => curr ? { ...curr, text: e.target.value } : curr)}
+                placeholder="Enter bottom ticker message..."
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">Speed (px/s)</span>
+              <Input
+                type="number"
+                min={15}
+                max={120}
+                value={marquee?.speed ?? 45}
+                onChange={(e) => setMarquee((curr) => curr ? { ...curr, speed: Number(e.target.value) || 45 } : curr)}
+                className="h-8 text-sm"
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <span className="text-sm font-medium">Speed</span>
-            <Input type="number" min={15} max={120} value={marquee?.speed ?? 45} onChange={(event) => setMarquee((current) => current ? { ...current, speed: Number(event.target.value) || 45 } : current)} />
-          </div>
-          <Button onClick={handleSaveMarquee}>Save Marquee</Button>
-        </div>
-      </SettingsSection>
+          <Button size="sm" className="h-8 text-xs" onClick={handleSaveMarquee}>
+            Save Marquee
+          </Button>
+        </Card>
+      </section>
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <SettingsSection title="General">
-          <SettingsRow label="Auto-start on boot" description={`Launch ${branding.appName} automatically when the system starts`}><Switch checked={autoStart} onCheckedChange={setAutoStart} /></SettingsRow>
-          <SettingsRow label="Notifications" description="Show desktop notifications for schedule changes and alerts"><Switch checked={notificationsEnabled} onCheckedChange={setNotificationsEnabled} /></SettingsRow>
-          <SettingsRow label="Collapse Sidebar" description="Minimize the navigation sidebar to icons only"><Switch checked={sidebar.isCollapsed} onCheckedChange={sidebar.setCollapsed} /></SettingsRow>
-          <SettingsRow label="Database Console" description="View system database tables, export CSV data, and download backups.">
-            <Button size="sm" variant="outline" onClick={() => router.push('/database')}>
-              <Server className="mr-1.5 size-4" /> Open Database
-            </Button>
-          </SettingsRow>
-        </SettingsSection>
+      {/* ── General & About ──────────────────────────────────────────────────── */}
+      <div className="grid gap-4 xl:grid-cols-2">
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold">General</h2>
+          <Card className="divide-y divide-border/60 border-border/60 overflow-hidden">
+            <SettingsRow
+              label="Auto-start on boot"
+              description={`Launch ${branding.appName} automatically when the system starts`}
+            >
+              <Switch checked={autoStart} onCheckedChange={setAutoStart} />
+            </SettingsRow>
+            <SettingsRow
+              label="Notifications"
+              description="Desktop notifications for schedule changes and alerts"
+            >
+              <Switch checked={notificationsEnabled} onCheckedChange={setNotificationsEnabled} />
+            </SettingsRow>
+            <SettingsRow
+              label="Collapse Sidebar"
+              description="Minimize the navigation sidebar to icons only"
+            >
+              <Switch checked={sidebar.isCollapsed} onCheckedChange={sidebar.setCollapsed} />
+            </SettingsRow>
+            <SettingsRow
+              label="Database Console"
+              description="View system tables, export CSV, and download backups"
+            >
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => router.push('/database')}>
+                <Database className="size-3.5 mr-1.5" /> Open
+              </Button>
+            </SettingsRow>
+          </Card>
+        </section>
 
-        <SettingsSection title="Local Network & Discovery" description="Discover the controller and sync players connected to the same Wi-Fi router.">
-          <SettingsRow label="Controller Discovery" description={`Automatically find the ${branding.appName} controller on the same local network`}><Switch checked={discoveryEnabled} onCheckedChange={setDiscoveryEnabled} /></SettingsRow>
-          <SettingsRow label="Service Type" monoValue="_mgenterprise._tcp.local." />
-          <SettingsRow label="Controller Port" monoValue={port || 'Player outbound only'} />
-          <SettingsRow label="Device ID" monoValue={identity?.device_id ?? 'Loading'} />
-          <SettingsRow label="Protocol" monoValue={identity?.protocol_version ?? '1'} />
-        </SettingsSection>
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold">About</h2>
+          <Card className="divide-y divide-border/60 border-border/60 overflow-hidden">
+            <SettingsRow label="Application" monoValue={branding.appName} />
+            <SettingsRow label="Version" monoValue={APP_VERSION} />
+            <SettingsRow label="Device ID" monoValue={identity?.device_id ?? 'Loading…'} />
+            <SettingsRow label="Device Role" monoValue={identity?.role ?? 'Unknown'} />
+          </Card>
+        </section>
       </div>
-      <SettingsSection title="About"><SettingsRow label="Version" monoValue={APP_VERSION} /></SettingsSection>
+
     </div>
   )
 }
