@@ -77,8 +77,7 @@ function StatCard({ icon, value, label, trend, color = 'accent', compact = false
     <Card 
       className={cn(
         'group relative overflow-hidden border-border bg-card transition-all duration-200',
-        'hover:shadow-md hover:border-border/60',
-        compact ? 'hover:-translate-y-0.5' : 'hover:-translate-y-1'
+        'hover:border-border/60'
       )}
     >
       {/* Subtle background glow on hover */}

@@ -145,7 +145,7 @@ export default function DashboardPage() {
             A live view of your signage network and scheduled playback.
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
           <Clock className="h-4 w-4 text-muted-foreground" />
           <span className="font-mono text-sm font-medium tabular-nums">{time}</span>
         </div>

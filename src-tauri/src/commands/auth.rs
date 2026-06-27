@@ -296,3 +296,26 @@ pub async fn accept_team_invite(
     .map_err(|error| error.to_string())?
     .map_err(|error| error.to_string())
 }
+
+#[tauri::command]
+pub async fn get_role_permissions(token: String, pool: State<'_, DbPool>) -> Result<Vec<String>, String> {
+    let pool = pool.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+        let user = query_user_by_token(&conn, &token)?
+            .ok_or_else(|| anyhow::anyhow!("Please log in again."))?;
+        let perms_json: String = conn
+            .query_row(
+                "SELECT permissions FROM role_permissions WHERE role = ?1",
+                params![user.role.as_str()],
+                |row| row.get(0),
+            )
+            .optional()?
+            .unwrap_or_else(|| "[]".to_string());
+        let perms: Vec<String> = serde_json::from_str(&perms_json).unwrap_or_default();
+        Ok::<_, anyhow::Error>(perms)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())
+}

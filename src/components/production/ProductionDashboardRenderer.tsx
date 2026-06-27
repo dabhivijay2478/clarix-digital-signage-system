@@ -46,7 +46,7 @@ export function ProductionDashboardRenderer({ bundle, presentation = false, clas
           <Card
             key={widget.id}
             className={cn(
-              'overflow-hidden border-border/70 bg-card/90 shadow-sm',
+              'overflow-hidden border-border/70 bg-card/90',
               presentation ? 'min-h-[360px]' : wide ? 'xl:col-span-12' : 'xl:col-span-6',
             )}
           >

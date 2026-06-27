@@ -17,15 +17,34 @@ import {
   normalizePlaylistItemSchedule,
   validatePlaylistItemSchedule,
 } from '../../lib/signage-schedule';
-import { Monitor, Plus, Loader2, Trash2, Pencil } from 'lucide-react';
+import {
+  Monitor,
+  Plus,
+  Loader2,
+  Trash2,
+  Pencil,
+  ArrowLeft,
+  ArrowUp,
+  ArrowDown,
+  Copy,
+  X,
+  SlidersHorizontal,
+  Calendar,
+  Zap,
+  AlertTriangle,
+  Clock,
+  Settings,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuthStore } from '@/store/authStore';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useGateStore, isValidGateNumber } from '@/store/gateStore';
 import { assignScreenToGate, unassignScreenFromGate } from '@/lib/gate-binding';
 
@@ -97,6 +116,7 @@ export default function ScreensPage() {
   // Gate store configuration hooks
   const { gates, assignments, addGate, removeGate, assignScreen, unassignScreen, getAllAssignedScreenIds, unassignScreenFromAll, getAssignedGateForScreen } = useGateStore();
   const authUser = useAuthStore((s) => s.user);
+  const { hasPermission } = usePermissions();
   const [showAddGate, setShowAddGate] = useState(false);
   const [newGateNumber, setNewGateNumber] = useState('');
   const [selectedGateForAssign, setSelectedGateForAssign] = useState<string | null>(null);
@@ -610,79 +630,70 @@ export default function ScreensPage() {
     const isSyncing = syncingScreenIds.includes(selectedScreen.id);
 
     return (
-      <div className="animate-fadeIn">
+      <div className="animate-fadeIn space-y-6">
         {/* Header section */}
-        <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button 
-              className="btn btn-secondary btn-icon" 
-              onClick={handleBack} 
-              style={{ borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 rounded-full shrink-0"
+              onClick={handleBack}
               title="Back to Screens"
             >
-              ←
-            </button>
+              <ArrowLeft className="size-4" />
+            </Button>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h1 className="page-title" style={{ margin: 0, fontSize: '24px', fontWeight: 'bold', color: 'var(--foreground)' }}>{selectedScreen.name}</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold tracking-tight text-foreground">{selectedScreen.name}</h1>
                 {isSyncing && (
-                  <span className="text-[10px] uppercase font-bold text-primary">
+                  <Badge variant="outline" className="animate-pulse bg-primary/10 text-primary border-primary/20 text-[10px]">
                     Syncing
-                  </span>
+                  </Badge>
                 )}
               </div>
-              <p className="page-subtitle" style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)' }}>
+              <p className="text-xs text-muted-foreground mt-0.5">
                 {selectedScreen.location || 'No location set'} • {selectedScreen.resolution?.width ?? 1920}x{selectedScreen.resolution?.height ?? 1080} • {selectedScreen.orientation}
               </p>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button className="btn btn-secondary" onClick={() => handleHoursClick(selectedScreen)}>
-              🕒 Hours
-            </button>
-            <button className="btn btn-secondary" onClick={() => handleEditClick(selectedScreen)}>
-              ✎ Settings
-            </button>
-            <button className="btn btn-secondary" onClick={() => handleEditClick(selectedScreen)}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => handleHoursClick(selectedScreen)}>
+              <Clock className="size-3.5 mr-1.5" /> Hours
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleEditClick(selectedScreen)}>
+              <Settings className="size-3.5 mr-1.5" /> Settings
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleEditClick(selectedScreen)}>
               Default Content
-            </button>
-            <button
-              className="btn btn-primary"
+            </Button>
+            <Button
+              size="sm"
               disabled={isSyncing}
               onClick={() => handleForceSync(selectedScreen.id)}
             >
               {isSyncing ? 'Syncing...' : '⚡ Force Sync'}
-            </button>
+            </Button>
           </div>
         </div>
 
         {/* Unsaved changes alert */}
         {hasUnsavedChanges && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: 'color-mix(in srgb, var(--primary) 15%, transparent)',
-            border: '1px solid color-mix(in srgb, var(--primary) 30%, transparent)',
-            padding: '16px 24px',
-            borderRadius: '12px',
-            marginBottom: '24px',
-            color: 'var(--foreground)',
-            boxShadow: '0 4px 20px var(--accent-glow)',
-            animation: 'fadeIn 0.2s ease-out'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={{ fontSize: '18px' }}>⚠️</span>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 animate-fadeIn">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="size-5 text-amber-500 shrink-0 mt-0.5" />
               <div>
-                <span style={{ fontWeight: 'bold' }}>Unsaved Playlist Changes</span>
-                <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  You have modified this screen&apos;s playlist. Remember to save to apply updates.
+                <span className="text-sm font-semibold text-amber-800 dark:text-amber-300">Unsaved Playlist Changes</span>
+                <p className="text-xs text-amber-700/80 dark:text-amber-400/80 mt-0.5">
+                  You have modified this screen's playlist. Remember to save to apply updates.
                 </p>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button 
-                className="btn btn-secondary" 
+            <div className="flex items-center gap-2 shrink-0">
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="h-8 text-xs border-amber-500/20 hover:bg-amber-500/10"
                 onClick={() => {
                   if (selectedScreen.playlist_id) {
                     const playlist = playlists.find(p => p.id === selectedScreen.playlist_id);
@@ -695,10 +706,14 @@ export default function ScreensPage() {
                 }}
               >
                 Discard
-              </button>
-              <button className="btn btn-primary" onClick={handleSavePlaylist}>
+              </Button>
+              <Button 
+                size="sm"
+                className="h-8 text-xs bg-amber-600 hover:bg-amber-700 text-white border-0"
+                onClick={handleSavePlaylist}
+              >
                 Save Changes
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -708,23 +723,23 @@ export default function ScreensPage() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             
             {/* Left Column: Screen Playlist */}
-            <div className="glass-card-static lg:col-span-7 flex flex-col gap-4 min-h-[450px]">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
-                <h3 style={{ margin: 0, color: 'var(--foreground)', fontSize: '16px', fontWeight: 600 }}>Screen Playlist Items</h3>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            <div className="border border-border/60 bg-card rounded-xl p-5 lg:col-span-7 flex flex-col gap-4 min-h-[450px]">
+              <div className="flex justify-between items-center border-b border-border/60 pb-3">
+                <h3 className="text-sm font-semibold text-foreground">Screen Playlist Items</h3>
+                <span className="text-xs text-muted-foreground font-mono">
                   {localPlaylistItems.length} item{localPlaylistItems.length !== 1 ? 's' : ''}
                 </span>
               </div>
 
               {localPlaylistItems.length === 0 ? (
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', padding: '64px 0', textAlign: 'center' }}>
-                  <span style={{ fontSize: '48px', marginBottom: '16px' }}>▣</span>
-                  <p style={{ margin: 0, maxWidth: '280px', fontSize: '13px', lineHeight: '1.5' }}>
+                <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground py-16 text-center">
+                  <span className="text-4xl mb-4 opacity-40">▣</span>
+                  <p className="max-w-[280px] text-xs leading-relaxed">
                     No items in this playlist. Select items from the Content Library on the right to build your feed.
                   </p>
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div className="flex flex-col gap-3">
                   {localPlaylistItems.map((playlistItem, index) => {
                     const contentItem = contentItems.find(c => c.id === playlistItem.content_id);
                     if (!contentItem) return null;
@@ -737,97 +752,98 @@ export default function ScreensPage() {
                     return (
                       <div 
                         key={`${playlistItem.content_id}-${index}`}
-                        className="glass-card"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '16px',
-                          padding: '12px 16px',
-                          background: 'var(--border)',
-                          border: '1px solid var(--border)',
-                          borderRadius: '12px',
-                        }}
+                        className="flex items-center gap-4 p-3 border border-border/50 bg-muted/20 hover:bg-muted/40 rounded-xl transition-all duration-150"
                       >
                         {/* Order badge */}
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', color: 'var(--text-muted)', fontSize: '12px', fontWeight: 'bold', width: '24px' }}>
+                        <div className="flex flex-col items-center text-muted-foreground text-xs font-semibold w-6 shrink-0">
                           <span>#{index + 1}</span>
                         </div>
 
                         {/* Media Thumbnail */}
-                        <div style={{ width: '64px', height: '40px', borderRadius: '6px', overflow: 'hidden', background: '#111', flexShrink: 0, position: 'relative', border: '1px solid var(--border)' }}>
+                        <div className="w-16 h-10 rounded-md overflow-hidden bg-background flex-shrink-0 relative border border-border/40">
                           {contentItem.content_type === 'Image' ? (
-                            <img src={mediaUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <img src={mediaUrl} alt="" className="w-full h-full object-cover" />
                           ) : contentItem.content_type === 'Video' ? (
-                            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>📹</div>
+                            <div className="w-full h-full flex items-center justify-center text-base">📹</div>
                           ) : (
-                            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>🌐</div>
+                            <div className="w-full h-full flex items-center justify-center text-base">🌐</div>
                           )}
                         </div>
 
                         {/* Title and details */}
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <h4 style={{ margin: 0, color: 'var(--foreground)', fontSize: '14px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-xs font-semibold text-foreground truncate" title={contentItem.name}>
                             {contentItem.name}
                           </h4>
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '9px', padding: '2px 6px', background: 'var(--border)', borderRadius: '4px', color: 'var(--text-secondary)' }}>
+                          <div className="flex gap-1.5 items-center mt-1 flex-wrap">
+                            <span className="text-[9px] px-1.5 py-0.5 bg-muted border border-border/40 rounded text-muted-foreground">
                               {contentItem.content_type}
                             </span>
-                            <span style={{ fontSize: '9px', padding: '2px 6px', background: hasRules ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.06)', color: hasRules ? 'var(--accent-secondary)' : 'var(--text-muted)', borderRadius: '4px' }}>
-                              📅 {scheduleSummary}
+                            <span className={cn(
+                              "text-[9px] px-1.5 py-0.5 rounded flex items-center gap-0.5",
+                              hasRules 
+                                ? "bg-indigo-500/10 text-indigo-500 border border-indigo-500/20" 
+                                : "bg-muted text-muted-foreground border border-border/40"
+                            )}>
+                              <Calendar className="size-2.5" /> {scheduleSummary}
                             </span>
                             {sched.transition && sched.transition !== 'Fade' && (
-                              <span style={{ fontSize: '9px', padding: '2px 6px', background: 'rgba(168,85,247,0.2)', color: '#c084fc', borderRadius: '4px' }}>
-                                ⚡ {sched.transition}
+                              <span className="text-[9px] px-1.5 py-0.5 bg-purple-500/10 text-purple-500 border border-purple-500/20 rounded flex items-center gap-0.5">
+                                <Zap className="size-2.5" /> {sched.transition}
                               </span>
                             )}
                           </div>
                         </div>
 
                         {/* Menu Options row */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                          <button
-                            className="btn btn-secondary btn-icon"
-                            style={{ width: '28px', height: '28px', padding: 0 }}
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 rounded-md"
                             title="Configure Scheduling & Transition"
                             onClick={() => openItemSettings(index)}
                           >
-                            ⚙
-                          </button>
-                          <button
-                            className="btn btn-secondary btn-icon"
-                            style={{ width: '28px', height: '28px', padding: 0 }}
+                            <SlidersHorizontal className="size-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 rounded-md"
                             disabled={index === 0}
                             title="Move Up"
                             onClick={() => handleMoveItem(index, 'up')}
                           >
-                            ↑
-                          </button>
-                          <button
-                            className="btn btn-secondary btn-icon"
-                            style={{ width: '28px', height: '28px', padding: 0 }}
+                            <ArrowUp className="size-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 rounded-md"
                             disabled={index === localPlaylistItems.length - 1}
                             title="Move Down"
                             onClick={() => handleMoveItem(index, 'down')}
                           >
-                            ↓
-                          </button>
-                          <button
-                            className="btn btn-secondary btn-icon"
-                            style={{ width: '28px', height: '28px', padding: 0 }}
+                            <ArrowDown className="size-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 rounded-md"
                             title="Duplicate Item"
                             onClick={() => handleDuplicateItem(index)}
                           >
-                            ⎘
-                          </button>
-                          <button
-                            className="btn btn-danger btn-icon"
-                            style={{ width: '28px', height: '28px', padding: 0 }}
+                            <Copy className="size-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 rounded-md text-destructive hover:text-destructive hover:bg-destructive/10"
                             title="Remove"
                             onClick={() => handleRemoveItem(index)}
                           >
-                            ✕
-                          </button>
+                            <X className="size-3.5" />
+                          </Button>
                         </div>
                       </div>
                     );
@@ -836,47 +852,40 @@ export default function ScreensPage() {
               )}
 
               {/* Save changes action row */}
-              <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                <button className="btn btn-secondary" onClick={handleBack}>
+              <div className="mt-auto pt-4 border-t border-border/60 flex justify-end gap-3">
+                <Button variant="outline" size="sm" onClick={handleBack}>
                   Discard & Exit
-                </button>
-                <button className="btn btn-primary" onClick={handleSavePlaylist}>
+                </Button>
+                <Button size="sm" onClick={handleSavePlaylist}>
                   Save Playlist
-                </button>
+                </Button>
               </div>
             </div>
 
             {/* Right Column: Content Library */}
-            <div className="glass-card-static lg:col-span-5 flex flex-col gap-4 min-h-[450px]">
-              <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
-                <h3 style={{ margin: 0, color: 'var(--foreground)', fontSize: '16px', fontWeight: 600, marginBottom: '12px' }}>Content Library</h3>
-                <input
-                  className="input"
+            <div className="border border-border/60 bg-card rounded-xl p-5 lg:col-span-5 flex flex-col gap-4 min-h-[450px]">
+              <div className="border-b border-border/60 pb-3">
+                <h3 className="text-sm font-semibold text-foreground mb-3">Content Library</h3>
+                <Input
                   placeholder="Search by name or tags..."
                   value={contentSearch}
                   onChange={(e) => setContentSearch(e.target.value)}
-                  style={{ width: '100%' }}
+                  className="h-9 text-xs"
                 />
               </div>
 
               {/* Tabs */}
-              <div style={{ display: 'flex', gap: '6px', background: 'var(--border)', padding: '4px', borderRadius: '8px' }}>
+              <div className="flex gap-1 bg-muted p-1 rounded-lg">
                 {(['all', 'image', 'video', 'webapp'] as const).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveContentTab(tab)}
-                    style={{
-                      flex: 1,
-                      padding: '6px 12px',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      borderRadius: '6px',
-                      background: activeContentTab === tab ? 'var(--accent-primary)' : 'transparent',
-                      color: activeContentTab === tab ? 'white' : 'var(--text-secondary)',
-                      border: 'none',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease'
-                    }}
+                    className={cn(
+                      "flex-1 py-1.5 text-[10px] font-semibold rounded-md transition-all duration-150",
+                      activeContentTab === tab 
+                        ? "bg-card text-foreground" 
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
                   >
                     {tab.toUpperCase()}
                   </button>
@@ -884,9 +893,9 @@ export default function ScreensPage() {
               </div>
 
               {/* Grid list */}
-              <div style={{ flex: 1, overflowY: 'auto', maxHeight: '500px', display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '4px' }}>
+              <div className="flex-1 overflow-y-auto max-h-[500px] flex flex-col gap-2 pr-1">
                 {filteredContent.length === 0 ? (
-                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '36px 0', color: 'var(--text-muted)', fontSize: '13px' }}>
+                  <div className="flex justify-center items-center py-10 text-xs text-muted-foreground">
                     No matching content found
                   </div>
                 ) : (
@@ -896,37 +905,26 @@ export default function ScreensPage() {
                       <div
                         key={item.id}
                         onClick={() => handleAddContent(item.id)}
-                        className="glass-card"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '12px',
-                          padding: '10px 12px',
-                          background: 'var(--border)',
-                          border: '1px solid var(--border)',
-                          borderRadius: '10px',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s'
-                        }}
+                        className="flex items-center gap-3 p-2.5 border border-border/50 bg-muted/20 hover:bg-muted/40 rounded-xl cursor-pointer transition-all duration-150 group"
                       >
-                        <div style={{ width: '48px', height: '32px', borderRadius: '4px', overflow: 'hidden', background: '#111', flexShrink: 0, border: '1px solid var(--border)' }}>
+                        <div className="w-12 h-8 rounded-md overflow-hidden bg-background flex-shrink-0 border border-border/40">
                           {item.content_type === 'Image' ? (
-                            <img src={mediaUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <img src={mediaUrl} alt="" className="w-full h-full object-cover" />
                           ) : item.content_type === 'Video' ? (
-                            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px' }}>📹</div>
+                            <div className="w-full h-full flex items-center justify-center text-xs">📹</div>
                           ) : (
-                            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px' }}>🌐</div>
+                            <div className="w-full h-full flex items-center justify-center text-xs">🌐</div>
                           )}
                         </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ display: 'block', color: 'var(--foreground)', fontSize: '13px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div className="flex-1 min-w-0">
+                          <span className="block text-xs font-semibold text-foreground truncate">
                             {item.name}
                           </span>
-                          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                          <span className="text-[10px] text-muted-foreground/80 mt-0.5 block">
                             {item.content_type} • {item.duration_secs}s
                           </span>
                         </div>
-                        <div style={{ color: 'var(--accent-primary)', fontWeight: 'bold', fontSize: '16px', paddingRight: '4px' }}>
+                        <div className="text-primary font-bold text-base pr-2 group-hover:scale-125 transition-transform duration-100">
                           +
                         </div>
                       </div>
@@ -946,12 +944,12 @@ export default function ScreensPage() {
           title="Content Schedule & Rules"
           actions={
             <>
-              <button className="btn btn-secondary" onClick={() => setEditingItemIndex(null)}>
+              <Button variant="outline" onClick={() => setEditingItemIndex(null)}>
                 Cancel
-              </button>
-              <button className="btn btn-primary" onClick={saveItemSettings}>
+              </Button>
+              <Button onClick={saveItemSettings}>
                 Apply Rules
-              </button>
+              </Button>
             </>
           }
         >
@@ -1094,12 +1092,12 @@ export default function ScreensPage() {
           title="Edit Screen"
           actions={
             <>
-              <button className="btn btn-secondary" onClick={() => setEditingScreen(null)}>
+              <Button variant="outline" onClick={() => setEditingScreen(null)}>
                 Cancel
-              </button>
-              <button className="btn btn-primary" onClick={handleSaveEdit}>
+              </Button>
+              <Button onClick={handleSaveEdit}>
                 Save Changes
-              </button>
+              </Button>
             </>
           }
         >
@@ -1171,9 +1169,9 @@ export default function ScreensPage() {
           onClose={() => setHoursScreen(null)}
           title="Screen operating hours"
           actions={
-            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-              <button
-                className="btn btn-secondary"
+            <div className="flex items-center justify-between w-full">
+              <Button
+                variant="outline"
                 onClick={() => {
                   setHoursMode('in_use');
                   setHoursBlank(false);
@@ -1189,14 +1187,14 @@ export default function ScreensPage() {
                 }}
               >
                 Reset
-              </button>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="btn btn-secondary" onClick={() => setHoursScreen(null)}>
+              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setHoursScreen(null)}>
                   Cancel
-                </button>
-                <button className="btn btn-primary" onClick={handleSaveHours}>
-                  Save
-                </button>
+                </Button>
+                <Button onClick={handleSaveHours}>
+                  Save Hours
+                </Button>
               </div>
             </div>
           }
@@ -1272,7 +1270,7 @@ export default function ScreensPage() {
     );
   }
 
-  const canAddScreen = authUser?.is_developer === true || authUser?.role === 'SuperAdmin';
+  const canAddScreen = hasPermission('screens');
 
   return (
     <div className="space-y-6">
@@ -1465,62 +1463,67 @@ export default function ScreensPage() {
         title="Add Screen"
         actions={
           <>
-            <button className="btn btn-secondary" onClick={() => setShowAdd(false)}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleAdd}>Add Screen</button>
+            <Button variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
+            <Button onClick={handleAdd}>Add Screen</Button>
           </>
         }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div>
-            <label className="input-label">Screen Name *</label>
-            <input
-              className="input"
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Screen Name *</Label>
+            <Input
               placeholder="e.g., Gate D1 Display"
               value={formName}
               onChange={(e) => setFormName(e.target.value)}
               autoFocus
             />
           </div>
-          <div>
-            <label className="input-label">Location</label>
-            <input
-              className="input"
+          <div className="space-y-1.5">
+            <Label>Location</Label>
+            <Input
               placeholder="e.g., Gate D1 entrance"
               value={formLocation}
               onChange={(e) => setFormLocation(e.target.value)}
             />
           </div>
-          <div>
-            <label className="input-label">IP Address (optional)</label>
-            <input
-              className="input"
+          <div className="space-y-1.5">
+            <Label>IP Address (optional)</Label>
+            <Input
               placeholder="e.g., 192.168.1.100"
               value={formIp}
               onChange={(e) => setFormIp(e.target.value)}
             />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-            <div>
-              <label className="input-label">Orientation</label>
-              <select className="input" value={formOrientation} onChange={(e) => setFormOrientation(e.target.value)}>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label>Orientation</Label>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-card px-3 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                value={formOrientation}
+                onChange={(e) => setFormOrientation(e.target.value)}
+              >
                 <option value="Landscape">Landscape</option>
                 <option value="Portrait">Portrait</option>
                 <option value="LandscapeFlipped">Landscape Flipped</option>
                 <option value="PortraitFlipped">Portrait Flipped</option>
               </select>
             </div>
-            <div>
-              <label className="input-label">Width</label>
-              <input className="input" type="number" value={formWidth} onChange={(e) => setFormWidth(e.target.value)} />
+            <div className="space-y-1.5">
+              <Label>Width</Label>
+              <Input type="number" value={formWidth} onChange={(e) => setFormWidth(e.target.value)} />
             </div>
-            <div>
-              <label className="input-label">Height</label>
-              <input className="input" type="number" value={formHeight} onChange={(e) => setFormHeight(e.target.value)} />
+            <div className="space-y-1.5">
+              <Label>Height</Label>
+              <Input type="number" value={formHeight} onChange={(e) => setFormHeight(e.target.value)} />
             </div>
           </div>
-          <div>
-            <label className="input-label">Assign to Gate (optional)</label>
-            <select className="input" value={formGate} onChange={(e) => setFormGate(e.target.value)}>
+          <div className="space-y-1.5">
+            <Label>Assign to Gate (optional)</Label>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-card px-3 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+              value={formGate}
+              onChange={(e) => setFormGate(e.target.value)}
+            >
               <option value="">No gate</option>
               {gates.map((gate) => (
                 <option key={gate.id} value={gate.number}>
@@ -1539,66 +1542,71 @@ export default function ScreensPage() {
         title="Edit Screen"
         actions={
           <>
-            <button className="btn btn-secondary" onClick={() => setEditingScreen(null)}>
+            <Button variant="outline" onClick={() => setEditingScreen(null)}>
               Cancel
-            </button>
-            <button className="btn btn-primary" onClick={handleSaveEdit}>
+            </Button>
+            <Button onClick={handleSaveEdit}>
               Save Changes
-            </button>
+            </Button>
           </>
         }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div>
-            <label className="input-label">Screen Name *</label>
-            <input
-              className="input"
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Screen Name *</Label>
+            <Input
               placeholder="e.g., Lobby Display"
               value={editFormName}
               onChange={(e) => setEditFormName(e.target.value)}
               autoFocus
             />
           </div>
-          <div>
-            <label className="input-label">Location</label>
-            <input
-              className="input"
+          <div className="space-y-1.5">
+            <Label>Location</Label>
+            <Input
               placeholder="e.g., Main Entrance"
               value={editFormLocation}
               onChange={(e) => setEditFormLocation(e.target.value)}
             />
           </div>
-          <div>
-            <label className="input-label">IP Address (optional)</label>
-            <input
-              className="input"
+          <div className="space-y-1.5">
+            <Label>IP Address (optional)</Label>
+            <Input
               placeholder="e.g., 192.168.1.100"
               value={editFormIp}
               onChange={(e) => setEditFormIp(e.target.value)}
             />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-            <div>
-              <label className="input-label">Orientation</label>
-              <select className="input" value={editFormOrientation} onChange={(e) => setEditFormOrientation(e.target.value)}>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label>Orientation</Label>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-card px-3 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                value={editFormOrientation}
+                onChange={(e) => setEditFormOrientation(e.target.value)}
+              >
                 <option value="Landscape">Landscape</option>
                 <option value="Portrait">Portrait</option>
                 <option value="LandscapeFlipped">Landscape Flipped</option>
                 <option value="PortraitFlipped">Portrait Flipped</option>
               </select>
             </div>
-            <div>
-              <label className="input-label">Width</label>
-              <input className="input" type="number" value={editFormWidth} onChange={(e) => setFormWidth(e.target.value)} />
+            <div className="space-y-1.5">
+              <Label>Width</Label>
+              <Input type="number" value={editFormWidth} onChange={(e) => setFormWidth(e.target.value)} />
             </div>
-            <div>
-              <label className="input-label">Height</label>
-              <input className="input" type="number" value={editFormHeight} onChange={(e) => setFormHeight(e.target.value)} />
+            <div className="space-y-1.5">
+              <Label>Height</Label>
+              <Input type="number" value={editFormHeight} onChange={(e) => setFormHeight(e.target.value)} />
             </div>
           </div>
-          <div>
-            <label className="input-label">Gate Assignment</label>
-            <select className="input" value={editFormGate} onChange={(e) => setEditFormGate(e.target.value)}>
+          <div className="space-y-1.5">
+            <Label>Gate Assignment</Label>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-card px-3 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+              value={editFormGate}
+              onChange={(e) => setEditFormGate(e.target.value)}
+            >
               <option value="">-- No Gate (Unassigned) --</option>
               {gates.map((g) => (
                 <option key={g.id} value={g.number}>{g.number.toUpperCase()}</option>
@@ -1612,11 +1620,11 @@ export default function ScreensPage() {
       <Modal
         isOpen={hoursScreen !== null}
         onClose={() => setHoursScreen(null)}
-        title="Screen operating hours"
+        title="Screen Operating Hours"
         actions={
-          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-            <button
-              className="btn btn-secondary"
+          <div className="flex items-center justify-between w-full">
+            <Button
+              variant="outline"
               onClick={() => {
                 setHoursMode('in_use');
                 setHoursBlank(false);
@@ -1632,39 +1640,38 @@ export default function ScreensPage() {
               }}
             >
               Reset
-            </button>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button className="btn btn-secondary" onClick={() => setHoursScreen(null)}>
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setHoursScreen(null)}>
                 Cancel
-              </button>
-              <button className="btn btn-primary" onClick={handleSaveHours}>
-                Save
-              </button>
+              </Button>
+              <Button onClick={handleSaveHours}>
+                Save Hours
+              </Button>
             </div>
           </div>
         }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: 'var(--foreground)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>This screen</span>
+        <div className="space-y-4 text-foreground">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">This screen</span>
             <select
-              className="input"
+              className="flex h-8 rounded-md border border-input bg-muted px-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
               value={hoursMode}
               onChange={(e) => setHoursMode(e.target.value)}
-              style={{ width: 'auto', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--foreground)', padding: '6px 12px', fontSize: '13px' }}
             >
               <option value="in_use">is in use during these times</option>
             </select>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
+          <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
             {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => {
               const dayHours = hoursDays[day] || { start: '00:00', end: '23:59' };
               return (
-                <div key={day} style={{ display: 'grid', gridTemplateColumns: '100px 1fr 1fr', alignItems: 'center', gap: '12px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 500 }}>{day}</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '4px 8px' }}>
-                    <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Start</span>
+                <div key={day} className="grid grid-cols-[80px_1fr_1fr] items-center gap-3">
+                  <span className="text-xs font-semibold">{day}</span>
+                  <div className="flex items-center gap-1.5 bg-muted/60 border border-border/60 rounded-lg px-2.5 py-1">
+                    <span className="text-[10px] text-muted-foreground uppercase">Start</span>
                     <input
                       type="time"
                       value={dayHours.start}
@@ -1674,11 +1681,11 @@ export default function ScreensPage() {
                           [day]: { ...prev[day], start: e.target.value }
                         }));
                       }}
-                      style={{ background: 'transparent', border: 'none', color: 'var(--foreground)', width: '100%', fontSize: '13px', outline: 'none' }}
+                      className="bg-transparent border-0 text-foreground w-full text-xs outline-none"
                     />
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '4px 8px' }}>
-                    <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>End</span>
+                  <div className="flex items-center gap-1.5 bg-muted/60 border border-border/60 rounded-lg px-2.5 py-1">
+                    <span className="text-[10px] text-muted-foreground uppercase">End</span>
                     <input
                       type="time"
                       value={dayHours.end}
@@ -1688,7 +1695,7 @@ export default function ScreensPage() {
                           [day]: { ...prev[day], end: e.target.value }
                         }));
                       }}
-                      style={{ background: 'transparent', border: 'none', color: 'var(--foreground)', width: '100%', fontSize: '13px', outline: 'none' }}
+                      className="bg-transparent border-0 text-foreground w-full text-xs outline-none"
                     />
                   </div>
                 </div>
@@ -1696,16 +1703,16 @@ export default function ScreensPage() {
             })}
           </div>
 
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px' }}>
+          <div className="text-[10px] text-muted-foreground border-t border-border/50 pt-2 font-mono">
             Screen timezone: Asia/Calcutta
           </div>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', marginTop: '8px', fontSize: '13px' }}>
+          <label className="flex items-center gap-2 cursor-pointer text-xs font-medium">
             <input
               type="checkbox"
               checked={hoursBlank}
               onChange={(e) => setHoursBlank(e.target.checked)}
-              style={{ width: '16px', height: '16px', accentColor: 'var(--accent-primary)' }}
+              className="size-4 rounded border-input text-primary focus:ring-ring"
             />
             Blank the screen when not in use
           </label>

@@ -152,7 +152,7 @@ export default function SettingsPage() {
           <Card className={cn(
             'p-4 transition-all duration-200',
             identity?.role === 'Controller'
-              ? 'border-primary/40 bg-primary/5 shadow-sm'
+              ? 'border-primary/40 bg-primary/5'
               : 'border-border/60 hover:border-border'
           )}>
             <div className="flex items-start gap-3 mb-4">
@@ -187,7 +187,7 @@ export default function SettingsPage() {
           <Card className={cn(
             'p-4 transition-all duration-200',
             identity?.role === 'Player'
-              ? 'border-primary/40 bg-primary/5 shadow-sm'
+              ? 'border-primary/40 bg-primary/5'
               : 'border-border/60 hover:border-border'
           )}>
             <div className="flex items-start gap-3 mb-4">

@@ -48,7 +48,7 @@ function ContentCard({ item, onDelete }: ContentCardProps) {
     : source
 
   return (
-    <div className="group relative flex flex-col rounded-xl border border-border/60 bg-card overflow-hidden transition-all duration-200 hover:border-border hover:shadow-md hover:-translate-y-0.5">
+    <div className="group relative flex flex-col rounded-xl border border-border/60 bg-card overflow-hidden transition-all duration-200 hover:border-border hover:border-border">
 
       {/* Thumbnail / Preview area */}
       <div className={cn('relative flex items-center justify-center h-24 w-full', cfg.iconBg)}>

@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { authApi } from '@/lib/tauri'
 import type { AdminRole, AuthUser, TeamInvite } from '@/lib/types'
 import { useAuthStore } from '@/store/authStore'
+import { usePermissions } from '@/hooks/usePermissions'
 
 const roleOptions: Array<{ value: AdminRole; label: string }> = [
   { value: 'SuperAdmin', label: 'Super Admin' },
@@ -24,6 +25,7 @@ const roleOptions: Array<{ value: AdminRole; label: string }> = [
 
 export default function TeamPage() {
   const { token, user } = useAuthStore()
+  const { hasPermission } = usePermissions()
   const [members, setMembers] = useState<AuthUser[]>([])
   const [invites, setInvites] = useState<TeamInvite[]>([])
   const [email, setEmail] = useState('')
@@ -32,7 +34,7 @@ export default function TeamPage() {
   const [loading, setLoading] = useState(false)
 
   const loadTeam = useCallback(async () => {
-    if (!token || user?.role !== 'SuperAdmin') return
+    if (!token || !hasPermission('team')) return
     setLoading(true)
     try {
       const [nextMembers, nextInvites] = await Promise.all([
@@ -46,7 +48,7 @@ export default function TeamPage() {
     } finally {
       setLoading(false)
     }
-  }, [token, user?.role])
+  }, [token, hasPermission])
 
   useEffect(() => {
     loadTeam()
@@ -64,14 +66,14 @@ export default function TeamPage() {
     }
   }
 
-  if (user?.role !== 'SuperAdmin') {
+  if (!hasPermission('team')) {
     return (
       <div className="flex min-h-[70vh] items-center justify-center">
         <Card className="max-w-lg text-center">
           <CardContent className="p-8">
             <ShieldCheck className="mx-auto mb-4 size-10 text-muted-foreground" />
-            <h1 className="text-2xl font-bold">Team access is Super Admin only</h1>
-            <p className="mt-2 text-sm text-muted-foreground">Ask the app Super Admin to invite or change users.</p>
+            <h1 className="text-2xl font-bold">Team access restricted</h1>
+            <p className="mt-2 text-sm text-muted-foreground">You don't have permission to manage team members.</p>
           </CardContent>
         </Card>
       </div>

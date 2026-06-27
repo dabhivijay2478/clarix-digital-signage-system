@@ -157,6 +157,8 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
       case 'get_team_members':
       case 'get_team_invites':
         return [] as T;
+      case 'get_role_permissions':
+        return ['all'] as T;
       case 'get_truck_dispatch_summary':
         return { last_24h: 0, this_month: 0, avg_loading_secs: null } as T;
       case 'get_analytics_summary':
@@ -452,6 +454,8 @@ export const authApi = {
     tauriInvoke<TeamInvite>('create_team_invite', { token, email, role, isDeveloper }),
   acceptInvite: (code: string, name: string, password: string) =>
     tauriInvoke<AuthSession>('accept_team_invite', { code, name, password }),
+  getRolePermissions: (token: string) =>
+    tauriInvoke<string[]>('get_role_permissions', { token }),
 };
 
 export const appConfigApi = {

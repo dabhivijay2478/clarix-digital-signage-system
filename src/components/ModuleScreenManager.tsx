@@ -166,7 +166,7 @@ export default function ModuleScreenManager({
   }
 
   return (
-    <Card className="overflow-hidden border-border/70 bg-card/80 shadow-xl shadow-black/10">
+    <Card className="overflow-hidden border-border/70 bg-card/80">
       <CardHeader className="gap-4 border-b border-border/60 bg-muted/20 md:flex-row md:items-start md:justify-between">
         <div>
           <Badge variant="outline" className="mb-3 border-primary/20 bg-primary/5 text-primary">
@@ -191,7 +191,7 @@ export default function ModuleScreenManager({
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {moduleScreens.map((screen) => (
-              <div key={screen.id} className="rounded-2xl border border-border/70 bg-background/55 p-4 shadow-xs">
+              <div key={screen.id} className="rounded-2xl border border-border/70 bg-background/55 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-base font-semibold">{screen.name}</p>

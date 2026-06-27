@@ -19,7 +19,7 @@ interface ScreenCardProps {
 
 function ScreenCard({ screen, onDelete, onEdit, onSync, onManage, isSyncing = false }: ScreenCardProps) {
   return (
-    <Card className="group cursor-pointer border-border bg-card transition-colors hover:border-border/80 shadow-xs p-0 gap-0" onClick={() => onManage?.(screen.id)}>
+    <Card className="group cursor-pointer border-border bg-card transition-colors hover:border-border/80 p-0 gap-0" onClick={() => onManage?.(screen.id)}>
       <CardHeader className="relative p-6 pb-2">
         <div className="absolute right-4 top-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200" onClick={(event) => event.stopPropagation()}>
           {onEdit && <Button aria-label="Edit screen" variant="ghost" size="icon-sm" onClick={() => onEdit(screen)}><Pencil /></Button>}

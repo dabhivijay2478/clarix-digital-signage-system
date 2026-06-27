@@ -150,6 +150,7 @@ pub fn run() {
             commands::auth::create_team_invite,
             commands::auth::get_team_invites,
             commands::auth::accept_team_invite,
+            commands::auth::get_role_permissions,
             // App config
             commands::app_config::get_marquee_settings,
             commands::app_config::update_marquee_settings,

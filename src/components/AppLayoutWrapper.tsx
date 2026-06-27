@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { useAuthStore } from '@/store/authStore'
+import { usePermissions } from '@/hooks/usePermissions'
 import { showToast } from '@/components/Toast'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -26,6 +27,7 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
   const { resolvedTheme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const { user, checked, login, acceptInvite, logout, validate } = useAuthStore()
+  const { hasPermission } = usePermissions()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [inviteMode, setInviteMode] = useState(false)
@@ -175,7 +177,7 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
     )
   }
 
-  if (pathname === '/settings' && !user.is_developer) {
+  if (pathname === '/settings' && !hasPermission('all')) {
     return (
       <div className="min-h-screen bg-background">
         <Sidebar isCollapsed={isCollapsed} onToggle={toggle} />
@@ -187,7 +189,7 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
             <CardHeader>
               <CardTitle>Settings Locked</CardTitle>
               <CardDescription>
-                Only developer accounts can access system settings.
+                You don't have permission to access system settings.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -209,7 +211,7 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
           <Button
             variant="outline"
             size="icon"
-            className="h-9 w-9 rounded-lg border-border bg-card shadow-sm"
+            className="h-9 w-9 rounded-lg border-border bg-card"
             onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
           >
             {resolvedTheme === 'dark' ? (

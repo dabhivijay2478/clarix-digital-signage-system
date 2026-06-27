@@ -21,6 +21,7 @@ import { APP_VERSION } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import { useBrandingStore } from '@/store/ui'
 import { useAuthStore } from '@/store/authStore'
+import { usePermissions, type AppPermission } from '@/hooks/usePermissions'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -34,17 +35,17 @@ interface NavItem {
   label: string
   icon: React.ElementType
   badge?: string
-  developerOnly?: boolean
+  permission?: AppPermission
 }
 
 const navItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/screens', label: 'Screens', icon: Monitor },
-  { href: '/content', label: 'Content', icon: PlaySquare },
-  { href: '/production-data', label: 'Production Data', icon: FileSpreadsheet },
-  { href: '/trucks', label: 'Truck Token', icon: Truck },
-  { href: '/team', label: 'Team', icon: Users },
-  { href: '/settings', label: 'Settings', icon: Settings, developerOnly: true },
+  { href: '/screens', label: 'Screens', icon: Monitor, permission: 'screens' },
+  { href: '/content', label: 'Content', icon: PlaySquare, permission: 'content' },
+  { href: '/production-data', label: 'Production Data', icon: FileSpreadsheet, permission: 'production' },
+  { href: '/trucks', label: 'Truck Token', icon: Truck, permission: 'trucks' },
+  { href: '/team', label: 'Team', icon: Users, permission: 'team' },
+  { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
 interface SidebarProps {
@@ -74,12 +75,12 @@ function Brand({ compact = false }: { compact?: boolean }) {
 
 function NavLinks({ compact = false, mobile = false }: { compact?: boolean; mobile?: boolean }) {
   const pathname = usePathname()
-  const user = useAuthStore((state) => state.user)
+  const { hasPermission } = usePermissions()
   
   return (
     <nav className="flex flex-1 flex-col gap-1 p-3">
       {navItems.map((item) => {
-        if (item.developerOnly && !user?.is_developer) return null
+        if (item.permission && !hasPermission(item.permission)) return null
         
         const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
         

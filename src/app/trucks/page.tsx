@@ -42,33 +42,42 @@ import type { ProductionImportResult, ProductionRow, TruckDispatchSummary, Truck
 import { useGateStore, isValidGateNumber, normalizeGateNumber } from '@/store/gateStore'
 import { cn } from '@/lib/utils'
 
-// ── Minimal Stat Card ────────────────────────────────────────────────────────
+// ── Compact Stat Card ──────────────────────────────────────────────────────
 
 function StatCard({
   icon: Icon,
   value,
   label,
   sublabel,
+  color = 'primary',
 }: {
   icon: React.ElementType
   value: number | string
   label: string
   sublabel?: string
+  color?: 'primary' | 'blue' | 'violet' | 'green' | 'amber' | 'rose'
 }) {
+  const colorMap: Record<string, string> = {
+    primary: 'bg-emerald-100 text-emerald-600',
+    blue: 'bg-blue-100 text-blue-600',
+    violet: 'bg-violet-100 text-violet-600',
+    green: 'bg-green-100 text-green-600',
+    amber: 'bg-amber-100 text-amber-600',
+    rose: 'bg-rose-100 text-rose-600',
+  }
+
   return (
-    <div
-      className="relative rounded-xl border border-border/60 bg-card/50 p-4 flex items-center gap-3.5 transition-colors duration-200 hover:bg-card hover:border-border cursor-default"
-    >
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted/60">
-        <Icon className="size-4 text-muted-foreground" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-medium text-muted-foreground tracking-wide uppercase">{label}</p>
-        <p className="text-2xl font-bold tracking-tight leading-none mt-0.5">{value}</p>
+    <div className="group flex items-center gap-3 rounded-xl border border-border/60 bg-card px-4 py-3 cursor-default">
+      <span className={`flex size-10 shrink-0 items-center justify-center rounded-lg text-base font-bold ${colorMap[color]}`}>
+        {value}
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-foreground truncate">{label}</p>
         {sublabel && (
-          <p className="text-[10px] text-muted-foreground/60 mt-1">{sublabel}</p>
+          <p className="text-xs text-muted-foreground truncate">{sublabel}</p>
         )}
       </div>
+      <Icon className="size-5 text-muted-foreground/50" />
     </div>
   )
 }
@@ -515,12 +524,12 @@ export default function TrucksPage() {
 
       {/* ── Stat Cards ───────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <StatCard icon={Truck} value={totalActive} label="Total" sublabel="Active trucks" />
-        <StatCard icon={Timer} value={waitingCount} label="Waiting" sublabel="In queue" />
-        <StatCard icon={Activity} value={loadingCount} label="Loading" sublabel="In progress" />
-        <StatCard icon={CheckCircle2} value={dispatchedCount} label="Dispatched" sublabel="Today" />
-        <StatCard icon={TrendingUp} value={dispatchSummary?.last_24h ?? 0} label="24h Dispatch" sublabel="Last 24 hours" />
-        <StatCard icon={CalendarDays} value={dispatchSummary?.this_month ?? 0} label="This Month" sublabel="Month total" />
+        <StatCard icon={Truck} value={totalActive} label="Total" sublabel="Active trucks" color="primary" />
+        <StatCard icon={Timer} value={waitingCount} label="Waiting" sublabel="In queue" color="amber" />
+        <StatCard icon={Activity} value={loadingCount} label="Loading" sublabel="In progress" color="blue" />
+        <StatCard icon={CheckCircle2} value={dispatchedCount} label="Dispatched" sublabel="Today" color="green" />
+        <StatCard icon={TrendingUp} value={dispatchSummary?.last_24h ?? 0} label="24h Dispatch" sublabel="Last 24 hours" color="violet" />
+        <StatCard icon={CalendarDays} value={dispatchSummary?.this_month ?? 0} label="This Month" sublabel="Month total" color="rose" />
       </div>
 
 
@@ -832,7 +841,7 @@ export default function TrucksPage() {
                 <div className="relative">
                   <div className={`absolute left-[-29px] top-0.5 flex size-5 items-center justify-center rounded-full border-2 text-[10px] font-bold transition-colors ${
                     selectedTruckForDetails.is_waiting
-                      ? 'bg-amber-500 border-amber-500 text-white shadow-amber-500/30 shadow-md'
+                      ? 'bg-amber-500 border-amber-500 text-white'
                       : 'bg-card border-border text-muted-foreground'
                   }`}>
                     1
@@ -862,7 +871,7 @@ export default function TrucksPage() {
                 <div className="relative">
                   <div className={`absolute left-[-29px] top-0.5 flex size-5 items-center justify-center rounded-full border-2 text-[10px] font-bold transition-colors ${
                     selectedTruckForDetails.is_loading
-                      ? 'bg-blue-500 border-blue-500 text-white shadow-blue-500/30 shadow-md'
+                      ? 'bg-blue-500 border-blue-500 text-white'
                       : 'bg-card border-border text-muted-foreground'
                   }`}>
                     2
@@ -892,7 +901,7 @@ export default function TrucksPage() {
                 <div className="relative">
                   <div className={`absolute left-[-29px] top-0.5 flex size-5 items-center justify-center rounded-full border-2 text-[10px] font-bold transition-colors ${
                     selectedTruckForDetails.is_out
-                      ? 'bg-emerald-500 border-emerald-500 text-white shadow-emerald-500/30 shadow-md'
+                      ? 'bg-emerald-500 border-emerald-500 text-white'
                       : 'bg-card border-border text-muted-foreground'
                   }`}>
                     3
