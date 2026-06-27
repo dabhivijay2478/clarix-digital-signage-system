@@ -76,41 +76,8 @@ function ContentCard({ item, onDelete }: ContentCardProps) {
   }
 
   const renderPreview = () => {
-    if (previewError || !mediaUrl) {
-      return (
-        <div className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-transform duration-300 group-hover:scale-110">
-          {typeIcons[content_type] || <span>❓</span>}
-        </div>
-      )
-    }
-
-    if (content_type === 'Image') {
-      return (
-        <img
-          src={mediaUrl}
-          alt={name}
-          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-          onError={() => setPreviewError(true)}
-        />
-      )
-    }
-
-    if (content_type === 'Video') {
-      return (
-        <video
-          ref={videoRef}
-          src={mediaUrl}
-          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-          muted
-          playsInline
-          preload="metadata"
-          onError={() => setPreviewError(true)}
-        />
-      )
-    }
-
     return (
-      <div className="flex size-10 items-center justify-center rounded-xl bg-secondary/10 text-secondary transition-transform duration-300 group-hover:scale-110">
+      <div className="flex size-12 items-center justify-center rounded-2xl bg-secondary/10 text-secondary transition-transform duration-300 group-hover:scale-110">
         {typeIcons[content_type] || <span>❓</span>}
       </div>
     )

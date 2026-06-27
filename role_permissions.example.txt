@@ -1,0 +1,29 @@
+# MG Enterprise — Role Permissions Configuration
+# ============================================================
+# LOCATION: This file lives in the app data directory, NOT here in the project.
+#   macOS: ~/Library/Application Support/com.mgenterprise.clarix/role_permissions.txt
+#
+# Each non-blank, non-comment line defines permissions for one role.
+# Format (comma-separated):
+#
+#   role, permission1, permission2, ...
+#
+# Available permissions:
+#   all            - unrestricted access to everything
+#   screens        - manage display screens
+#   content        - manage media content library
+#   production     - access production data dashboards
+#   trucks         - manage truck token queue
+#   team           - manage team members and invites
+#   view           - read-only access to basic views
+#
+# Rules:
+#   - Changes take effect on next app restart.
+#   - Lines starting with # are comments and are ignored.
+#   - Blank lines are ignored.
+# ============================================================
+
+SuperAdmin,      all
+SiteSuperAdmin,  screens, content, production, trucks, team
+Manager,         screens, content, production, trucks
+User,            view

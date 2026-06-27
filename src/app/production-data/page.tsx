@@ -16,7 +16,11 @@ import {
   Trash2,
   Upload,
   Loader2,
+  Monitor,
 } from 'lucide-react'
+import { useScreens } from '@/hooks/useScreens'
+import { usePlaylists } from '@/hooks/usePlaylists'
+import { useGateStore } from '@/store/gateStore'
 import { ProductionDashboardRenderer } from '@/components/production/ProductionDashboardRenderer'
 import { showToast } from '@/components/Toast'
 import { Badge } from '@/components/ui/badge'
@@ -30,14 +34,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { createWidget, displayValue, getProductionTable, isNumericColumn } from '@/lib/production'
-import { customConfirm, productionApi } from '@/lib/tauri'
+import { customConfirm, productionApi, screensApi } from '@/lib/tauri'
 import type {
   ProductionDashboard,
   ProductionDashboardBundle,
   ProductionImportResult,
   ProductionRow,
+  Screen,
   ProductionTable,
   ProductionWidget,
+  ScreenPurpose,
 } from '@/lib/types'
 
 const chartTypes = [
@@ -59,6 +65,7 @@ const aggregations = [
 
 export default function ProductionDataPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const liveRefreshInputRef = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(true)
   const [dashboards, setDashboards] = useState<ProductionDashboard[]>([])
   const [bundle, setBundle] = useState<ProductionDashboardBundle | null>(null)
@@ -73,6 +80,10 @@ export default function ProductionDataPage() {
   const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null)
   const [newWidgetTableId, setNewWidgetTableId] = useState<string>('')
   const [newWidgetType, setNewWidgetType] = useState('line')
+  const { screens } = useScreens()
+  const { playlists } = usePlaylists()
+  const { gates, assignments, updateGateConfig } = useGateStore()
+  const [selectedGateForAssign, setSelectedGateForAssign] = useState<string | null>(null)
 
   const loadDashboards = useCallback(async (preferredId?: string) => {
     setLoading(true)
@@ -101,6 +112,16 @@ export default function ProductionDataPage() {
     loadDashboards()
   }, [loadDashboards])
 
+  useEffect(() => {
+    if (gates.length > 0 && !selectedGateForAssign) {
+      const firstGate = gates[0]
+      setSelectedGateForAssign(firstGate.number)
+      if (firstGate.productionDashboardId) {
+        loadDashboards(firstGate.productionDashboardId)
+      }
+    }
+  }, [gates, selectedGateForAssign, loadDashboards])
+
   const activeTable = useMemo(() => getProductionTable(bundle?.dataset, activeTableId), [bundle, activeTableId])
 
   useEffect(() => {
@@ -121,6 +142,11 @@ export default function ProductionDataPage() {
 
   const selectedWidget = bundle?.dashboard.widgets.find((widget) => widget.id === selectedWidgetId) ?? null
   const selectedWidgetTable = selectedWidget ? getProductionTable(bundle?.dataset, selectedWidget.source_table_id) : null
+  const dashboardRowCount = useMemo(() => bundle?.dataset.tables.reduce((total, table) => total + table.rows.length, 0) ?? 0, [bundle?.dataset.tables])
+  const assignedProductionScreens = useMemo(() => {
+    if (!bundle) return 0
+    return screens.filter((screen) => screen.purpose === 'production_dashboard' && screen.production_dashboard_id === bundle.dashboard.id).length
+  }, [bundle, screens])
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -140,6 +166,28 @@ export default function ProductionDataPage() {
     }
   }
 
+  const handleLiveRefreshSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file || !bundle) return
+    setSaving(true)
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      const dataset = await productionApi.refreshFromFile(bundle.dataset.id, file.name, bytes)
+      setBundle({ ...bundle, dataset })
+      await loadDashboards(bundle.dashboard.id)
+      showToast('Live production data refreshed and synced to screens', 'success')
+    } catch (error) {
+      showToast(`Live refresh failed: ${error}`, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+
+
+  const [importingForGate, setImportingForGate] = useState<string | null>(null)
+
   const handleSaveImport = async () => {
     if (!importResult) return
     if (!importName.trim()) {
@@ -153,8 +201,16 @@ export default function ProductionDataPage() {
       setActiveTableId(nextBundle.dataset.selected_table_id ?? nextBundle.dataset.tables[0]?.id ?? null)
       setSelectedWidgetId(nextBundle.dashboard.widgets[0]?.id ?? null)
       setImportResult(null)
+
+      if (importingForGate) {
+        const currentGate = gates.find((g) => g.number === importingForGate)
+        updateGateConfig(importingForGate, 'production_dashboard', nextBundle.dashboard.id, currentGate?.playlistId || null)
+        showToast(`Linked "${importName.trim()}" to Gate ${importingForGate.toUpperCase()}`, 'success')
+        setImportingForGate(null)
+      } else {
+        showToast('Production dashboard saved', 'success')
+      }
       await loadDashboards(nextBundle.dashboard.id)
-      showToast('Production dashboard saved', 'success')
     } catch (error) {
       showToast(`Failed to save import: ${error}`, 'error')
     } finally {
@@ -347,7 +403,8 @@ export default function ProductionDataPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.xlsm,.xlsb,.csv,.tsv,.txt" className="hidden" onChange={handleFileSelect} />
-            <Button onClick={() => fileInputRef.current?.click()} disabled={importing}><Upload />{importing ? 'Importing...' : 'Import Excel / CSV'}</Button>
+            <input ref={liveRefreshInputRef} type="file" accept=".xlsx,.xls,.xlsm,.xlsb,.csv,.tsv,.txt" className="hidden" onChange={handleLiveRefreshSelect} />
+            <Button onClick={() => { setImportingForGate(selectedGateForAssign); fileInputRef.current?.click() }} disabled={importing}><Upload />{importing ? 'Importing...' : selectedGateForAssign ? `Import for Gate ${selectedGateForAssign.toUpperCase()}` : 'Import Excel / CSV'}</Button>
             <Button variant="outline" onClick={() => loadDashboards()} disabled={loading}><RefreshCw className={loading ? 'animate-spin' : ''} />Refresh</Button>
           </div>
         </div>
@@ -382,6 +439,56 @@ export default function ProductionDataPage() {
         </Card>
       )}
 
+      {gates.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mr-1">Gate:</span>
+          {gates.map((gate) => {
+            const isActive = selectedGateForAssign === gate.number
+            const gateDashboard = dashboards.find((d) => d.id === gate.productionDashboardId)
+            return (
+              <button
+                key={gate.id}
+                onClick={() => {
+                  setSelectedGateForAssign(gate.number)
+                  if (gate.productionDashboardId) {
+                    loadDashboards(gate.productionDashboardId)
+                  } else {
+                    setBundle(null)
+                  }
+                }}
+                className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+                  isActive
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-background text-foreground hover:border-primary/50 hover:bg-primary/5'
+                }`}
+                title={gateDashboard ? `Linked to ${gateDashboard.name}` : 'No dashboard linked'}
+              >
+                <span>{gate.number.toUpperCase()}</span>
+                {gateDashboard ? (
+                  <span className={`font-normal ${isActive ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
+                    · {gateDashboard.name}
+                  </span>
+                ) : (
+                  <span className={`font-normal italic ${isActive ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                    · empty
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {bundle && (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-border/60 bg-muted/20 px-4 py-3 text-sm">
+          <span className="font-semibold truncate">{bundle.dashboard.name}</span>
+          <span className="text-muted-foreground">{bundle.dataset.tables.length} tables</span>
+          <span className="text-muted-foreground">{dashboardRowCount.toLocaleString()} rows</span>
+          <span className="text-muted-foreground">{assignedProductionScreens} screens</span>
+          <span className="ml-auto truncate text-xs text-muted-foreground">{bundle.dataset.source_name}</span>
+        </div>
+      )}
+
       {loading && !bundle ? (
         <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -400,80 +507,68 @@ export default function ProductionDataPage() {
         </Card>
       ) : (
         <Tabs defaultValue="dashboard" className="space-y-5">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <TabsList className="grid w-full grid-cols-3 xl:w-auto">
+          <div className="flex flex-wrap items-center gap-2">
+            <TabsList>
               <TabsTrigger value="dashboard"><LayoutDashboard className="size-4" />Dashboard</TabsTrigger>
               <TabsTrigger value="data"><FileSpreadsheet className="size-4" />Entries</TabsTrigger>
               <TabsTrigger value="builder"><BarChart3 className="size-4" />Chart Builder</TabsTrigger>
             </TabsList>
-            <div className="flex flex-wrap gap-2">
-              {dashboards.length > 1 && (
-                <Select value={bundle.dashboard.id} onValueChange={(id) => loadDashboards(id)}>
-                  <SelectTrigger className="w-[260px]"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {dashboards.map((dashboard) => <SelectItem key={dashboard.id} value={dashboard.id}>{dashboard.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              )}
-              <Button variant="outline" onClick={handleSaveDashboard} disabled={saving}><Save />Save customization</Button>
-              <Button onClick={handleAddToContent} disabled={contentSaving}><Send />{contentSaving ? 'Adding...' : 'Add to Content'}</Button>
-            </div>
+            {dashboards.length > 1 && (
+              <Select value={bundle.dashboard.id} onValueChange={(id) => loadDashboards(id)}>
+                <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {dashboards.map((dashboard) => <SelectItem key={dashboard.id} value={dashboard.id}>{dashboard.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+            <Button variant="outline" onClick={handleSaveDashboard} disabled={saving}><Save />Save</Button>
+            <Button onClick={handleAddToContent} disabled={contentSaving} className="ml-auto"><Send />{contentSaving ? 'Adding...' : 'Add to Content'}</Button>
           </div>
 
           <TabsContent value="dashboard" className="space-y-5">
             <Card>
-              <CardHeader>
-                <CardTitle>Dashboard control</CardTitle>
-                <CardDescription>Rename, publish, or delete this dashboard and its source data.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-4 xl:grid-cols-[1fr_1fr_auto] xl:items-end">
-                <div className="space-y-2">
-                  <Label>Dashboard name</Label>
-                  <Input
-                    value={bundle.dashboard.name}
-                    onChange={(event) => updateDashboard((dashboard) => ({ ...dashboard, name: event.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Dataset name</Label>
-                  <Input
-                    value={bundle.dataset.name}
-                    onChange={(event) => setBundle((current) => current ? { ...current, dataset: { ...current.dataset, name: event.target.value } } : current)}
-                  />
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" onClick={handleSaveNames} disabled={saving}><Save />Save names</Button>
-                  <Button variant="outline" className="text-destructive hover:text-destructive" onClick={handleDeleteDashboard} disabled={saving}><Trash2 />Delete dashboard</Button>
-                  <Button variant="destructive" onClick={handleDeleteDataset} disabled={saving}><Trash2 />Delete dataset</Button>
+              <CardContent className="flex flex-wrap items-center gap-3 py-4">
+                <Input
+                  className="max-w-xs"
+                  value={bundle.dashboard.name}
+                  onChange={(event) => updateDashboard((dashboard) => ({ ...dashboard, name: event.target.value }))}
+                  placeholder="Dashboard name"
+                />
+                <Input
+                  className="max-w-xs"
+                  value={bundle.dataset.name}
+                  onChange={(event) => setBundle((current) => current ? { ...current, dataset: { ...current.dataset, name: event.target.value } } : current)}
+                  placeholder="Dataset name"
+                />
+                <div className="ml-auto flex flex-wrap gap-2">
+                  <Button variant="outline" onClick={() => liveRefreshInputRef.current?.click()} disabled={saving}><RefreshCw />Refresh file</Button>
+                  <Button variant="outline" onClick={handleSaveNames} disabled={saving}><Save />Save</Button>
+                  <Button variant="ghost" size="icon" onClick={handleDeleteDashboard} disabled={saving} title="Delete dashboard"><Trash2 className="size-4" /></Button>
+                  <Button variant="ghost" size="icon" onClick={handleDeleteDataset} disabled={saving} title="Delete dataset" className="text-destructive hover:text-destructive"><Trash2 className="size-4" /></Button>
                 </div>
               </CardContent>
             </Card>
+
             <ProductionDashboardRenderer bundle={bundle} />
           </TabsContent>
 
           <TabsContent value="data" className="space-y-5">
             <Card>
-              <CardHeader className="gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <CardTitle>Data entries</CardTitle>
-                  <CardDescription>Edit imported rows or add new dated entries. Save applies to every dashboard using this table.</CardDescription>
-                </div>
-                <div className="flex flex-wrap gap-2">
+              <CardContent className="space-y-4 py-4">
+                <div className="flex flex-wrap items-center gap-2">
                   <Select value={activeTableId ?? undefined} onValueChange={setActiveTableId}>
-                    <SelectTrigger className="w-[240px]"><SelectValue placeholder="Choose table" /></SelectTrigger>
+                    <SelectTrigger className="w-[220px]"><SelectValue placeholder="Choose table" /></SelectTrigger>
                     <SelectContent>{bundle.dataset.tables.map((table) => <SelectItem key={table.id} value={table.id}>{table.name}</SelectItem>)}</SelectContent>
                   </Select>
+                  <div className="relative max-w-xs flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search..." className="pl-9" />
+                  </div>
                   <Button variant="outline" onClick={handleAddRow}><Plus />Add row</Button>
-                  <Button variant="outline" onClick={handleResetRows}><RotateCcw />Reset edits</Button>
-                  <Button variant="outline" className="text-destructive hover:text-destructive" onClick={handleClearFilteredRows}><Trash2 />Delete visible rows</Button>
-                  <Button variant="outline" className="text-destructive hover:text-destructive" onClick={handleDeleteTable}><Trash2 />Delete table</Button>
-                  <Button onClick={handleSaveRows} disabled={saving}><Save />Save entries</Button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="relative max-w-md">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search entries..." className="pl-9" />
+                  <Button variant="ghost" size="icon" onClick={handleResetRows} disabled={saving} title="Reset edits"><RotateCcw className="size-4" /></Button>
+                  <Button variant="ghost" size="icon" onClick={handleClearFilteredRows} disabled={saving} title="Delete visible rows" className="text-destructive hover:text-destructive"><Trash2 className="size-4" /></Button>
+                  <Button variant="ghost" size="icon" onClick={handleDeleteTable} disabled={saving} title="Delete table" className="text-destructive hover:text-destructive"><Trash2 className="size-4" /></Button>
+                  <Button onClick={handleSaveRows} disabled={saving} className="ml-auto"><Save />Save</Button>
                 </div>
                 {activeTable ? (
                   <EditableTable table={activeTable} rows={filteredRows.slice(0, 80)} allRows={editingRows} setRows={setEditingRows} />
@@ -543,7 +638,8 @@ export default function ProductionDataPage() {
               </Card>
             </div>
           </TabsContent>
-        </Tabs>
+
+          </Tabs>
       )}
     </div>
   )

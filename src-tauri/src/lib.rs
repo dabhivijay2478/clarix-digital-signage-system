@@ -8,6 +8,7 @@ mod db;
 mod lan;
 mod models;
 mod scheduler;
+mod security;
 
 pub fn run() {
     // Initialize tracing/logging
@@ -31,7 +32,7 @@ pub fn run() {
                 .to_string_lossy()
                 .to_string();
 
-            tracing::info!("Clarix starting — data dir: {}", app_data);
+            tracing::info!("MG Enterprise starting — data dir: {}", app_data);
 
             // ── Initialize Database ─────────────────────────────────
             let app_data_clone = app_data.clone();
@@ -137,10 +138,21 @@ pub fn run() {
                 lan::server::run_player_sync_loop(player_pool, player_app_data).await;
             });
 
-            tracing::info!("Clarix setup complete");
+            tracing::info!("MG Enterprise setup complete");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Local admin auth
+            commands::auth::login_user,
+            commands::auth::logout_user,
+            commands::auth::get_current_user,
+            commands::auth::get_team_members,
+            commands::auth::create_team_invite,
+            commands::auth::get_team_invites,
+            commands::auth::accept_team_invite,
+            // App config
+            commands::app_config::get_marquee_settings,
+            commands::app_config::update_marquee_settings,
             // Screens
             commands::screens::get_screens,
             commands::screens::add_screen,
@@ -151,6 +163,7 @@ pub fn run() {
             commands::screens::update_screen_operating_hours,
             commands::screens::force_sync_screen,
             commands::screens::update_screen_fullscreen,
+            commands::screens::update_screen_display_options,
             // Content
             commands::content::get_content_items,
             commands::content::add_content_item,
@@ -192,6 +205,7 @@ pub fn run() {
             commands::production::get_production_dashboards,
             commands::production::get_production_dashboard,
             commands::production::update_production_table_rows,
+            commands::production::refresh_production_dataset_from_file,
             commands::production::update_production_dataset,
             commands::production::update_production_dashboard,
             commands::production::delete_production_dashboard,
@@ -200,6 +214,7 @@ pub fn run() {
             // Truck screen alerts
             commands::trucks::publish_truck_alert,
             commands::trucks::save_dispatched_truck,
+            commands::trucks::get_truck_dispatch_summary,
             // Database viewer & backups
             commands::database::get_db_tables,
             commands::database::get_db_table_data,
@@ -208,5 +223,5 @@ pub fn run() {
             commands::database::save_text_file,
         ])
         .run(tauri::generate_context!())
-        .expect("error running Clarix");
+        .expect("error running MG Enterprise");
 }

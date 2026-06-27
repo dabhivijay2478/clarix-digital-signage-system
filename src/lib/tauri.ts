@@ -21,6 +21,13 @@ import type {
   ProductionRow,
   TruckScreenAlert,
   Truck,
+  AuthSession,
+  AuthUser,
+  TeamInvite,
+  AdminRole,
+  MarqueeSettings,
+  TruckDispatchSummary,
+  ScreenPurpose,
 } from './types';
 import { APP_NAME } from './branding';
 
@@ -89,12 +96,69 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
       case 'get_production_dataset':
         url = `${baseUrl}/api/production/datasets/${args?.id}`;
         break;
+      case 'get_marquee_settings':
+        url = `${baseUrl}/api/marquee`;
+        break;
       case 'get_lan_server_port':
         return port as unknown as T;
       case 'record_analytics_event':
         // Controller-hosted browser players are read-only. Packaged players record
         // playback events through authenticated Tauri IPC.
         return undefined as T;
+      case 'login_user':
+        return {
+          token: `browser-dev-${Date.now()}`,
+          expires_at: new Date(Date.now() + 7 * 86400000).toISOString(),
+          user: {
+            id: 'browser-dev-user',
+            name: 'Browser Dev Admin',
+            email: String(args?.email ?? 'dev@mgenterprise.local'),
+            role: 'SuperAdmin',
+            is_developer: true,
+            created_at: new Date().toISOString(),
+          },
+        } as T;
+      case 'get_current_user':
+        if (!String(args?.token ?? '').startsWith('browser-dev-')) return null as T;
+        return {
+          id: 'browser-dev-user',
+          name: 'Browser Dev Admin',
+          email: 'dev@mgenterprise.local',
+          role: 'SuperAdmin',
+          is_developer: true,
+          created_at: new Date().toISOString(),
+        } as T;
+      case 'accept_team_invite':
+        return {
+          token: `browser-dev-${Date.now()}`,
+          expires_at: new Date(Date.now() + 7 * 86400000).toISOString(),
+          user: {
+            id: 'browser-dev-invite-user',
+            name: String(args?.name ?? 'Invited User'),
+            email: 'invited@mgenterprise.local',
+            role: 'Manager',
+            is_developer: false,
+            created_at: new Date().toISOString(),
+          },
+        } as T;
+      case 'logout_user':
+        return undefined as T;
+      case 'create_team_invite':
+        return {
+          id: `browser-invite-${Date.now()}`,
+          email: String(args?.email ?? ''),
+          role: String(args?.role ?? 'Manager'),
+          is_developer: Boolean(args?.isDeveloper),
+          code: 'DEV12345',
+          status: 'pending',
+          created_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + 14 * 86400000).toISOString(),
+        } as T;
+      case 'get_team_members':
+      case 'get_team_invites':
+        return [] as T;
+      case 'get_truck_dispatch_summary':
+        return { last_24h: 0, this_month: 0, avg_loading_secs: null } as T;
       case 'get_analytics_summary':
         return { impressions: 0, plays: 0, completions: 0, skips: 0, avg_dwell_secs: 0, uptime_pct: 100 } as T;
       case 'get_analytics_timeline':
@@ -121,6 +185,8 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
       case 'update_screen_fullscreen':
       case 'publish_truck_alert':
       case 'save_dispatched_truck':
+      case 'update_screen_display_options':
+      case 'update_marquee_settings':
         return undefined as T;
       default:
         throw new Error(`Controller administration is available only in the packaged ${APP_NAME} desktop app.`);
@@ -188,7 +254,11 @@ export const screensApi = {
     orientation?: string,
     resolutionW?: number,
     resolutionH?: number,
-    playlistId?: string
+    playlistId?: string,
+    purpose?: ScreenPurpose,
+    gate?: string | null,
+    productionDashboardId?: string | null,
+    defaultContentId?: string | null
   ) =>
     tauriInvoke<Screen>('add_screen', {
       name,
@@ -198,6 +268,10 @@ export const screensApi = {
       resolutionW: resolutionW ?? null,
       resolutionH: resolutionH ?? null,
       playlistId: playlistId ?? null,
+      purpose: purpose ?? null,
+      gate: gate ?? null,
+      productionDashboardId: productionDashboardId ?? null,
+      defaultContentId: defaultContentId ?? null,
     }),
 
   edit: (
@@ -208,7 +282,11 @@ export const screensApi = {
     orientation?: string,
     resolutionW?: number,
     resolutionH?: number,
-    playlistId?: string
+    playlistId?: string,
+    purpose?: ScreenPurpose,
+    gate?: string | null,
+    productionDashboardId?: string | null,
+    defaultContentId?: string | null
   ) =>
     tauriInvoke<void>('edit_screen', {
       id,
@@ -219,6 +297,25 @@ export const screensApi = {
       resolutionW: resolutionW ?? null,
       resolutionH: resolutionH ?? null,
       playlistId: playlistId ?? null,
+      purpose: purpose ?? null,
+      gate: gate ?? null,
+      productionDashboardId: productionDashboardId ?? null,
+      defaultContentId: defaultContentId ?? null,
+    }),
+
+  updateDisplayOptions: (
+    id: string,
+    purpose: ScreenPurpose,
+    gate?: string | null,
+    productionDashboardId?: string | null,
+    defaultContentId?: string | null
+  ) =>
+    tauriInvoke<void>('update_screen_display_options', {
+      id,
+      purpose,
+      gate: gate ?? null,
+      productionDashboardId: productionDashboardId ?? null,
+      defaultContentId: defaultContentId ?? null,
     }),
 
   updateOperatingHours: (id: string, operatingHours: any) =>
@@ -247,7 +344,8 @@ export const contentApi = {
     filePath?: string,
     url?: string,
     durationSecs: number = 30,
-    tags: string[] = []
+    tags: string[] = [],
+    metadataJson: Record<string, unknown> = {}
   ) =>
     tauriInvoke<ContentItem>('add_content_item', {
       name,
@@ -256,6 +354,7 @@ export const contentApi = {
       url: url ?? null,
       durationSecs,
       tags,
+      metadataJson,
     }),
 
   delete: (id: string) => tauriInvoke<void>('delete_content_item', { id }),
@@ -306,6 +405,9 @@ export const productionApi = {
   updateRows: (datasetId: string, tableId: string, rows: ProductionRow[]) =>
     tauriInvoke<ProductionDataset>('update_production_table_rows', { datasetId, tableId, rows }),
 
+  refreshFromFile: (datasetId: string, filename: string, bytes: Uint8Array) =>
+    tauriInvoke<ProductionDataset>('refresh_production_dataset_from_file', { datasetId, filename, bytes: Array.from(bytes) }),
+
   updateDataset: (dataset: ProductionDataset) =>
     tauriInvoke<ProductionDataset>('update_production_dataset', { dataset }),
 
@@ -329,6 +431,33 @@ export const truckAlertsApi = {
     tauriInvoke<void>('publish_truck_alert', { alert }),
   saveDispatchedTruck: (truck: Truck) =>
     tauriInvoke<void>('save_dispatched_truck', { truck }),
+  getDispatchSummary: () =>
+    tauriInvoke<TruckDispatchSummary>('get_truck_dispatch_summary'),
+};
+
+// ── Local Admin Auth API ───────────────────────────────────────────────────
+
+export const authApi = {
+  login: (email: string, password: string) =>
+    tauriInvoke<AuthSession>('login_user', { email, password }),
+  logout: (token: string) =>
+    tauriInvoke<void>('logout_user', { token }),
+  currentUser: (token: string) =>
+    tauriInvoke<AuthUser | null>('get_current_user', { token }),
+  members: (token: string) =>
+    tauriInvoke<AuthUser[]>('get_team_members', { token }),
+  invites: (token: string) =>
+    tauriInvoke<TeamInvite[]>('get_team_invites', { token }),
+  createInvite: (token: string, email: string, role: AdminRole, isDeveloper: boolean) =>
+    tauriInvoke<TeamInvite>('create_team_invite', { token, email, role, isDeveloper }),
+  acceptInvite: (code: string, name: string, password: string) =>
+    tauriInvoke<AuthSession>('accept_team_invite', { code, name, password }),
+};
+
+export const appConfigApi = {
+  getMarquee: () => tauriInvoke<MarqueeSettings>('get_marquee_settings'),
+  updateMarquee: (enabled: boolean, text: string, speed: number) =>
+    tauriInvoke<MarqueeSettings>('update_marquee_settings', { enabled, text, speed }),
 };
 
 // ── Playlists API ───────────────────────────────────────────────────────────

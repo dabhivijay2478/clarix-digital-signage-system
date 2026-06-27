@@ -97,6 +97,80 @@ pub struct DiagnosticCheck {
     pub detail: String,
 }
 
+// ── Local Admin Auth ────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum AdminRole {
+    SuperAdmin,
+    SiteSuperAdmin,
+    Manager,
+    User,
+}
+
+impl AdminRole {
+    pub fn from_str(value: &str) -> Self {
+        match value {
+            "Super Admin" | "super_admin" => Self::SuperAdmin,
+            "Site Super Admin" | "site_super_admin" => Self::SiteSuperAdmin,
+            "Manager" | "manager" => Self::Manager,
+            _ => Self::User,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::SuperAdmin => "Super Admin",
+            Self::SiteSuperAdmin => "Site Super Admin",
+            Self::Manager => "Manager",
+            Self::User => "User",
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AuthUser {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    pub role: AdminRole,
+    pub is_developer: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AuthSession {
+    pub token: String,
+    pub expires_at: DateTime<Utc>,
+    pub user: AuthUser,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TeamInvite {
+    pub id: String,
+    pub email: String,
+    pub role: AdminRole,
+    pub is_developer: bool,
+    pub code: String,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MarqueeSettings {
+    pub enabled: bool,
+    pub text: String,
+    pub speed: u32,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TruckDispatchSummary {
+    pub last_24h: u32,
+    pub this_month: u32,
+    pub avg_loading_secs: Option<u32>,
+}
+
 // ── Screen ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -121,6 +195,10 @@ pub struct Screen {
     pub last_sync_revision: i64,
     pub force_sync: bool,
     pub is_fullscreen: bool,
+    pub purpose: String,
+    pub gate: Option<String>,
+    pub production_dashboard_id: Option<String>,
+    pub default_content_id: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -150,6 +228,10 @@ impl Default for Screen {
             last_sync_revision: 0,
             force_sync: false,
             is_fullscreen: false,
+            purpose: "playlist".to_string(),
+            gate: None,
+            production_dashboard_id: None,
+            default_content_id: None,
             created_at: Utc::now(),
         }
     }
@@ -180,6 +262,7 @@ pub struct ContentItem {
     pub url: Option<String>,
     pub duration_secs: u32,
     pub tags: Vec<String>,
+    pub metadata_json: serde_json::Value,
     pub created_at: DateTime<Utc>,
 }
 

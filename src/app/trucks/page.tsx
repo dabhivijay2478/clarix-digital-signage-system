@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import {
   Clock,
   Edit2,
@@ -15,6 +15,7 @@ import {
   ArrowDown,
 } from 'lucide-react'
 import { useTrucks } from '@/hooks/useTrucks'
+import { useScreens } from '@/hooks/useScreens'
 import { showToast } from '@/components/Toast'
 import Modal from '@/components/Modal'
 import { customConfirm, productionApi, truckAlertsApi } from '@/lib/tauri'
@@ -31,12 +32,13 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import type { ProductionImportResult, ProductionRow, Truck as TruckType } from '@/lib/types'
+import type { ProductionImportResult, ProductionRow, TruckDispatchSummary, TruckScreenAlert, Truck as TruckType } from '@/lib/types'
+import { useGateStore, isValidGateNumber, normalizeGateNumber } from '@/store/gateStore'
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-const gateOptions = ['d4', 'd5'] as const
 const delimitedExtensions = new Set(['csv', 'tsv', 'txt'])
 const excelExtensions = new Set(['xlsx', 'xls', 'xlsm', 'xlsb'])
 
@@ -45,9 +47,14 @@ type TruckImportRow = {
   gate_no: string
 }
 
-function normalizeGateNo(value: string | null | undefined): string {
-  const normalized = (value ?? '').trim().toLowerCase()
-  return gateOptions.includes(normalized as typeof gateOptions[number]) ? normalized : ''
+/** Validate gate_no from CSV against the configured gate list (case-insensitive). Accepts any non-empty value as-is when no gates configured. */
+function makeGateNormalizer(configuredGates: string[]) {
+  return function normalizeGateNo(value: string | null | undefined): string {
+    const raw = (value ?? '').trim().toLowerCase()
+    if (!raw) return ''
+    if (configuredGates.length === 0) return raw
+    return configuredGates.map((g) => g.toLowerCase()).includes(raw) ? raw : raw
+  }
 }
 
 function normalizeImportKey(value: string): string {
@@ -74,7 +81,7 @@ function getImportValue(row: Record<string, unknown>, names: string[]): string {
   return ''
 }
 
-function mapImportRecordToTruck(row: Record<string, unknown>): TruckImportRow {
+function mapImportRecordToTruck(row: Record<string, unknown>, normalizeGateNo: (v: string) => string): TruckImportRow {
   const gate = normalizeGateNo(getImportValue(row, ['gate_no', 'gate', 'gate_number', 'gateno']))
   return {
     registration_number: getImportValue(row, [
@@ -88,8 +95,29 @@ function mapImportRecordToTruck(row: Record<string, unknown>): TruckImportRow {
       'truck_number',
       'number',
     ]),
-    gate_no: gate || 'd4',
+    gate_no: gate || '',
   }
+}
+
+function formatDurationFrom(start: string | null | undefined, end?: string | null): string {
+  if (!start) return '—'
+  const startTime = new Date(start).getTime()
+  const endTime = end ? new Date(end).getTime() : Date.now()
+  if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || endTime < startTime) return '—'
+  const totalMinutes = Math.floor((endTime - startTime) / 60000)
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  if (hours > 0) return `${hours}h ${minutes}m`
+  return `${minutes}m`
+}
+
+function formatDurationSeconds(seconds: number | null | undefined): string {
+  if (!seconds || seconds < 0) return '—'
+  const totalMinutes = Math.floor(seconds / 60)
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  if (hours > 0) return `${hours}h ${minutes}m`
+  return `${minutes}m`
 }
 
 /** Parse a delimited string into rows of string arrays. Handles quoted fields. */
@@ -129,7 +157,7 @@ function parseDelimitedText(text: string, delimiter = ','): string[][] {
   return rows
 }
 
-function parseTruckRowsFromDelimited(text: string, delimiter: string): TruckImportRow[] {
+function parseTruckRowsFromDelimited(text: string, delimiter: string, normalizeGateNo: (v: string | null | undefined) => string): TruckImportRow[] {
   const rows = parseDelimitedText(text, delimiter)
   if (rows.length < 2) return []
   const headers = rows[0].map(normalizeImportKey)
@@ -138,15 +166,15 @@ function parseTruckRowsFromDelimited(text: string, delimiter: string): TruckImpo
     .filter((row) => row.some((cell) => cell.trim()))
     .map((row) => {
       const record = Object.fromEntries(headers.map((header, index) => [header, row[index] ?? '']))
-      return mapImportRecordToTruck(record)
+      return mapImportRecordToTruck(record, normalizeGateNo)
     })
     .filter((truck) => truck.registration_number)
 }
 
-function parseTruckRowsFromProductionImport(result: ProductionImportResult): TruckImportRow[] {
+function parseTruckRowsFromProductionImport(result: ProductionImportResult, normalizeGateNo: (v: string | null | undefined) => string): TruckImportRow[] {
   return result.tables
     .flatMap((table) => table.rows)
-    .map((row: ProductionRow) => mapImportRecordToTruck(row))
+    .map((row: ProductionRow) => mapImportRecordToTruck(row, normalizeGateNo))
     .filter((truck) => truck.registration_number)
 }
 
@@ -164,8 +192,15 @@ export default function TrucksPage() {
     moveTruck,
   } = useTrucks()
 
+  // Gate store
+  const { gates } = useGateStore()
+  const { screens } = useScreens()
+
+  // Gate normalizer built from current configured gates
+  const normalizeGateNo = useMemo(() => makeGateNormalizer(gates.map((g) => g.number)), [gates])
+
   const [search, setSearch] = useState('')
-  const [activeTab, setActiveTab] = useState<'all' | 'd4' | 'd5'>('all')
+  const [activeGateTab, setActiveGateTab] = useState<string>('all')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // ── Modal states ────────────────────────────────────────────────────────
@@ -174,6 +209,8 @@ export default function TrucksPage() {
   const [editingTruckId, setEditingTruckId] = useState<string | null>(null)
   const [selectedTruckForDetails, setSelectedTruckForDetails] = useState<TruckType | null>(null)
   const [showImportPreview, setShowImportPreview] = useState(false)
+  const [dispatchSummary, setDispatchSummary] = useState<TruckDispatchSummary | null>(null)
+  const [lastAlert, setLastAlert] = useState<TruckScreenAlert | null>(null)
   const [importPreviewData, setImportPreviewData] = useState<Array<{
     registration_number: string
     gate_no: string
@@ -182,6 +219,18 @@ export default function TrucksPage() {
   // Truck form fields
   const [fRegNo, setFRegNo] = useState('')
   const [fGateNo, setFGateNo] = useState('')
+
+  const refreshDispatchSummary = useCallback(async () => {
+    try {
+      setDispatchSummary(await truckAlertsApi.getDispatchSummary())
+    } catch (error) {
+      console.warn('Failed to load dispatch summary:', error)
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshDispatchSummary()
+  }, [refreshDispatchSummary])
 
   // ── Form Resets ─────────────────────────────────────────────────────────
 
@@ -219,7 +268,7 @@ export default function TrucksPage() {
     if (!truck) return
     setEditingTruckId(id)
     setFRegNo(truck.registration_number)
-    setFGateNo(normalizeGateNo(truck.gate_no))
+    setFGateNo(normalizeGateNo(truck.gate_no) || truck.gate_no || '')
   }
 
   const handleSaveEditTruck = () => {
@@ -230,7 +279,7 @@ export default function TrucksPage() {
     }
     editTruck(editingTruckId, {
       registration_number: fRegNo.trim(),
-      gate_no: normalizeGateNo(fGateNo) || null,
+      gate_no: normalizeGateNo(fGateNo) || fGateNo.trim().toLowerCase() || null,
     })
     showToast('Truck updated', 'success')
     resetTruckForm()
@@ -271,16 +320,19 @@ export default function TrucksPage() {
       const waitingList = gateTrucks.filter((t) => t.is_waiting && !t.is_loading && !t.is_in && !t.is_out)
       const next = waitingList[0] || null
 
-      await truckAlertsApi.publish({
+      const alert = {
         ...createTruckScreenAlert(preview),
         active_truck_number: active ? active.registration_number : null,
         active_truck_status: active ? getTruckStatusInfo(active).status_label : null,
         next_truck_number: next ? next.registration_number : null,
         next_truck_status: next ? getTruckStatusInfo(next).status_label : null,
-      })
+      }
+      await truckAlertsApi.publish(alert)
+      setLastAlert(alert)
 
       if (field === 'is_out' && value === true) {
         await truckAlertsApi.saveDispatchedTruck(preview)
+        await refreshDispatchSummary()
         showToast(`Truck "${truck.registration_number}" dispatched and saved to database`, 'success')
         deleteTruck(truck.id)
       }
@@ -313,11 +365,11 @@ export default function TrucksPage() {
 
       if (delimitedExtensions.has(extension)) {
         const text = await file.text()
-        parsed = parseTruckRowsFromDelimited(text, extension === 'tsv' ? '\t' : ',')
+        parsed = parseTruckRowsFromDelimited(text, extension === 'tsv' ? '\t' : ',', normalizeGateNo)
       } else if (excelExtensions.has(extension)) {
         const bytes = new Uint8Array(await file.arrayBuffer())
         const result = await productionApi.importFile(file.name, bytes)
-        parsed = parseTruckRowsFromProductionImport(result)
+        parsed = parseTruckRowsFromProductionImport(result, normalizeGateNo)
       } else {
         showToast('Unsupported file type. Upload CSV, TSV, XLS, or XLSX.', 'error')
         return
@@ -356,6 +408,12 @@ export default function TrucksPage() {
 
   // ── Filtered data ───────────────────────────────────────────────────────
 
+  // All unique gate numbers from configured gates + truck data
+  const allGateNumbers = useMemo(() => {
+    const fromGates = gates.map((g) => g.number)
+    return fromGates
+  }, [gates])
+
   const filteredTrucks = trucks.filter((t) => {
     if (t.is_out) return false
 
@@ -363,10 +421,22 @@ export default function TrucksPage() {
                          (t.gate_no ?? '').toLowerCase().includes(search.toLowerCase())
     if (!matchesSearch) return false
 
-    if (activeTab === 'd4') return t.gate_no === 'd4'
-    if (activeTab === 'd5') return t.gate_no === 'd5'
+    if (activeGateTab !== 'all') return (t.gate_no ?? '').toLowerCase() === activeGateTab
     return true
   })
+
+  const gateRanks = useMemo(() => {
+    const ranks = new Map<string, number>()
+    const gateNums = allGateNumbers.length > 0 ? allGateNumbers : [...new Set(trucks.map((t) => (t.gate_no ?? '').toLowerCase()).filter(Boolean))]
+    for (const gate of gateNums) {
+      trucks
+        .filter((truck) => !truck.is_out && (truck.gate_no ?? '').toLowerCase() === gate)
+        .forEach((truck, index) => ranks.set(truck.id, index))
+    }
+    return ranks
+  }, [trucks, allGateNumbers])
+
+
 
   // ── Truck Form Modal Body ───────────────────────────────────────────────
 
@@ -379,14 +449,18 @@ export default function TrucksPage() {
         </div>
         <div className="space-y-2">
           <Label>Gate *</Label>
-          <Select value={fGateNo} onValueChange={setFGateNo}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select gate" />
-            </SelectTrigger>
-            <SelectContent>
-              {gateOptions.map((gate) => <SelectItem key={gate} value={gate}>{gate}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          {gates.length > 0 ? (
+            <Select value={fGateNo} onValueChange={setFGateNo}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select gate" />
+              </SelectTrigger>
+              <SelectContent>
+                {gates.map((gate) => <SelectItem key={gate.id} value={gate.number}>{gate.number.toUpperCase()}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input placeholder="e.g., d1" value={fGateNo} onChange={(e) => setFGateNo(e.target.value)} />
+          )}
         </div>
       </div>
     </div>
@@ -419,7 +493,7 @@ export default function TrucksPage() {
       </div>
 
       {/* Stats row */}
-      <div className="grid gap-4 sm:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-4 xl:grid-cols-6">
         <Card>
           <CardContent className="flex items-center gap-4 p-5">
             <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-xl">🚛</div>
@@ -456,54 +530,94 @@ export default function TrucksPage() {
             </div>
           </CardContent>
         </Card>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex border-b border-border">
-        {(['all', 'd4', 'd5'] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer ${
-              activeTab === tab
-                ? 'border-primary text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {tab === 'all' ? 'All Trucks' :
-             tab === 'd4' ? 'Gate D4' : 'Gate D5'}
-          </button>
-        ))}
-      </div>
-
-      {/* Action bar */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{filteredTrucks.length} truck{filteredTrucks.length !== 1 ? 's' : ''}</p>
-        <div className="flex items-center gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,.tsv,.txt,.xlsx,.xls,.xlsm,.xlsb"
-            className="hidden"
-            onChange={handleFileSelect}
-          />
-          <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-            <Upload className="mr-1.5 size-4" /> Import CSV / Excel
-          </Button>
-          <Button onClick={() => { resetTruckForm(); setShowAddTruck(true) }}>
-            <Plus className="mr-1 size-4" /> Add Truck
-          </Button>
-        </div>
-      </div>
-
-      {/* Truck Table */}
-      {filteredTrucks.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <Truck className="mb-4 size-12 text-muted-foreground/30" />
-            <p className="text-lg font-medium">No trucks yet</p>
-            <p className="mt-1 text-sm text-muted-foreground">Add a truck manually or import from a CSV/Excel file.</p>
-            <div className="mt-5 flex gap-3">
+          <CardContent className="flex items-center gap-4 p-5">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-emerald-500/10 text-xl">24h</div>
+            <div>
+              <p className="text-2xl font-bold">{dispatchSummary?.last_24h ?? 0}</p>
+              <p className="text-sm text-muted-foreground">Dispatch 24h</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center gap-4 p-5">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-cyan-500/10 text-xl">M</div>
+            <div>
+              <p className="text-2xl font-bold">{dispatchSummary?.this_month ?? 0}</p>
+              <p className="text-sm text-muted-foreground">Dispatch Month</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardContent className="p-5">
+            <p className="text-sm text-muted-foreground">Last player alert</p>
+            <p className="mt-1 font-mono text-lg font-bold">{lastAlert?.truck_number ?? 'No alert yet'}</p>
+            <p className="text-xs text-muted-foreground">{lastAlert ? `${lastAlert.status_label} · Gate ${lastAlert.gate?.toUpperCase() ?? '—'}` : 'Status changes will appear on players for 30 seconds.'}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5">
+            <p className="text-sm text-muted-foreground">Average loading duration</p>
+            <p className="mt-1 font-mono text-lg font-bold">{formatDurationSeconds(dispatchSummary?.avg_loading_secs)}</p>
+            <p className="text-xs text-muted-foreground">Calculated from Loading In to Loading Out.</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5">
+            <p className="text-sm text-muted-foreground">Queue rule</p>
+            <p className="mt-1 text-lg font-bold">First 2 trucks only</p>
+            <p className="text-xs text-muted-foreground">Status controls are locked for lower queue positions.</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Tabs defaultValue="queue" className="space-y-5">
+        <TabsList className="grid w-full grid-cols-1 sm:w-[220px]">
+          <TabsTrigger value="queue"><Truck className="size-4" /> Truck Queue</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="queue" className="space-y-5">
+          {/* Gate sub-filters for truck queue */}
+          <div className="flex border-b border-border">
+            <button
+              onClick={() => setActiveGateTab('all')}
+              className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer ${
+                activeGateTab === 'all'
+                  ? 'border-primary text-foreground'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              All Trucks
+            </button>
+            {allGateNumbers.map((gateNum) => (
+              <button
+                key={gateNum}
+                onClick={() => setActiveGateTab(gateNum)}
+                className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer ${
+                  activeGateTab === gateNum
+                    ? 'border-primary text-foreground'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Gate {gateNum.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          {/* Action bar */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">{filteredTrucks.length} truck{filteredTrucks.length !== 1 ? 's' : ''}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.tsv,.txt,.xlsx,.xls,.xlsm,.xlsb"
+                className="hidden"
+                onChange={handleFileSelect}
+              />
               <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
                 <Upload className="mr-1.5 size-4" /> Import CSV / Excel
               </Button>
@@ -511,12 +625,29 @@ export default function TrucksPage() {
                 <Plus className="mr-1 size-4" /> Add Truck
               </Button>
             </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card className="overflow-hidden">
-          <CardContent className="p-0">
-            <Table>
+          </div>
+
+          {/* Truck Table */}
+          {filteredTrucks.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                <Truck className="mb-4 size-12 text-muted-foreground/30" />
+                <p className="text-lg font-medium">No trucks yet</p>
+                <p className="mt-1 text-sm text-muted-foreground">Add a truck manually or import from a CSV/Excel file.</p>
+                <div className="mt-5 flex flex-wrap justify-center gap-3">
+                  <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+                    <Upload className="mr-1.5 size-4" /> Import CSV / Excel
+                  </Button>
+                  <Button onClick={() => { resetTruckForm(); setShowAddTruck(true) }}>
+                    <Plus className="mr-1 size-4" /> Add Truck
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="overflow-hidden">
+              <CardContent className="overflow-x-auto p-0">
+                <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[60px]">Sr no</TableHead>
@@ -534,7 +665,9 @@ export default function TrucksPage() {
                 {filteredTrucks.map((truck, index) => {
                   // Sequential enable logic: each step requires the previous step to be checked
                   const canLoading = truck.is_waiting === true
-                  const canOut = truck.is_loading === true
+                  const queueRank = gateRanks.get(truck.id) ?? 999
+                  const canAdvanceByQueue = queueRank <= 1
+                  const canOut = truck.is_loading === true && canAdvanceByQueue
 
                   const getStatusColor = (status: string) => {
                     switch (status) {
@@ -562,6 +695,7 @@ export default function TrucksPage() {
                       </TableCell>
                       <TableCell>
                         <span className="font-mono font-medium">{truck.registration_number}</span>
+                        <span className="mt-1 block text-[11px] text-muted-foreground">Waiting {formatDurationFrom(truck.waiting_at)}</span>
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className={getStatusColor(statusLabel)}>
@@ -617,7 +751,8 @@ export default function TrucksPage() {
                       <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           checked={truck.is_loading ?? false}
-                          disabled={!canLoading}
+                          disabled={!canLoading || !canAdvanceByQueue}
+                          title={!canAdvanceByQueue ? 'Only first and second trucks in this gate queue can change status.' : undefined}
                           onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_loading', checked === true)}
                         />
                       </TableCell>
@@ -626,6 +761,7 @@ export default function TrucksPage() {
                         <Checkbox
                           checked={truck.is_out ?? false}
                           disabled={!canOut}
+                          title={!canAdvanceByQueue ? 'Only first and second trucks in this gate queue can change status.' : undefined}
                           onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_out', checked === true)}
                         />
                       </TableCell>
@@ -651,10 +787,12 @@ export default function TrucksPage() {
                   )
                 })}
               </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
 
       {/* ── ADD TRUCK MODAL ─────────────────────────────────────────────────── */}
       <Modal

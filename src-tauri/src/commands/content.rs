@@ -31,7 +31,7 @@ pub async fn get_content_items(pool: State<'_, DbPool>) -> Result<Vec<ContentIte
         let conn = pool.get().map_err(|e| e.to_string())?;
         let mut stmt = conn
             .prepare(
-                "SELECT id, name, content_type, file_path, url, duration_secs, tags, created_at
+                "SELECT id, name, content_type, file_path, url, duration_secs, tags, metadata_json, created_at
                  FROM content_items ORDER BY created_at DESC",
             )
             .map_err(|e| e.to_string())?;
@@ -44,7 +44,11 @@ pub async fn get_content_items(pool: State<'_, DbPool>) -> Result<Vec<ContentIte
                 let tags_str: String = row.get(6).unwrap_or_else(|_| "[]".to_string());
                 let tags: Vec<String> = serde_json::from_str(&tags_str).unwrap_or_default();
 
-                let created_at_str: String = row.get(7)?;
+                let metadata_str: String = row.get(7).unwrap_or_else(|_| "{}".to_string());
+                let metadata_json: serde_json::Value = serde_json::from_str(&metadata_str)
+                    .unwrap_or_else(|_| serde_json::json!({}));
+
+                let created_at_str: String = row.get(8)?;
                 let created_at = chrono::DateTime::parse_from_rfc3339(&created_at_str)
                     .map(|dt| dt.with_timezone(&chrono::Utc))
                     .unwrap_or_else(|_| chrono::Utc::now());
@@ -57,6 +61,7 @@ pub async fn get_content_items(pool: State<'_, DbPool>) -> Result<Vec<ContentIte
                     url: row.get(4)?,
                     duration_secs: row.get::<_, i32>(5)? as u32,
                     tags,
+                    metadata_json,
                     created_at,
                 })
             })
@@ -81,6 +86,7 @@ pub async fn add_content_item(
     url: Option<String>,
     duration_secs: u32,
     tags: Vec<String>,
+    metadata_json: Option<serde_json::Value>,
     pool: State<'_, DbPool>,
 ) -> Result<ContentItem, String> {
     let id = uuid::Uuid::new_v4().to_string();
@@ -91,6 +97,8 @@ pub async fn add_content_item(
 
     let duration = duration_secs as i32;
     let tags_str = serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string());
+    let metadata = metadata_json.unwrap_or_else(|| serde_json::json!({}));
+    let metadata_str = serde_json::to_string(&metadata).unwrap_or_else(|_| "{}".to_string());
 
     let id_clone = id.clone();
     let name_clone = name.clone();
@@ -101,8 +109,8 @@ pub async fn add_content_item(
     tokio::task::spawn_blocking(move || {
         let conn = pool.get().map_err(|e| e.to_string())?;
         conn.execute(
-            "INSERT INTO content_items (id, name, content_type, file_path, url, duration_secs, tags, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO content_items (id, name, content_type, file_path, url, duration_secs, tags, metadata_json, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 id_clone,
                 name_clone,
@@ -111,6 +119,7 @@ pub async fn add_content_item(
                 url_clone,
                 duration,
                 tags_str,
+                metadata_str,
                 now.to_rfc3339(),
             ],
         )
@@ -128,6 +137,7 @@ pub async fn add_content_item(
         url,
         duration_secs,
         tags,
+        metadata_json: metadata,
         created_at: now,
     })
 }

@@ -2,13 +2,14 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { screensApi, playlistsApi, contentApi, analyticsApi, localNetworkApi, customConfirm, getBrowserControllerOrigin } from '../../lib/tauri';
-import type { Screen, Playlist, ContentItem, PlaylistItem, TruckScreenAlert } from '../../lib/types';
+import { screensApi, playlistsApi, contentApi, analyticsApi, localNetworkApi, customConfirm, getBrowserControllerOrigin, appConfigApi } from '../../lib/tauri';
+import type { Screen, Playlist, ContentItem, PlaylistItem, TruckScreenAlert, MarqueeSettings, ScreenPurpose } from '../../lib/types';
 import { isPlaylistItemScheduleActive, isScreenWithinOperatingHours } from '../../lib/signage-schedule';
 import { showToast } from '../../components/Toast';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { useBrandingStore } from '../../store/ui';
 import { Maximize, Minimize, RefreshCw, LogOut, XCircle } from 'lucide-react';
+import { useGateStore } from '@/store/gateStore';
 
 function playlistPlaybackSignature(playlist: Playlist): string {
   return JSON.stringify({
@@ -112,6 +113,7 @@ export default function PlayerPage() {
   const [isViewportLandscape, setIsViewportLandscape] = useState<boolean>(true);
   const [isScreenBlanked, setIsScreenBlanked] = useState<boolean>(false);
   const [truckAlert, setTruckAlert] = useState<TruckScreenAlert | null>(null);
+  const [marquee, setMarquee] = useState<MarqueeSettings | null>(null);
 
   // Time tracker for schedules
   const [currentTimeStr, setCurrentTimeStr] = useState<string>('');
@@ -273,12 +275,80 @@ export default function PlayerPage() {
 
       const playlists = await playlistsApi.getAll();
       const items = await contentApi.getAll();
-      setContentItems(items);
+      const resolvedItems = [...items];
+
+      let activePurpose: ScreenPurpose = 'playlist'
+      let activeGateNumber: string | null = null
+      let activeProductionDashboardId: string | null = null
+      let activePlaylistId: string | null = null
+
+      const gateStore = useGateStore.getState()
+      const assignedGateNumber = gateStore.getAssignedGateForScreen(screenId)
+      const assignedGate = assignedGateNumber ? gateStore.gates.find((g) => g.number === assignedGateNumber) : null
+
+      if (assignedGate) {
+        activePurpose = assignedGate.purpose
+        activeGateNumber = assignedGate.number
+        activeProductionDashboardId = assignedGate.productionDashboardId
+        activePlaylistId = assignedGate.playlistId
+      } else if (currentScreen) {
+        activePurpose = currentScreen.purpose
+        activeGateNumber = currentScreen.gate
+        activeProductionDashboardId = currentScreen.production_dashboard_id
+        activePlaylistId = currentScreen.playlist_id
+      }
 
       let playlistToPlay: Playlist | null = null;
-      if (currentScreen && currentScreen.playlist_id) {
-        playlistToPlay = playlists.find((p) => p.id === currentScreen.playlist_id) || null;
+      if (activePlaylistId) {
+        playlistToPlay = playlists.find((p) => p.id === activePlaylistId) || null;
       }
+
+      if (activePurpose === 'truck_gate' && activeGateNumber) {
+        const url = `/trucks/display?gate=${activeGateNumber}`;
+        const item = resolvedItems.find((content) => content.url === url) ?? {
+          id: `virtual-truck-${activeGateNumber}`,
+          name: `${activeGateNumber.toUpperCase()} Truck Display`,
+          content_type: 'WebApp' as const,
+          file_path: null,
+          url,
+          duration_secs: 30,
+          tags: ['truck', activeGateNumber],
+          metadata_json: { kind: 'truck_gate', gate: activeGateNumber },
+          created_at: new Date().toISOString(),
+        };
+        if (!resolvedItems.some((content) => content.id === item.id)) resolvedItems.push(item);
+        playlistToPlay = {
+          id: `virtual-truck-playlist-${activeGateNumber}`,
+          name: `${activeGateNumber.toUpperCase()} Truck Display`,
+          items: [{ content_id: item.id, order: 0, override_duration: null, display_schedule: null }],
+          loop_enabled: true,
+          transition: 'None',
+          created_at: new Date().toISOString(),
+        };
+      } else if (activePurpose === 'production_dashboard' && activeProductionDashboardId) {
+        const url = `/production-data/view?id=${activeProductionDashboardId}`;
+        const item = resolvedItems.find((content) => content.url === url) ?? {
+          id: `virtual-production-${activeProductionDashboardId}`,
+          name: 'Production Dashboard',
+          content_type: 'WebApp' as const,
+          file_path: null,
+          url,
+          duration_secs: 300,
+          tags: ['production-data', 'dashboard'],
+          metadata_json: { kind: 'production_dashboard', dashboard_id: activeProductionDashboardId },
+          created_at: new Date().toISOString(),
+        };
+        if (!resolvedItems.some((content) => content.id === item.id)) resolvedItems.push(item);
+        playlistToPlay = {
+          id: `virtual-production-playlist-${activeProductionDashboardId}`,
+          name: 'Production Dashboard',
+          items: [{ content_id: item.id, order: 0, override_duration: null, display_schedule: null }],
+          loop_enabled: true,
+          transition: 'None',
+          created_at: new Date().toISOString(),
+        };
+      }
+      setContentItems(resolvedItems);
 
       if (playlistToPlay && playlistToPlay.items.length > 0) {
         const sortedPlaylist: Playlist = {
@@ -311,6 +381,18 @@ export default function PlayerPage() {
       console.error('Error resolving signage slots:', err);
     }
   }, [screenId, activePlaylist, isPlaying]);
+
+  useEffect(() => {
+    appConfigApi.getMarquee()
+      .then(setMarquee)
+      .catch((error) => console.warn('Failed to load marquee settings:', error));
+    const interval = setInterval(() => {
+      appConfigApi.getMarquee()
+        .then(setMarquee)
+        .catch(() => undefined);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleManualSync = useCallback(async () => {
     showToast('Syncing signage content...', 'info');
@@ -380,12 +462,19 @@ export default function PlayerPage() {
     };
   }, []);
 
+  const activeScreenDefaultContentId = activeScreen?.default_content_id ?? null;
+
   // Derived helper for active items matching schedule
   const getPlayableItems = useCallback((): PlaylistItem[] => {
     if (!activePlaylist) return [];
 
-    return activePlaylist.items.filter((item) => isPlaylistItemScheduleActive(item.display_schedule));
-  }, [activePlaylist]);
+    const scheduled = activePlaylist.items.filter((item) => isPlaylistItemScheduleActive(item.display_schedule));
+    if (scheduled.length > 0) return scheduled;
+    if (activeScreenDefaultContentId) {
+      return [{ content_id: activeScreenDefaultContentId, order: 0, override_duration: null, display_schedule: null }];
+    }
+    return [];
+  }, [activePlaylist, activeScreenDefaultContentId]);
 
   // Handle slide duration and transition loop
   useEffect(() => {
@@ -409,8 +498,8 @@ export default function PlayerPage() {
       return;
     }
 
-    // Determine slide duration
-    const duration = playlistItem.override_duration ?? contentItem.duration_secs ?? 10;
+    // Playlist rows no longer expose duration overrides; content owns its playback time.
+    const duration = contentItem.duration_secs ?? 10;
 
     // Record Analytics PLAY Event
     if (screenId) {
@@ -665,6 +754,24 @@ export default function PlayerPage() {
     );
   };
 
+  const renderMarquee = () => {
+    if (!marquee?.enabled || !marquee.text.trim()) return null;
+    return (
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-90 overflow-hidden border-t border-white/10 bg-black/85 py-3 text-white shadow-2xl backdrop-blur">
+        <div
+          className="whitespace-nowrap text-2xl font-bold tracking-wide"
+          style={{
+            animation: `mg-marquee ${Math.max(marquee.speed, 15)}s linear infinite`,
+          }}
+        >
+          <span className="inline-block px-12">{marquee.text}</span>
+          <span className="inline-block px-12">{marquee.text}</span>
+        </div>
+        <style>{`@keyframes mg-marquee { from { transform: translateX(100%); } to { transform: translateX(-100%); } }`}</style>
+      </div>
+    );
+  };
+
   // ── RENDER BLANK STANDBY SCREEN ───────────────────────────────────────────
   if (screenId && isScreenBlanked) {
     return (
@@ -760,6 +867,7 @@ export default function PlayerPage() {
     return (
       <div className="w-screen h-screen bg-black flex flex-col items-center justify-center p-8 select-none font-sans relative overflow-hidden">
         {renderTruckAlertOverlay()}
+        {renderMarquee()}
         {/* Modern glowing background lines */}
         <div className="pointer-events-none absolute left-1/4 top-1/4 h-[500px] w-[500px] rounded-full bg-primary/10 blur-[120px]" />
         <div className="pointer-events-none absolute bottom-1/4 right-1/4 h-[500px] w-[500px] rounded-full bg-secondary/10 blur-[120px]" />
@@ -873,6 +981,7 @@ export default function PlayerPage() {
         {renderContentItem()}
       </div>
       {renderTruckAlertOverlay()}
+      {renderMarquee()}
     </div>
   );
 }

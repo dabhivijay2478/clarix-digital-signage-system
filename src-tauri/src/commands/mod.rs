@@ -1,4 +1,6 @@
 pub mod analytics;
+pub mod app_config;
+pub mod auth;
 pub mod content;
 pub mod database;
 pub mod lan;

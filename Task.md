@@ -1,0 +1,14 @@
+- add login for add screens system and Invite Team Member
+- lock settings and acess only devs
+- default content button 
+- time not overlap
+- add screens in Production Data and live data reflect
+- live data Production 
+- custom add and store Content data
+- tp link offline router 
+- state card add in display truck alert
+- add dispatch and dispatch of month ( reset on 24 hours from dispatch and for dispatch of month reset on last date of month) 
+- cal duration of between loading in and loading out
+- disable of status change of truck if they are not on first and second
+- showing time duration of how many time they are wait 
+- Marquee in bottom with custom

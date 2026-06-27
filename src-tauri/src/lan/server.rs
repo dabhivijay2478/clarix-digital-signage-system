@@ -22,6 +22,7 @@ use crate::{
         AppWeekday, ContentItem, ContentType, DeviceIdentity, DeviceRole, Orientation, PairingRequest,
         Playlist, PlaylistItem, Screen, ScreenResolution, SyncAck, SyncAsset, SyncManifest,
         TransitionEffect, TruckScreenAlert,
+        MarqueeSettings,
     },
 };
 
@@ -31,6 +32,7 @@ pub struct SyncPayload {
     pub content_items: Vec<ContentItem>,
     pub playlists: Vec<Playlist>,
     pub schedule_slots: Vec<crate::models::ScheduleSlot>,
+    pub marquee: MarqueeSettings,
 }
 
 #[derive(Clone)]
@@ -106,6 +108,7 @@ pub async fn start_controller_server(
         .route("/api/playlists", get(read_playlists))
         .route("/api/content", get(read_content))
         .route("/api/schedule", get(read_schedule))
+        .route("/api/marquee", get(read_marquee))
         .route("/api/production/dashboards", get(read_production_dashboards))
         .route("/api/production/dashboards/{id}", get(read_production_dashboard))
         .route("/api/production/datasets/{id}", get(read_production_dataset))
@@ -133,7 +136,7 @@ pub async fn start_controller_server(
         .fallback_service(ServeDir::new(browser_assets_dir))
         .with_state(state);
 
-    tracing::info!("Clarix controller listening on fixed port {port}");
+    tracing::info!("MG Enterprise controller listening on fixed port {port}");
     tokio::spawn(async move {
         if let Err(error) = axum::serve(listener, router).await {
             tracing::error!("Controller server stopped: {error}");
@@ -366,6 +369,10 @@ async fn read_schedule(State(state): State<AppState>) -> Result<Json<Vec<crate::
     build_sync_payload(&state.pool, None).map(|payload| Json(payload.schedule_slots)).map_err(internal_error)
 }
 
+async fn read_marquee(State(state): State<AppState>) -> Result<Json<MarqueeSettings>, (StatusCode, String)> {
+    query_marquee(&state.pool).map(Json).map_err(internal_error)
+}
+
 async fn read_production_dashboards(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<crate::models::ProductionDashboard>>, (StatusCode, String)> {
@@ -530,7 +537,7 @@ pub fn build_sync_payload(pool: &DbPool, screen_id: Option<&str>) -> anyhow::Res
     let conn = pool.get()?;
     let screen = screen_id.and_then(|id| query_screen(&conn, id).ok().flatten());
     let mut content_stmt = conn.prepare(
-        "SELECT id, name, content_type, file_path, url, duration_secs, tags, created_at FROM content_items"
+        "SELECT id, name, content_type, file_path, url, duration_secs, tags, metadata_json, created_at FROM content_items"
     )?;
     let content_items = content_stmt.query_map([], |row| {
         let content_type = match row.get::<_, String>(2)?.as_str() {
@@ -548,7 +555,8 @@ pub fn build_sync_payload(pool: &DbPool, screen_id: Option<&str>) -> anyhow::Res
             id: row.get(0)?, name: row.get(1)?, content_type, file_path: row.get(3)?, url: row.get(4)?,
             duration_secs: row.get::<_, i64>(5)? as u32,
             tags: serde_json::from_str(&row.get::<_, String>(6)?).unwrap_or_default(),
-            created_at: parse_date(row.get(7)?),
+            metadata_json: serde_json::from_str(&row.get::<_, String>(7)?).unwrap_or_else(|_| serde_json::json!({})),
+            created_at: parse_date(row.get(8)?),
         })
     })?.collect::<Result<Vec<_>, _>>()?;
 
@@ -594,7 +602,8 @@ pub fn build_sync_payload(pool: &DbPool, screen_id: Option<&str>) -> anyhow::Res
             created_at: parse_date(row.get(9)?),
         })
     })?.collect::<Result<Vec<_>, _>>()?;
-    Ok(SyncPayload { screen, content_items, playlists, schedule_slots })
+    let marquee = query_marquee(pool)?;
+    Ok(SyncPayload { screen, content_items, playlists, schedule_slots, marquee })
 }
 
 pub async fn run_player_sync_loop(pool: DbPool, app_data_dir: String) {
@@ -725,22 +734,27 @@ pub fn apply_sync_payload(pool: &DbPool, payload: SyncPayload) -> anyhow::Result
     if let Some(screen) = payload.screen {
         tx.execute(
             "INSERT INTO screens (id, name, location, resolution_w, resolution_h, brightness, power_on, orientation,
-             group_id, operating_hours, playlist_id, device_id, pairing_status, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'paired', ?13)
+             group_id, operating_hours, playlist_id, device_id, pairing_status, purpose, gate, production_dashboard_id, default_content_id, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'paired', ?13, ?14, ?15, ?16, ?17)
              ON CONFLICT(id) DO UPDATE SET name=excluded.name, location=excluded.location, resolution_w=excluded.resolution_w,
              resolution_h=excluded.resolution_h, brightness=excluded.brightness, power_on=excluded.power_on,
-             orientation=excluded.orientation, operating_hours=excluded.operating_hours, playlist_id=excluded.playlist_id",
+             orientation=excluded.orientation, operating_hours=excluded.operating_hours, playlist_id=excluded.playlist_id,
+             purpose=excluded.purpose, gate=excluded.gate, production_dashboard_id=excluded.production_dashboard_id,
+             default_content_id=excluded.default_content_id",
             params![screen.id, screen.name, screen.location, screen.resolution.width, screen.resolution.height,
                     screen.brightness, screen.power_on, format!("{:?}", screen.orientation), screen.group_id,
-                    serde_json::to_string(&screen.operating_hours)?, screen.playlist_id, screen.device_id, screen.created_at.to_rfc3339()],
+                    serde_json::to_string(&screen.operating_hours)?, screen.playlist_id, screen.device_id,
+                    screen.purpose, screen.gate, screen.production_dashboard_id, screen.default_content_id,
+                    screen.created_at.to_rfc3339()],
         )?;
     }
     for item in payload.content_items {
         tx.execute(
-            "INSERT INTO content_items (id, name, content_type, file_path, url, duration_secs, tags, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO content_items (id, name, content_type, file_path, url, duration_secs, tags, metadata_json, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![item.id, item.name, format!("{:?}", item.content_type), item.file_path, item.url,
-                    item.duration_secs, serde_json::to_string(&item.tags)?, item.created_at.to_rfc3339()],
+                    item.duration_secs, serde_json::to_string(&item.tags)?,
+                    serde_json::to_string(&item.metadata_json)?, item.created_at.to_rfc3339()],
         )?;
     }
     for playlist in payload.playlists {
@@ -765,6 +779,17 @@ pub fn apply_sync_payload(pool: &DbPool, payload: SyncPayload) -> anyhow::Result
                     slot.duration_mins, serde_json::to_string(&slot.days_of_week)?, slot.priority, slot.is_active, slot.created_at.to_rfc3339()],
         )?;
     }
+    tx.execute(
+        "INSERT INTO marquee_settings (singleton, enabled, text, speed, updated_at)
+         VALUES (1, ?1, ?2, ?3, ?4)
+         ON CONFLICT(singleton) DO UPDATE SET enabled=excluded.enabled, text=excluded.text, speed=excluded.speed, updated_at=excluded.updated_at",
+        params![
+            payload.marquee.enabled,
+            payload.marquee.text,
+            payload.marquee.speed,
+            payload.marquee.updated_at.to_rfc3339(),
+        ],
+    )?;
     tx.commit()?;
     Ok(())
 }
@@ -834,7 +859,7 @@ fn query_screen(conn: &rusqlite::Connection, id: &str) -> anyhow::Result<Option<
     let mut stmt = conn.prepare(
         "SELECT id, name, location, ip_address, mac_address, resolution_w, resolution_h, brightness, power_on,
          orientation, group_id, created_at, operating_hours, playlist_id, device_id, endpoint, pairing_status,
-         last_seen, last_sync_revision, force_sync, is_fullscreen FROM screens WHERE id = ?1"
+             last_seen, last_sync_revision, force_sync, is_fullscreen, purpose, gate, production_dashboard_id, default_content_id FROM screens WHERE id = ?1"
     )?;
     let mut rows = stmt.query(params![id])?;
     let Some(row) = rows.next()? else { return Ok(None) };
@@ -853,7 +878,25 @@ fn query_screen(conn: &rusqlite::Connection, id: &str) -> anyhow::Result<Option<
         operating_hours: serde_json::from_str(&row.get::<_, String>(12)?).ok(), playlist_id: row.get(13)?,
         device_id: row.get(14)?, endpoint: row.get(15)?, pairing_status: row.get(16)?,
         last_seen, last_sync_revision: row.get(18)?, force_sync: row.get(19)?, is_fullscreen: row.get(20)?,
+        purpose: row.get(21)?, gate: row.get(22)?, production_dashboard_id: row.get(23)?, default_content_id: row.get(24)?,
     }))
+}
+
+fn query_marquee(pool: &DbPool) -> anyhow::Result<MarqueeSettings> {
+    let conn = pool.get()?;
+    conn.query_row(
+        "SELECT enabled, text, speed, updated_at FROM marquee_settings WHERE singleton = 1",
+        [],
+        |row| {
+            Ok(MarqueeSettings {
+                enabled: row.get(0)?,
+                text: row.get(1)?,
+                speed: row.get::<_, i64>(2)? as u32,
+                updated_at: parse_date(row.get(3)?),
+            })
+        },
+    )
+    .map_err(Into::into)
 }
 
 fn parse_date(value: String) -> DateTime<Utc> {
@@ -895,8 +938,8 @@ mod tests {
     #[test]
     fn produces_stable_sha256_asset_ids() {
         assert_eq!(
-            sha256_bytes(b"Clarix"),
-            "67edb3256a391b87d36dc613f3e0b7871d0bc0e60e1328305820735acf46e36b"
+            sha256_bytes(b"MG Enterprise"),
+            "1228a4735276007e6c551888f07cb98135c7cb72fb52cfcefc88febc19b2c87c"
         );
     }
 

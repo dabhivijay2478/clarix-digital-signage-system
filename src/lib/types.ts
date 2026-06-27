@@ -21,8 +21,14 @@ export interface Screen {
   last_sync_revision: number;
   force_sync?: boolean;
   is_fullscreen: boolean;
+  purpose: ScreenPurpose;
+  gate: string | null;
+  production_dashboard_id: string | null;
+  default_content_id: string | null;
   created_at: string;
 }
+
+export type ScreenPurpose = "playlist" | "truck_gate" | "production_dashboard";
 
 export interface ScreenResolution {
   width: number;
@@ -57,6 +63,7 @@ export interface ContentItem {
   url: string | null;
   duration_secs: number;
   tags: string[];
+  metadata_json: Record<string, unknown>;
   created_at: string;
 }
 
@@ -340,4 +347,47 @@ export interface TruckScreenAlert {
   active_truck_status?: string | null;
   next_truck_number?: string | null;
   next_truck_status?: string | null;
+}
+
+// ── Local Admin Auth ───────────────────────────────────────────────────────
+
+export type AdminRole = "SuperAdmin" | "SiteSuperAdmin" | "Manager" | "User";
+
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  role: AdminRole;
+  is_developer: boolean;
+  created_at: string;
+}
+
+export interface AuthSession {
+  token: string;
+  expires_at: string;
+  user: AuthUser;
+}
+
+export interface TeamInvite {
+  id: string;
+  email: string;
+  role: AdminRole;
+  is_developer: boolean;
+  code: string;
+  status: string;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface MarqueeSettings {
+  enabled: boolean;
+  text: string;
+  speed: number;
+  updated_at: string;
+}
+
+export interface TruckDispatchSummary {
+  last_24h: number;
+  this_month: number;
+  avg_loading_secs: number | null;
 }

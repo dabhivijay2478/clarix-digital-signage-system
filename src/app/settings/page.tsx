@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { MonitorPlay, Radio, RefreshCw, Server, Settings2, ShieldCheck, Wifi } from 'lucide-react'
+import { Megaphone, MonitorPlay, Radio, RefreshCw, Router, Server, Settings2, ShieldCheck, Wifi } from 'lucide-react'
 import { SettingsRow, SettingsSection } from '@/components/SettingsSection'
 import { showToast } from '@/components/Toast'
 import { Badge } from '@/components/ui/badge'
@@ -11,8 +11,8 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { APP_VERSION } from '@/lib/constants'
-import { localNetworkApi, networkApi, screensApi } from '@/lib/tauri'
-import type { ConnectionDiagnostic, DeviceIdentity, PairingRequest, PeerScreen, Screen } from '@/lib/types'
+import { appConfigApi, localNetworkApi, networkApi, screensApi } from '@/lib/tauri'
+import type { ConnectionDiagnostic, DeviceIdentity, MarqueeSettings, PairingRequest, PeerScreen, Screen } from '@/lib/types'
 import { useBrandingStore, useSidebarStore } from '@/store/ui'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
@@ -32,6 +32,7 @@ export default function SettingsPage() {
   const [activePairing, setActivePairing] = useState<PairingRequest | null>(null)
   const [pairingSelections, setPairingSelections] = useState<Record<string, string>>({})
   const [discoveredControllers, setDiscoveredControllers] = useState<PeerScreen[]>([])
+  const [marquee, setMarquee] = useState<MarqueeSettings | null>(null)
 
   const loadNetworkState = useCallback(async () => {
     try {
@@ -50,6 +51,7 @@ export default function SettingsPage() {
       if (nextIdentity.role === 'Controller') {
         setPairingRequests(await networkApi.getPairingRequests())
       }
+      setMarquee(await appConfigApi.getMarquee())
     } catch (error) {
       console.error('Failed to load network state:', error)
     }
@@ -69,6 +71,17 @@ export default function SettingsPage() {
       await loadNetworkState()
     } catch (error) {
       showToast(`Could not change mode: ${error}`, 'error')
+    }
+  }
+
+  const handleSaveMarquee = async () => {
+    if (!marquee) return
+    try {
+      const updated = await appConfigApi.updateMarquee(marquee.enabled, marquee.text, marquee.speed)
+      setMarquee(updated)
+      showToast('Marquee updated and synced to players', 'success')
+    } catch (error) {
+      showToast(`Failed to save marquee: ${error}`, 'error')
     }
   }
 
@@ -148,6 +161,34 @@ export default function SettingsPage() {
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2">{diagnostics?.checks.map((check) => <Card key={check.name} className="flex items-start gap-3 p-4"><span className={`mt-1 size-2 shrink-0 rounded-full ${check.status === 'pass' ? 'bg-green-500' : check.status === 'fail' ? 'bg-red-500' : 'bg-amber-500'}`} /><div><p className="font-medium">{check.name}</p><p className="mt-1 text-sm text-muted-foreground">{check.detail}</p></div></Card>)}</div>
         <div className="mt-4 space-y-2">{diagnostics?.hints.map((hint) => <div key={hint} className="rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">{hint}</div>)}</div>
+      </SettingsSection>
+
+      <SettingsSection title="TP-Link Offline Router Guide" description="Use a router with no internet as a private Wi-Fi network for the controller and players.">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Card className="p-4"><Router className="mb-3 size-5 text-primary" /><p className="font-medium">Router setup</p><p className="mt-1 text-sm text-muted-foreground">Create one SSID, connect the controller and all player PCs to it, and keep client isolation/AP isolation disabled.</p></Card>
+          <Card className="p-4"><Wifi className="mb-3 size-5 text-primary" /><p className="font-medium">Player URL</p><p className="mt-1 font-mono text-sm">{diagnostics?.local_ip ? `http://${diagnostics.local_ip}:${port || 7420}/player` : 'Open /player from the controller IP'}</p></Card>
+          <Card className="p-4"><ShieldCheck className="mb-3 size-5 text-primary" /><p className="font-medium">Firewall</p><p className="mt-1 text-sm text-muted-foreground">Only the controller needs inbound TCP on port {port || 7420}. Players use outbound sync and browser playback.</p></Card>
+          <Card className="p-4"><Radio className="mb-3 size-5 text-primary" /><p className="font-medium">No internet needed</p><p className="mt-1 text-sm text-muted-foreground">mDNS and player sync stay inside the same Wi-Fi router. If discovery fails, enter the controller URL manually.</p></Card>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection title="Player Bottom Marquee" description="Show a custom ticker message at the bottom of all player screens.">
+        <div className="grid gap-4 lg:grid-cols-[auto_1fr_160px_auto] lg:items-end">
+          <div className="flex items-center gap-3 rounded-xl border border-border px-3 py-2.5">
+            <Megaphone className="size-4 text-primary" />
+            <span className="text-sm font-medium">Enabled</span>
+            <Switch checked={marquee?.enabled ?? false} onCheckedChange={(enabled) => setMarquee((current) => current ? { ...current, enabled } : current)} />
+          </div>
+          <div className="space-y-2">
+            <span className="text-sm font-medium">Text</span>
+            <Input value={marquee?.text ?? ''} onChange={(event) => setMarquee((current) => current ? { ...current, text: event.target.value } : current)} placeholder="Enter bottom ticker message..." />
+          </div>
+          <div className="space-y-2">
+            <span className="text-sm font-medium">Speed</span>
+            <Input type="number" min={15} max={120} value={marquee?.speed ?? 45} onChange={(event) => setMarquee((current) => current ? { ...current, speed: Number(event.target.value) || 45 } : current)} />
+          </div>
+          <Button onClick={handleSaveMarquee}>Save Marquee</Button>
+        </div>
       </SettingsSection>
 
       <div className="grid gap-6 xl:grid-cols-2">

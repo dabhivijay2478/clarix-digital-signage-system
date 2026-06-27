@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { screensApi, onScheduleChange } from '../lib/tauri';
-import type { Screen } from '../lib/types';
+import type { Screen, ScreenPurpose } from '../lib/types';
 
 export function useScreens() {
   const [screens, setScreens] = useState<Screen[]>([]);
@@ -42,7 +42,11 @@ export function useScreens() {
       orientation?: string,
       resolutionW?: number,
       resolutionH?: number,
-      playlistId?: string
+      playlistId?: string,
+      purpose?: ScreenPurpose,
+      gate?: string | null,
+      productionDashboardId?: string | null,
+      defaultContentId?: string | null
     ) => {
       try {
         const screen = await screensApi.add(
@@ -52,7 +56,11 @@ export function useScreens() {
           orientation,
           resolutionW,
           resolutionH,
-          playlistId
+          playlistId,
+          purpose,
+          gate,
+          productionDashboardId,
+          defaultContentId
         );
         setScreens((prev) => [...prev, screen]);
         return screen;
@@ -104,7 +112,11 @@ export function useScreens() {
       orientation?: string,
       resolutionW?: number,
       resolutionH?: number,
-      playlistId?: string
+      playlistId?: string,
+      purpose?: ScreenPurpose,
+      gate?: string | null,
+      productionDashboardId?: string | null,
+      defaultContentId?: string | null
     ) => {
       try {
         await screensApi.edit(
@@ -115,7 +127,11 @@ export function useScreens() {
           orientation,
           resolutionW,
           resolutionH,
-          playlistId
+          playlistId,
+          purpose,
+          gate,
+          productionDashboardId,
+          defaultContentId
         );
         setScreens((prev) =>
           prev.map((s) =>
@@ -131,6 +147,10 @@ export function useScreens() {
                     height: resolutionH ?? s.resolution.height,
                   },
                   playlist_id: playlistId ?? s.playlist_id,
+                  purpose: purpose ?? s.purpose,
+                  gate: gate ?? s.gate,
+                  production_dashboard_id: productionDashboardId ?? s.production_dashboard_id,
+                  default_content_id: defaultContentId ?? s.default_content_id,
                 }
               : s
           )

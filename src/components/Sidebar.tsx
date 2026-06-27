@@ -13,11 +13,14 @@ import {
   Server,
   Settings,
   Truck,
+  Users,
+  LogOut,
 } from 'lucide-react'
 import { usePeers } from '@/hooks/usePeers'
 import { APP_VERSION } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import { useBrandingStore } from '@/store/ui'
+import { useAuthStore } from '@/store/authStore'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -31,7 +34,8 @@ const navItems = [
   { href: '/content', label: 'Content', icon: PlaySquare },
   { href: '/production-data', label: 'Production Data', icon: FileSpreadsheet },
   { href: '/trucks', label: 'Truck Token', icon: Truck },
-  { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/team', label: 'Team', icon: Users },
+  { href: '/settings', label: 'Settings', icon: Settings, developerOnly: true },
 ]
 
 interface SidebarProps {
@@ -61,9 +65,11 @@ function Brand({ compact = false }: { compact?: boolean }) {
 
 function NavLinks({ compact = false, mobile = false }: { compact?: boolean; mobile?: boolean }) {
   const pathname = usePathname()
+  const user = useAuthStore((state) => state.user)
   return (
     <nav className="flex flex-1 flex-col gap-1.5 overflow-y-auto p-3 scrollbar-none">
       {navItems.map((item) => {
+        if (item.developerOnly && !user?.is_developer) return null
         const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
         const link = (
           <Button
@@ -134,6 +140,7 @@ export function MobileSidebar() {
 }
 
 export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
+  const { user, logout } = useAuthStore()
   return (
     <aside
       className="fixed inset-y-0 left-0 z-50 hidden flex-col border-r border-border/60 bg-card/75 shadow-2xl shadow-black/10 backdrop-blur-xl transition-[width] duration-300 lg:flex"
@@ -145,6 +152,15 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       <Separator />
       <div className="space-y-3 p-3">
         <PeerStatus compact={isCollapsed} />
+        {user && (
+          <div className={cn('rounded-xl border border-border bg-background/40 p-2 text-xs', isCollapsed && 'hidden')}>
+            <p className="truncate font-medium">{user.name}</p>
+            <p className="truncate text-muted-foreground">{user.role}</p>
+            <Button variant="ghost" size="sm" className="mt-2 h-8 w-full justify-start px-2 text-muted-foreground" onClick={() => void logout()}>
+              <LogOut className="mr-1.5 size-3.5" /> Logout
+            </Button>
+          </div>
+        )}
         <Button variant="ghost" className={cn('h-10 w-full justify-start rounded-xl', isCollapsed && 'justify-center px-0')} onClick={onToggle}>
           {isCollapsed ? <ChevronRight /> : <ChevronLeft />}
           {!isCollapsed && <span>Collapse menu</span>}

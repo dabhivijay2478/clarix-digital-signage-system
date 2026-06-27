@@ -7,8 +7,8 @@ import { useContent } from '../../hooks/useContent';
 import ScreenCard from '../../components/ScreenCard';
 import Modal from '../../components/Modal';
 import { showToast } from '../../components/Toast';
-import type { AppWeekday, ContentItem, PlaylistItem, PlaylistItemDaySchedule, PlaylistItemSchedule, Screen, TransitionEffect } from '../../lib/types';
-import { customConfirm, getBrowserControllerOrigin } from '../../lib/tauri';
+import type { AppWeekday, ContentItem, PlaylistItem, PlaylistItemDaySchedule, PlaylistItemSchedule, ProductionDashboard, Screen, ScreenPurpose, TransitionEffect } from '../../lib/types';
+import { customConfirm, getBrowserControllerOrigin, productionApi } from '../../lib/tauri';
 import {
   APP_WEEKDAYS,
   defaultPlaylistItemDayTimes,
@@ -17,13 +17,17 @@ import {
   normalizePlaylistItemSchedule,
   validatePlaylistItemSchedule,
 } from '../../lib/signage-schedule';
-import { Monitor, Plus, Loader2 } from 'lucide-react';
+import { Monitor, Plus, Loader2, Trash2, FileSpreadsheet } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useAuthStore } from '@/store/authStore';
+import { useGateStore, isValidGateNumber } from '@/store/gateStore';
+import { assignScreenToGate, unassignScreenFromGate } from '@/lib/gate-binding';
 
 const ITEM_SCHEDULE_DAY_LABELS: Record<AppWeekday, string> = {
   Mon: 'Monday',
@@ -35,6 +39,53 @@ const ITEM_SCHEDULE_DAY_LABELS: Record<AppWeekday, string> = {
   Sun: 'Sunday',
 };
 
+function minutesFromTime(value: string): number {
+  const [hours, minutes] = value.split(':').map((part) => Number.parseInt(part, 10));
+  return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
+}
+
+function expandDayWindow(start: string, end: string): Array<[number, number]> {
+  const startMinutes = minutesFromTime(start);
+  const endMinutes = minutesFromTime(end);
+  if (startMinutes === endMinutes) return [[0, 1440]];
+  if (endMinutes > startMinutes) return [[startMinutes, endMinutes]];
+  return [[startMinutes, 1440], [0, endMinutes]];
+}
+
+function validatePlaylistOverlaps(items: PlaylistItem[]): string | null {
+  const windowsByDay = new Map<AppWeekday, Array<{ index: number; range: [number, number] }>>();
+  items.forEach((item, index) => {
+    const schedule = normalizePlaylistItemSchedule(item.display_schedule);
+    if (!schedule.time_restricted) return;
+    APP_WEEKDAYS.forEach((day) => {
+      const daySchedule = schedule.day_times?.[day];
+      if (!daySchedule?.enabled) return;
+      const ranges = expandDayWindow(daySchedule.start, daySchedule.end);
+      const existing = windowsByDay.get(day) ?? [];
+      for (const range of ranges) {
+        for (const previous of existing) {
+          if (range[0] < previous.range[1] && previous.range[0] < range[1]) {
+            return;
+          }
+        }
+        existing.push({ index, range });
+      }
+      windowsByDay.set(day, existing);
+    });
+  });
+
+  for (const [day, windows] of windowsByDay.entries()) {
+    for (let a = 0; a < windows.length; a++) {
+      for (let b = a + 1; b < windows.length; b++) {
+        if (windows[a].range[0] < windows[b].range[1] && windows[b].range[0] < windows[a].range[1]) {
+          return `Schedule overlap on ${ITEM_SCHEDULE_DAY_LABELS[day]} between item #${windows[a].index + 1} and item #${windows[b].index + 1}.`;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 export default function ScreensPage() {
   const { screens, loading, addScreen, editScreen, updateOperatingHours, deleteScreen, refresh } = useScreens();
   const { playlists, createPlaylist, updateItems } = usePlaylists();
@@ -42,11 +93,28 @@ export default function ScreensPage() {
 
   const [showAdd, setShowAdd] = useState(false);
   const [formName, setFormName] = useState('');
+
+  // Gate store configuration hooks
+  const { gates, assignments, addGate, removeGate, assignScreen, unassignScreen, getAllAssignedScreenIds, updateGateConfig, unassignScreenFromAll, getAssignedGateForScreen } = useGateStore();
+  const [showAddGate, setShowAddGate] = useState(false);
+  const [newGateNumber, setNewGateNumber] = useState('');
+  const [selectedGateForAssign, setSelectedGateForAssign] = useState<string | null>(null);
+  const [assignPickerGate, setAssignPickerGate] = useState<string | null>(null);
+
+  // Inline create-screen form inside the assign-picker modal
+  const [pickerNewName, setPickerNewName] = useState('');
+  const [pickerNewLocation, setPickerNewLocation] = useState('');
+  const [pickerNewIp, setPickerNewIp] = useState('');
+  const [pickerCreating, setPickerCreating] = useState(false);
+
+  const assignedScreenIds = useMemo(() => new Set(getAllAssignedScreenIds()), [assignments, getAllAssignedScreenIds]);
+  const unassignedScreens = useMemo(() => screens.filter((s) => !assignedScreenIds.has(s.id)), [screens, assignedScreenIds]);
   const [formLocation, setFormLocation] = useState('');
   const [formIp, setFormIp] = useState('');
   const [formOrientation, setFormOrientation] = useState('Landscape');
   const [formWidth, setFormWidth] = useState('1920');
   const [formHeight, setFormHeight] = useState('1080');
+  const [formGate, setFormGate] = useState<string>('');
 
   const [editingScreen, setEditingScreen] = useState<Screen | null>(null);
   const [editFormName, setEditFormName] = useState('');
@@ -55,6 +123,11 @@ export default function ScreensPage() {
   const [editFormOrientation, setEditFormOrientation] = useState('Landscape');
   const [editFormWidth, setEditFormWidth] = useState('1920');
   const [editFormHeight, setEditFormHeight] = useState('1080');
+  const [editFormPurpose, setEditFormPurpose] = useState<ScreenPurpose>('playlist');
+  const [editFormGate, setEditFormGate] = useState<string>('');
+  const [editFormProductionDashboardId, setEditFormProductionDashboardId] = useState('');
+  const [editFormDefaultContentId, setEditFormDefaultContentId] = useState('');
+  const [productionDashboards, setProductionDashboards] = useState<ProductionDashboard[]>([]);
 
   // Screen Operating Hours Modal state
   const [hoursScreen, setHoursScreen] = useState<Screen | null>(null);
@@ -102,6 +175,12 @@ export default function ScreensPage() {
     [playlists, selectedScreen]
   );
   const autoCreatingPlaylistFor = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    productionApi.getDashboards()
+      .then(setProductionDashboards)
+      .catch((error) => console.warn('Failed to load production dashboards for screen editor:', error));
+  }, []);
 
   useEffect(() => {
     if (!selectedScreenId) {
@@ -211,19 +290,6 @@ export default function ScreensPage() {
     showToast("Duplicated item", "success");
   };
 
-  const handleUpdateDuration = (index: number, val: string) => {
-    const seconds = parseInt(val, 10);
-    setLocalPlaylistItems(prev => {
-      const copy = [...prev];
-      copy[index] = {
-        ...copy[index],
-        override_duration: isNaN(seconds) || seconds <= 0 ? null : seconds
-      };
-      return copy;
-    });
-    setHasUnsavedChanges(true);
-  };
-
   const buildItemScheduleFromModal = (): PlaylistItemSchedule => {
     const enabledDays = APP_WEEKDAYS.filter((day) => itemSchedDayTimes[day]?.enabled);
     const firstEnabled = enabledDays[0] ? itemSchedDayTimes[enabledDays[0]] : null;
@@ -246,6 +312,8 @@ export default function ScreensPage() {
       const error = validatePlaylistItemSchedule(schedule);
       if (error) return `Item #${index + 1}: ${error}`;
     }
+    const overlapError = validatePlaylistOverlaps(items);
+    if (overlapError) return overlapError;
     return null;
   };
 
@@ -360,15 +428,23 @@ export default function ScreensPage() {
   const handleAdd = async () => {
     if (!formName.trim()) return;
     try {
-      await addScreen(
+      const screen = await addScreen(
         formName,
         formLocation,
         formIp || undefined,
         formOrientation,
         parseInt(formWidth) || 1920,
-        parseInt(formHeight) || 1080
+        parseInt(formHeight) || 1080,
+        undefined,
+        undefined,
+        formGate || null
       );
-      showToast(`Screen "${formName}" added`, 'success');
+      if (formGate) {
+        await assignScreenToGate(screen, formGate);
+        showToast(`Screen "${formName}" added and assigned to Gate ${formGate.toUpperCase()}`, 'success');
+      } else {
+        showToast(`Screen "${formName}" added`, 'success');
+      }
       setShowAdd(false);
       setFormName('');
       setFormLocation('');
@@ -376,6 +452,7 @@ export default function ScreensPage() {
       setFormOrientation('Landscape');
       setFormWidth('1920');
       setFormHeight('1080');
+      setFormGate('');
     } catch {
       showToast('Failed to add screen', 'error');
     }
@@ -428,11 +505,35 @@ export default function ScreensPage() {
     setEditFormOrientation(screen.orientation || 'Landscape');
     setEditFormWidth(String(screen.resolution?.width ?? 1920));
     setEditFormHeight(String(screen.resolution?.height ?? 1080));
+    setEditFormPurpose(screen.purpose ?? 'playlist');
+    const gateNum = getAssignedGateForScreen(screen.id) || '';
+    setEditFormGate(gateNum);
+    setEditFormProductionDashboardId(screen.production_dashboard_id ?? '');
+    setEditFormDefaultContentId(screen.default_content_id ?? '');
   };
 
   const handleSaveEdit = async () => {
     if (!editingScreen || !editFormName.trim()) return;
     try {
+      // 1. Update gate assignment + auto-bind dashboard if the gate has one
+      let nextPurpose: ScreenPurpose = editingScreen.purpose;
+      let nextDashboardId: string | null = editingScreen.production_dashboard_id;
+      if (editFormGate) {
+        const gate = assignScreen(editFormGate, editingScreen.id);
+        if (gate?.productionDashboardId) {
+          nextPurpose = 'production_dashboard';
+          nextDashboardId = gate.productionDashboardId;
+        } else {
+          nextPurpose = 'playlist';
+          nextDashboardId = null;
+        }
+      } else {
+        unassignScreenFromAll(editingScreen.id);
+        nextPurpose = 'playlist';
+        nextDashboardId = null;
+      }
+
+      // 2. Persist the change to backend
       await editScreen(
         editingScreen.id,
         editFormName,
@@ -440,10 +541,16 @@ export default function ScreensPage() {
         editFormIp || undefined,
         editFormOrientation,
         parseInt(editFormWidth) || 1920,
-        parseInt(editFormHeight) || 1080
+        parseInt(editFormHeight) || 1080,
+        editingScreen.playlist_id ?? undefined,
+        nextPurpose,
+        editFormGate || null,
+        nextDashboardId,
+        editingScreen.default_content_id
       );
+
       showToast(`Screen "${editFormName}" updated`, 'success');
-      
+
       if (editingScreen.pairing_status === 'paired') {
         handleForceSync(editingScreen.id);
       }
@@ -534,6 +641,9 @@ export default function ScreensPage() {
             </button>
             <button className="btn btn-secondary" onClick={() => handleEditClick(selectedScreen)}>
               ✎ Settings
+            </button>
+            <button className="btn btn-secondary" onClick={() => handleEditClick(selectedScreen)}>
+              Default Content
             </button>
             <button
               className="btn btn-primary"
@@ -671,19 +781,6 @@ export default function ScreensPage() {
                               </span>
                             )}
                           </div>
-                        </div>
-
-                        {/* Custom Duration Input */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Secs:</span>
-                          <input
-                            type="number"
-                            className="input"
-                            style={{ width: '56px', padding: '6px 8px', fontSize: '12px', textAlign: 'center' }}
-                            placeholder={String(contentItem.duration_secs)}
-                            value={playlistItem.override_duration ?? ''}
-                            onChange={(e) => handleUpdateDuration(index, e.target.value)}
-                          />
                         </div>
 
                         {/* Menu Options row */}
@@ -1025,6 +1122,45 @@ export default function ScreensPage() {
                 onChange={(e) => setEditFormIp(e.target.value)}
               />
             </div>
+            <div>
+              <label className="input-label">Screen preset</label>
+              <select className="input" value={editFormPurpose} onChange={(event) => setEditFormPurpose(event.target.value as ScreenPurpose)}>
+                <option value="playlist">General Playlist</option>
+                <option value="truck_gate">Truck Gate Display</option>
+                <option value="production_dashboard">Production Dashboard</option>
+              </select>
+            </div>
+            {editFormPurpose === 'truck_gate' && (
+              <div>
+                <label className="input-label">Gate</label>
+                <select className="input" value={editFormGate} onChange={(event) => setEditFormGate(event.target.value as 'd4' | 'd5')}>
+                  <option value="">Select gate</option>
+                  <option value="d4">D4</option>
+                  <option value="d5">D5</option>
+                </select>
+              </div>
+            )}
+            {editFormPurpose === 'production_dashboard' && (
+              <div>
+                <label className="input-label">Production dashboard</label>
+                <select className="input" value={editFormProductionDashboardId} onChange={(event) => setEditFormProductionDashboardId(event.target.value)}>
+                  <option value="">Select dashboard</option>
+                  {productionDashboards.map((dashboard) => (
+                    <option key={dashboard.id} value={dashboard.id}>{dashboard.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="input-label">Default content</label>
+              <select className="input" value={editFormDefaultContentId} onChange={(event) => setEditFormDefaultContentId(event.target.value)}>
+                <option value="">None</option>
+                {contentItems.map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">Shown when no scheduled playlist item is active.</p>
+            </div>
           </div>
         </Modal>
 
@@ -1135,48 +1271,263 @@ export default function ScreensPage() {
     );
   }
 
+  const authUser = useAuthStore((s) => s.user);
+  const canAddScreen = authUser?.is_developer === true || authUser?.role === 'SuperAdmin';
+
   return (
     <div className="space-y-6">
-      <div className="page-header flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="page-title">Screens</h1>
-          <p className="page-subtitle">
-            {screens.length} screen{screens.length !== 1 ? 's' : ''} registered
-          </p>
+      <Tabs defaultValue="all_screens" className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-4">
+          <div>
+            <h1 className="page-title">Screens</h1>
+            <p className="page-subtitle">Manage screens and set up gate displays.</p>
+          </div>
+          <TabsList className="grid w-[300px] grid-cols-2">
+            <TabsTrigger value="all_screens">Screens</TabsTrigger>
+            <TabsTrigger value="gates">Gate Setup</TabsTrigger>
+          </TabsList>
         </div>
-      </div>
 
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
-          <Loader2 className="h-10 w-10 animate-spin text-primary" />
-          <span className="text-sm font-semibold tracking-wide uppercase">Loading screens...</span>
+        <TabsContent value="all_screens" className="space-y-6">
+          <div className="flex justify-between items-center">
+            <p className="text-sm text-muted-foreground">
+              {screens.length} screen{screens.length !== 1 ? 's' : ''} registered
+            </p>
+            {canAddScreen && (
+              <Button onClick={() => setShowAdd(true)}>
+                <Plus className="size-4 mr-1.5" /> Add Screen
+              </Button>
+            )}
+          </div>
+
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
+              <Loader2 className="h-10 w-10 animate-spin text-primary" />
+              <span className="text-sm font-semibold tracking-wide uppercase">Loading screens...</span>
+            </div>
+          ) : screens.length === 0 ? (
+            <Card className="border-dashed bg-transparent">
+              <CardContent className="flex min-h-80 flex-col items-center justify-center px-6 py-16 text-center">
+                <div className="mb-5 flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Monitor className="size-6" /></div>
+                <CardTitle>No screens yet</CardTitle>
+                <CardDescription className="mt-2 max-w-md">The pre-configured gate screens will appear here.</CardDescription>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid-auto stagger">
+              {screens.map((screen) => {
+                return (
+                  <ScreenCard
+                    key={screen.id}
+                    screen={screen}
+                    isSyncing={syncingScreenIds.includes(screen.id)}
+                    onDelete={handleDelete}
+                    onEdit={handleEditClick}
+                    onHours={handleHoursClick}
+                    onSync={handleForceSync}
+                    onManage={(id) => setSelectedScreenId(id)}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="gates" className="space-y-5">
+          {/* ── Gate Screen Manager ─────────────────────────────────────── */}
+          <div className="overflow-hidden rounded-xl border border-border/70 bg-card/80 shadow-xl shadow-black/10">
+            {/* Header */}
+            <div className="flex items-center justify-between gap-4 border-b border-border/60 bg-muted/20 px-6 py-4">
+              <div>
+                <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary">
+                  <Monitor className="size-3" /> Gate Screen Setup
+                </div>
+                <h2 className="text-base font-semibold">Gate display screens</h2>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  Add gates, then assign display screens to each gate. Each screen can only be assigned to one gate.
+                </p>
+              </div>
+              <Button onClick={() => { setNewGateNumber(''); setShowAddGate(true) }} size="sm">
+                <Plus className="size-3.5" /> Add Gate
+              </Button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5">
+              {gates.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-background/40 py-14 text-center">
+                  <Monitor className="mx-auto mb-3 size-10 text-muted-foreground/40" />
+                  <p className="font-semibold">No gates configured yet</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Click "Add Gate" to create your first gate (e.g. d1, d2).</p>
+                  <Button variant="outline" size="sm" className="mt-4" onClick={() => { setNewGateNumber(''); setShowAddGate(true) }}>
+                    <Plus className="size-3.5" /> Add Gate
+                  </Button>
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-xl border border-border/60">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold">Gate</th>
+                        <th className="px-4 py-3 text-left font-semibold">Assigned Screens</th>
+                        <th className="px-4 py-3 text-left font-semibold">Production Dashboard</th>
+                        <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {gates.map((gate) => {
+                        const gateScreenIds = assignments[gate.number] ?? []
+                        const gateScreens = gateScreenIds.map((id) => screens.find((s) => s.id === id)).filter(Boolean) as typeof screens
+                        const gateDashboard = productionDashboards.find((d) => d.id === gate.productionDashboardId)
+                        return (
+                          <tr key={gate.id} className="bg-background/40 hover:bg-muted/30 transition-colors">
+                            <td className="px-4 py-3 font-semibold">Gate {gate.number.toUpperCase()}</td>
+                            <td className="px-4 py-3">
+                              {gateScreens.length === 0 ? (
+                                <span className="text-muted-foreground">No screens assigned</span>
+                              ) : (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {gateScreens.map((screen) => (
+                                    <Badge key={screen.id} variant="secondary" className="text-[11px]">
+                                      {screen.name}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {gateDashboard ? (
+                                <Badge variant="default" className="text-[11px]">{gateDashboard.name}</Badge>
+                              ) : (
+                                <span className="text-muted-foreground">None</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center justify-end gap-2">
+                                {gateDashboard ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-destructive hover:text-destructive"
+                                    onClick={async () => {
+                                      const confirmed = await customConfirm(`Unlink production dashboard from Gate ${gate.number.toUpperCase()}?`)
+                                      if (confirmed) {
+                                        updateGateConfig(gate.number, 'playlist', null, gate.playlistId)
+                                        showToast(`Dashboard unlinked from Gate ${gate.number.toUpperCase()}`, 'info')
+                                      }
+                                    }}
+                                  >
+                                    Unlink
+                                  </Button>
+                                ) : (
+                                  <Button size="sm" variant="outline" asChild>
+                                    <a href="/production-data">
+                                      <FileSpreadsheet className="size-3.5" /> Link Dashboard
+                                    </a>
+                                  </Button>
+                                )}
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-destructive hover:text-destructive"
+                                  onClick={async () => {
+                                    const confirmed = await customConfirm(`Remove gate "${gate.number.toUpperCase()}"? Screens will be unassigned.`)
+                                    if (confirmed) {
+                                      removeGate(gate.id)
+                                      if (selectedGateForAssign === gate.number) setSelectedGateForAssign(null)
+                                      showToast(`Gate ${gate.number.toUpperCase()} removed`, 'info')
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="size-3.5" /> Delete
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      {/* Add Screen Modal (Dev / SuperAdmin only) */}
+      <Modal
+        isOpen={showAdd}
+        onClose={() => setShowAdd(false)}
+        title="Add Screen"
+        actions={
+          <>
+            <button className="btn btn-secondary" onClick={() => setShowAdd(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={handleAdd}>Add Screen</button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div>
+            <label className="input-label">Screen Name *</label>
+            <input
+              className="input"
+              placeholder="e.g., Gate D1 Display"
+              value={formName}
+              onChange={(e) => setFormName(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="input-label">Location</label>
+            <input
+              className="input"
+              placeholder="e.g., Gate D1 entrance"
+              value={formLocation}
+              onChange={(e) => setFormLocation(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="input-label">IP Address (optional)</label>
+            <input
+              className="input"
+              placeholder="e.g., 192.168.1.100"
+              value={formIp}
+              onChange={(e) => setFormIp(e.target.value)}
+            />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+            <div>
+              <label className="input-label">Orientation</label>
+              <select className="input" value={formOrientation} onChange={(e) => setFormOrientation(e.target.value)}>
+                <option value="Landscape">Landscape</option>
+                <option value="Portrait">Portrait</option>
+                <option value="LandscapeFlipped">Landscape Flipped</option>
+                <option value="PortraitFlipped">Portrait Flipped</option>
+              </select>
+            </div>
+            <div>
+              <label className="input-label">Width</label>
+              <input className="input" type="number" value={formWidth} onChange={(e) => setFormWidth(e.target.value)} />
+            </div>
+            <div>
+              <label className="input-label">Height</label>
+              <input className="input" type="number" value={formHeight} onChange={(e) => setFormHeight(e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <label className="input-label">Assign to Gate (optional)</label>
+            <select className="input" value={formGate} onChange={(e) => setFormGate(e.target.value)}>
+              <option value="">No gate</option>
+              {gates.map((gate) => (
+                <option key={gate.id} value={gate.number}>
+                  Gate {gate.number.toUpperCase()}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-      ) : screens.length === 0 ? (
-        <Card className="border-dashed bg-transparent">
-          <CardContent className="flex min-h-80 flex-col items-center justify-center px-6 py-16 text-center">
-            <div className="mb-5 flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Monitor className="size-6" /></div>
-            <CardTitle>No screens yet</CardTitle>
-            <CardDescription className="mt-2 max-w-md">The pre-configured gate screens will appear here.</CardDescription>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid-auto stagger">
-          {screens.map((screen) => {
-            return (
-              <ScreenCard
-                key={screen.id}
-                screen={screen}
-                isSyncing={syncingScreenIds.includes(screen.id)}
-                onDelete={handleDelete}
-                onEdit={handleEditClick}
-                onHours={handleHoursClick}
-                onSync={handleForceSync}
-                onManage={(id) => setSelectedScreenId(id)}
-              />
-            );
-          })}
-        </div>
-      )}
+      </Modal>
 
       {/* Edit Screen Modal */}
       <Modal
@@ -1206,6 +1557,15 @@ export default function ScreensPage() {
             />
           </div>
           <div>
+            <label className="input-label">Location</label>
+            <input
+              className="input"
+              placeholder="e.g., Main Entrance"
+              value={editFormLocation}
+              onChange={(e) => setEditFormLocation(e.target.value)}
+            />
+          </div>
+          <div>
             <label className="input-label">IP Address (optional)</label>
             <input
               className="input"
@@ -1213,6 +1573,34 @@ export default function ScreensPage() {
               value={editFormIp}
               onChange={(e) => setEditFormIp(e.target.value)}
             />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+            <div>
+              <label className="input-label">Orientation</label>
+              <select className="input" value={editFormOrientation} onChange={(e) => setEditFormOrientation(e.target.value)}>
+                <option value="Landscape">Landscape</option>
+                <option value="Portrait">Portrait</option>
+                <option value="LandscapeFlipped">Landscape Flipped</option>
+                <option value="PortraitFlipped">Portrait Flipped</option>
+              </select>
+            </div>
+            <div>
+              <label className="input-label">Width</label>
+              <input className="input" type="number" value={editFormWidth} onChange={(e) => setFormWidth(e.target.value)} />
+            </div>
+            <div>
+              <label className="input-label">Height</label>
+              <input className="input" type="number" value={editFormHeight} onChange={(e) => setFormHeight(e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <label className="input-label">Gate Assignment</label>
+            <select className="input" value={editFormGate} onChange={(e) => setEditFormGate(e.target.value)}>
+              <option value="">-- No Gate (Unassigned) --</option>
+              {gates.map((g) => (
+                <option key={g.id} value={g.number}>{g.number.toUpperCase()}</option>
+              ))}
+            </select>
           </div>
         </div>
       </Modal>
@@ -1318,6 +1706,195 @@ export default function ScreensPage() {
             />
             Blank the screen when not in use
           </label>
+        </div>
+      </Modal>
+
+      {/* Add Gate Modal */}
+      <Modal
+        isOpen={showAddGate}
+        onClose={() => setShowAddGate(false)}
+        title="Add Gate"
+        actions={
+          <>
+            <Button variant="outline" onClick={() => setShowAddGate(false)}>Cancel</Button>
+            <Button onClick={() => {
+              const trimmed = newGateNumber.trim()
+              if (!isValidGateNumber(trimmed)) {
+                showToast('Gate number must start with a letter followed by digits (e.g. d1, g10)', 'error')
+                return
+              }
+              const result = addGate(trimmed)
+              if (!result) {
+                showToast(`Gate "${trimmed.toUpperCase()}" already exists`, 'error')
+                return
+              }
+              setSelectedGateForAssign(result.number)
+              setShowAddGate(false)
+              showToast(`Gate ${result.number.toUpperCase()} added`, 'success')
+            }}>
+              Add Gate
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Gate Number *</Label>
+            <Input
+              value={newGateNumber}
+              onChange={(e) => setNewGateNumber(e.target.value)}
+              placeholder="e.g., d1, d2, g10"
+              autoFocus
+              onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+            />
+            <p className="text-xs text-muted-foreground">
+              Must start with a letter and end with number(s) — e.g. <code className="rounded bg-muted px-1">d1</code>, <code className="rounded bg-muted px-1">d2</code>, <code className="rounded bg-muted px-1">g10</code>
+            </p>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Assign Screen Picker Modal */}
+      <Modal
+        isOpen={assignPickerGate !== null}
+        onClose={() => {
+          setAssignPickerGate(null)
+          setPickerNewName('')
+          setPickerNewLocation('')
+          setPickerNewIp('')
+        }}
+        title={`Assign Screen to Gate ${(assignPickerGate ?? '').toUpperCase()}`}
+        actions={
+          <Button variant="outline" onClick={() => {
+            setAssignPickerGate(null)
+            setPickerNewName('')
+            setPickerNewLocation('')
+            setPickerNewIp('')
+          }}>Close</Button>
+        }
+      >
+        <div className="space-y-5">
+          {/* Inline create new screen for this gate */}
+          <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold">Create new screen for this gate</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  New screens are automatically assigned and linked to the gate&apos;s dashboard (if any).
+                </p>
+              </div>
+              <Badge variant="outline" className="border-primary/30 text-primary">Quick add</Badge>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Screen name *</Label>
+                <Input
+                  value={pickerNewName}
+                  onChange={(e) => setPickerNewName(e.target.value)}
+                  placeholder={`e.g., Gate ${(assignPickerGate ?? '').toUpperCase()} Display`}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Location</Label>
+                <Input
+                  value={pickerNewLocation}
+                  onChange={(e) => setPickerNewLocation(e.target.value)}
+                  placeholder={`e.g., Gate ${(assignPickerGate ?? '').toUpperCase()} entrance`}
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>IP address (optional)</Label>
+                <Input
+                  value={pickerNewIp}
+                  onChange={(e) => setPickerNewIp(e.target.value)}
+                  placeholder="e.g., 192.168.1.100"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button
+                disabled={!pickerNewName.trim() || pickerCreating}
+                onClick={async () => {
+                  if (!assignPickerGate || !pickerNewName.trim()) return
+                  setPickerCreating(true)
+                  try {
+                    const newScreen = await addScreen(
+                      pickerNewName.trim(),
+                      pickerNewLocation.trim(),
+                      pickerNewIp.trim() || undefined,
+                      'Landscape',
+                      1920,
+                      1080,
+                    )
+                    if (!newScreen) throw new Error('Screen creation failed')
+                    const gate = await assignScreenToGate(newScreen, assignPickerGate)
+                    const dashboardNote = gate?.productionDashboardId
+                      ? ' · auto-linked gate dashboard'
+                      : ''
+                    showToast(`Screen "${newScreen.name}" created and assigned to gate ${assignPickerGate.toUpperCase()}${dashboardNote}`, 'success')
+                    setPickerNewName('')
+                    setPickerNewLocation('')
+                    setPickerNewIp('')
+                    setAssignPickerGate(null)
+                  } catch {
+                    showToast('Failed to create screen', 'error')
+                  } finally {
+                    setPickerCreating(false)
+                  }
+                }}
+              >
+                {pickerCreating ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+                {pickerCreating ? 'Creating...' : 'Create & assign'}
+              </Button>
+            </div>
+          </div>
+
+          {/* Existing unassigned screens */}
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Or pick an existing unassigned screen
+              </p>
+              <Badge variant="secondary">{unassignedScreens.length} available</Badge>
+            </div>
+            {unassignedScreens.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border py-8 text-center">
+                <Monitor className="mx-auto mb-2 size-8 text-muted-foreground/30" />
+                <p className="text-sm text-muted-foreground">All screens are already assigned to gates.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {unassignedScreens.map((screen) => (
+                  <button
+                    key={screen.id}
+                    className="flex w-full items-center gap-3 rounded-xl border border-border bg-background/60 p-3 text-left transition-all hover:border-primary/50 hover:bg-primary/5"
+                    onClick={async () => {
+                      if (!assignPickerGate) return
+                      const gate = await assignScreenToGate(screen, assignPickerGate)
+                      const dashboardNote = gate?.productionDashboardId
+                        ? ' · auto-linked gate dashboard'
+                        : ''
+                      showToast(`Screen "${screen.name}" assigned to gate ${assignPickerGate.toUpperCase()}${dashboardNote}`, 'success')
+                      setAssignPickerGate(null)
+                    }}
+                  >
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                      <Monitor className="size-4 text-primary" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold">{screen.name}</p>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {screen.location || 'No location'} · {screen.resolution.width}×{screen.resolution.height}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="shrink-0">
+                      {screen.pairing_status === 'paired' ? '🟢' : '⚫'}
+                    </Badge>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </Modal>
     </div>

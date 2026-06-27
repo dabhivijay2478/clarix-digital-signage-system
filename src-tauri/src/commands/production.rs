@@ -150,8 +150,10 @@ pub async fn update_production_table_rows(
     table_id: String,
     rows: Vec<RowMap>,
     pool: State<'_, DbPool>,
+    events: State<'_, crate::lan::server::SyncEventBus>,
 ) -> Result<ProductionDataset, String> {
     let pool = pool.inner().clone();
+    let event_bus = events.inner().clone();
     tokio::task::spawn_blocking(move || {
         let mut dataset = query_dataset(&pool, &dataset_id)?
             .ok_or_else(|| anyhow::anyhow!("Production dataset not found"))?;
@@ -173,6 +175,65 @@ pub async fn update_production_table_rows(
                 dataset.id,
             ],
         )?;
+        let _ = crate::lan::server::publish_revision(&pool, &event_bus);
+        Ok::<_, anyhow::Error>(dataset)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn refresh_production_dataset_from_file(
+    dataset_id: String,
+    filename: String,
+    bytes: Vec<u8>,
+    pool: State<'_, DbPool>,
+    events: State<'_, crate::lan::server::SyncEventBus>,
+) -> Result<ProductionDataset, String> {
+    let pool = pool.inner().clone();
+    let event_bus = events.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let import_result = parse_import(filename.clone(), bytes)?;
+        let mut dataset = query_dataset(&pool, &dataset_id)?
+            .ok_or_else(|| anyhow::anyhow!("Production dataset not found"))?;
+        dataset.source_name = import_result.source_name;
+        dataset.tables = import_result.tables;
+        if dataset
+            .selected_table_id
+            .as_deref()
+            .map(|id| dataset.tables.iter().any(|table| table.id == id))
+            .unwrap_or(false)
+            == false
+        {
+            dataset.selected_table_id = choose_default_table(&dataset.tables).map(|table| table.id.clone());
+        }
+        dataset.updated_at = Utc::now();
+        let conn = pool.get()?;
+        conn.execute(
+            "UPDATE production_datasets
+             SET source_name = ?1, selected_table_id = ?2, tables_json = ?3, updated_at = ?4
+             WHERE id = ?5",
+            params![
+                &dataset.source_name,
+                &dataset.selected_table_id,
+                serde_json::to_string(&dataset.tables)?,
+                dataset.updated_at.to_rfc3339(),
+                &dataset.id,
+            ],
+        )?;
+        conn.execute(
+            "INSERT INTO production_live_sources (id, dataset_id, source_name, enabled, last_imported_at, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 1, ?4, ?4, ?4)
+             ON CONFLICT(id) DO UPDATE SET source_name = excluded.source_name, last_imported_at = excluded.last_imported_at, updated_at = excluded.updated_at",
+            params![
+                format!("live-{}", dataset.id),
+                &dataset.id,
+                filename,
+                dataset.updated_at.to_rfc3339(),
+            ],
+        )?;
+        let _ = crate::lan::server::publish_revision(&pool, &event_bus);
         Ok::<_, anyhow::Error>(dataset)
     })
     .await
@@ -184,8 +245,10 @@ pub async fn update_production_table_rows(
 pub async fn update_production_dataset(
     dataset: ProductionDataset,
     pool: State<'_, DbPool>,
+    events: State<'_, crate::lan::server::SyncEventBus>,
 ) -> Result<ProductionDataset, String> {
     let pool = pool.inner().clone();
+    let event_bus = events.inner().clone();
     tokio::task::spawn_blocking(move || {
         let mut updated = dataset;
         updated.updated_at = Utc::now();
@@ -211,6 +274,7 @@ pub async fn update_production_dataset(
                 &updated.id,
             ],
         )?;
+        let _ = crate::lan::server::publish_revision(&pool, &event_bus);
         Ok::<_, anyhow::Error>(updated)
     })
     .await
@@ -222,8 +286,10 @@ pub async fn update_production_dataset(
 pub async fn update_production_dashboard(
     dashboard: ProductionDashboard,
     pool: State<'_, DbPool>,
+    events: State<'_, crate::lan::server::SyncEventBus>,
 ) -> Result<ProductionDashboard, String> {
     let pool = pool.inner().clone();
+    let event_bus = events.inner().clone();
     tokio::task::spawn_blocking(move || {
         let mut updated = dashboard;
         updated.updated_at = Utc::now();
@@ -240,6 +306,7 @@ pub async fn update_production_dashboard(
                 &updated.id,
             ],
         )?;
+        let _ = crate::lan::server::publish_revision(&pool, &event_bus);
         Ok::<_, anyhow::Error>(updated)
     })
     .await
@@ -251,14 +318,17 @@ pub async fn update_production_dashboard(
 pub async fn delete_production_dashboard(
     id: String,
     pool: State<'_, DbPool>,
+    events: State<'_, crate::lan::server::SyncEventBus>,
 ) -> Result<(), String> {
     let pool = pool.inner().clone();
+    let event_bus = events.inner().clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get()?;
         let tx = conn.transaction()?;
         delete_dashboard_content_shortcuts(&tx, &[id.clone()])?;
         tx.execute("DELETE FROM production_dashboards WHERE id = ?1", params![id])?;
         tx.commit()?;
+        let _ = crate::lan::server::publish_revision(&pool, &event_bus);
         Ok::<_, anyhow::Error>(())
     })
     .await
@@ -270,8 +340,10 @@ pub async fn delete_production_dashboard(
 pub async fn delete_production_dataset(
     id: String,
     pool: State<'_, DbPool>,
+    events: State<'_, crate::lan::server::SyncEventBus>,
 ) -> Result<(), String> {
     let pool = pool.inner().clone();
+    let event_bus = events.inner().clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get()?;
         let tx = conn.transaction()?;
@@ -285,6 +357,7 @@ pub async fn delete_production_dataset(
         tx.execute("DELETE FROM production_dashboards WHERE dataset_id = ?1", params![&id])?;
         tx.execute("DELETE FROM production_datasets WHERE id = ?1", params![id])?;
         tx.commit()?;
+        let _ = crate::lan::server::publish_revision(&pool, &event_bus);
         Ok::<_, anyhow::Error>(())
     })
     .await
@@ -317,18 +390,24 @@ pub async fn add_production_dashboard_to_content(
             url: Some(format!("/production-data/view?id={}", bundle.dashboard.id)),
             duration_secs,
             tags,
+            metadata_json: serde_json::json!({
+                "kind": "production_dashboard",
+                "dashboard_id": bundle.dashboard.id,
+                "dataset_id": bundle.dataset.id,
+            }),
             created_at: now,
         };
         let conn = pool.get()?;
         conn.execute(
-            "INSERT INTO content_items (id, name, content_type, file_path, url, duration_secs, tags, created_at)
-             VALUES (?1, ?2, 'WebApp', NULL, ?3, ?4, ?5, ?6)",
+            "INSERT INTO content_items (id, name, content_type, file_path, url, duration_secs, tags, metadata_json, created_at)
+             VALUES (?1, ?2, 'WebApp', NULL, ?3, ?4, ?5, ?6, ?7)",
             params![
                 &item.id,
                 &item.name,
                 &item.url,
                 item.duration_secs,
                 serde_json::to_string(&item.tags)?,
+                serde_json::to_string(&item.metadata_json)?,
                 item.created_at.to_rfc3339(),
             ],
         )?;
