@@ -26,7 +26,7 @@ import { Switch } from '@/components/ui/switch'
 import { APP_VERSION } from '@/lib/constants'
 import { appConfigApi, localNetworkApi, networkApi, screensApi } from '@/lib/tauri'
 import type { DeviceIdentity, MarqueeSettings, PairingRequest, PeerScreen, Screen } from '@/lib/types'
-import { useBrandingStore, useSidebarStore } from '@/store/ui'
+import { useBrandingStore } from '@/store/ui'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
@@ -36,7 +36,6 @@ export default function SettingsPage() {
   const [autoStart, setAutoStart] = useState(true)
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
   const branding = useBrandingStore()
-  const sidebar = useSidebarStore()
   const [identity, setIdentity] = useState<DeviceIdentity | null>(null)
   const [pairingRequests, setPairingRequests] = useState<PairingRequest[]>([])
   const [screens, setScreens] = useState<Screen[]>([])
@@ -381,11 +380,6 @@ export default function SettingsPage() {
                 label: 'Notifications',
                 desc: 'Desktop notifications for schedule changes and alerts',
                 control: <Switch checked={notificationsEnabled} onCheckedChange={setNotificationsEnabled} />,
-              },
-              {
-                label: 'Collapse Sidebar',
-                desc: 'Minimize the navigation sidebar to icons only',
-                control: <Switch checked={sidebar.isCollapsed} onCheckedChange={sidebar.setCollapsed} />,
               },
             ].map((row, i, arr) => (
               <div

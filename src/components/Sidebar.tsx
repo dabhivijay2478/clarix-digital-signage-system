@@ -3,8 +3,6 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  ChevronLeft,
-  ChevronRight,
   FileSpreadsheet,
   LayoutDashboard,
   Menu,
@@ -15,6 +13,8 @@ import {
   Users,
   LogOut,
   ChevronDown,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react'
 import { usePeers } from '@/hooks/usePeers'
 import { APP_VERSION } from '@/lib/constants'
@@ -230,24 +230,6 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         isCollapsed ? 'w-[72px]' : 'w-[260px]'
       )}
     >
-      {/* Floating collapse tab on the right border — near top */}
-      <button
-        onClick={onToggle}
-        aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        className={cn(
-          'absolute -right-4 top-20 z-50',
-          'flex items-center justify-center',
-          'h-8 w-8 rounded-full',
-          'border border-border bg-card shadow-md',
-          'text-muted-foreground hover:text-foreground hover:bg-muted',
-          'transition-all duration-200 hover:scale-110',
-        )}
-      >
-        {isCollapsed
-          ? <ChevronRight className="size-4" />
-          : <ChevronLeft className="size-4" />}
-      </button>
-
       <Brand compact={isCollapsed} />
       <Separator />
       
@@ -260,6 +242,25 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       <div className="space-y-3 p-3">
         <PeerStatus compact={isCollapsed} />
         <UserSection compact={isCollapsed} />
+        
+        <Tooltip delayDuration={0}>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              className={cn(
+                'h-9 w-full gap-2 text-muted-foreground hover:text-foreground',
+                isCollapsed && 'justify-center px-0'
+              )}
+              onClick={onToggle}
+            >
+              {isCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+              {!isCollapsed && <span className="text-xs">Collapse</span>}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {isCollapsed ? 'Expand' : 'Collapse'}
+          </TooltipContent>
+        </Tooltip>
       </div>
     </aside>
   )
