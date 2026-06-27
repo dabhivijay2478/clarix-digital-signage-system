@@ -321,10 +321,11 @@ export default function SettingsPage() {
             Show a custom ticker message at the bottom of all player screens.
           </p>
         </div>
-        <Card className="p-4 border-border/60">
-          <div className="flex items-center gap-2 mb-4">
-            <Megaphone className="size-4 text-muted-foreground" />
-            <span className="text-xs font-medium">Marquee Ticker</span>
+        <Card className="border-border/60 overflow-hidden">
+          {/* Header row */}
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-border/60 bg-muted/20">
+            <Megaphone className="size-3.5 text-muted-foreground" />
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Marquee Ticker</span>
             <div className="ml-auto flex items-center gap-2">
               <span className="text-xs text-muted-foreground">Enabled</span>
               <Switch
@@ -333,75 +334,109 @@ export default function SettingsPage() {
               />
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-[1fr_120px] mb-3">
-            <div className="space-y-1.5">
-              <span className="text-xs font-medium text-muted-foreground">Message Text</span>
-              <Input
-                value={marquee?.text ?? ''}
-                onChange={(e) => setMarquee((curr) => curr ? { ...curr, text: e.target.value } : curr)}
-                placeholder="Enter bottom ticker message..."
-                className="h-8 text-sm"
-              />
+          {/* Fields */}
+          <div className="p-4 space-y-4">
+            <div className="grid gap-4 sm:grid-cols-[1fr_140px]">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Message Text</label>
+                <Input
+                  value={marquee?.text ?? ''}
+                  onChange={(e) => setMarquee((curr) => curr ? { ...curr, text: e.target.value } : curr)}
+                  placeholder="Enter bottom ticker message..."
+                  className="h-9"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Speed (px/s)</label>
+                <Input
+                  type="number"
+                  min={15}
+                  max={120}
+                  value={marquee?.speed ?? 45}
+                  onChange={(e) => setMarquee((curr) => curr ? { ...curr, speed: Number(e.target.value) || 45 } : curr)}
+                  className="h-9"
+                />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <span className="text-xs font-medium text-muted-foreground">Speed (px/s)</span>
-              <Input
-                type="number"
-                min={15}
-                max={120}
-                value={marquee?.speed ?? 45}
-                onChange={(e) => setMarquee((curr) => curr ? { ...curr, speed: Number(e.target.value) || 45 } : curr)}
-                className="h-8 text-sm"
-              />
-            </div>
+            <Button className="w-full" onClick={handleSaveMarquee}>
+              Save Marquee
+            </Button>
           </div>
-          <Button size="sm" className="h-8 text-xs" onClick={handleSaveMarquee}>
-            Save Marquee
-          </Button>
         </Card>
       </section>
 
       {/* ── General & About ──────────────────────────────────────────────────── */}
       <div className="grid gap-4 xl:grid-cols-2">
+        {/* General */}
         <section className="space-y-3">
           <h2 className="text-sm font-semibold">General</h2>
-          <Card className="divide-y divide-border/60 border-border/60 overflow-hidden">
-            <SettingsRow
-              label="Auto-start on boot"
-              description={`Launch ${branding.appName} automatically when the system starts`}
-            >
-              <Switch checked={autoStart} onCheckedChange={setAutoStart} />
-            </SettingsRow>
-            <SettingsRow
-              label="Notifications"
-              description="Desktop notifications for schedule changes and alerts"
-            >
-              <Switch checked={notificationsEnabled} onCheckedChange={setNotificationsEnabled} />
-            </SettingsRow>
-            <SettingsRow
-              label="Collapse Sidebar"
-              description="Minimize the navigation sidebar to icons only"
-            >
-              <Switch checked={sidebar.isCollapsed} onCheckedChange={sidebar.setCollapsed} />
-            </SettingsRow>
-            <SettingsRow
-              label="Database Console"
-              description="View system tables, export CSV, and download backups"
-            >
-              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => router.push('/database')}>
+          <Card className="border-border/60 overflow-hidden">
+            {[
+              {
+                label: 'Auto-start on boot',
+                desc: `Launch ${branding.appName} automatically when the system starts`,
+                control: <Switch checked={autoStart} onCheckedChange={setAutoStart} />,
+              },
+              {
+                label: 'Notifications',
+                desc: 'Desktop notifications for schedule changes and alerts',
+                control: <Switch checked={notificationsEnabled} onCheckedChange={setNotificationsEnabled} />,
+              },
+              {
+                label: 'Collapse Sidebar',
+                desc: 'Minimize the navigation sidebar to icons only',
+                control: <Switch checked={sidebar.isCollapsed} onCheckedChange={sidebar.setCollapsed} />,
+              },
+            ].map((row, i, arr) => (
+              <div
+                key={row.label}
+                className={cn(
+                  'flex items-center justify-between gap-6 px-4 py-3.5',
+                  i < arr.length - 1 && 'border-b border-border/50'
+                )}
+              >
+                <div>
+                  <p className="text-sm font-medium">{row.label}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{row.desc}</p>
+                </div>
+                {row.control}
+              </div>
+            ))}
+            <div className="flex items-center justify-between gap-6 px-4 py-3.5 border-t border-border/50">
+              <div>
+                <p className="text-sm font-medium">Database Console</p>
+                <p className="text-xs text-muted-foreground mt-0.5">View system tables, export CSV, and download backups</p>
+              </div>
+              <Button size="sm" variant="outline" className="h-8 text-xs shrink-0" onClick={() => router.push('/database')}>
                 <Database className="size-3.5 mr-1.5" /> Open
               </Button>
-            </SettingsRow>
+            </div>
           </Card>
         </section>
 
+        {/* About */}
         <section className="space-y-3">
           <h2 className="text-sm font-semibold">About</h2>
-          <Card className="divide-y divide-border/60 border-border/60 overflow-hidden">
-            <SettingsRow label="Application" monoValue={branding.appName} />
-            <SettingsRow label="Version" monoValue={APP_VERSION} />
-            <SettingsRow label="Device ID" monoValue={identity?.device_id ?? 'Loading…'} />
-            <SettingsRow label="Device Role" monoValue={identity?.role ?? 'Unknown'} />
+          <Card className="border-border/60 overflow-hidden">
+            {[
+              { label: 'Application', value: branding.appName },
+              { label: 'Version', value: APP_VERSION },
+              { label: 'Device ID', value: identity?.device_id ?? 'Loading…' },
+              { label: 'Device Role', value: identity?.role ?? 'Unknown' },
+            ].map((row, i, arr) => (
+              <div
+                key={row.label}
+                className={cn(
+                  'flex items-center justify-between gap-4 px-4 py-3.5',
+                  i < arr.length - 1 && 'border-b border-border/50'
+                )}
+              >
+                <span className="text-sm text-muted-foreground">{row.label}</span>
+                <span className="font-mono text-xs bg-muted/80 px-2.5 py-1 rounded-md text-foreground max-w-[220px] truncate border border-border/40">
+                  {row.value}
+                </span>
+              </div>
+            ))}
           </Card>
         </section>
       </div>

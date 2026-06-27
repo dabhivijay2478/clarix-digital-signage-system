@@ -1,11 +1,9 @@
 'use client'
 
 import { memo } from 'react'
-import { Trash2, Film, Image as ImageIcon, Globe, Megaphone, Presentation, FileText, FileSpreadsheet } from 'lucide-react'
+import { Trash2, Film, Image as ImageIcon, Globe, Megaphone, Presentation, FileText, FileSpreadsheet, Clock } from 'lucide-react'
 import type { ContentItem } from '@/lib/types'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
@@ -14,91 +12,103 @@ interface ContentCardProps {
   onDelete: (id: string) => void
 }
 
-const typeIcons: Record<string, React.ReactNode> = {
-  Video: <Film className="size-4 text-primary" />,
-  Image: <ImageIcon className="size-4 text-blue-500" />,
-  WebApp: <Globe className="size-4 text-indigo-500" />,
-  Ad: <Megaphone className="size-4 text-amber-500" />,
-  Slideshow: <Presentation className="size-4 text-emerald-500" />,
-  Presentation: <Presentation className="size-4 text-purple-500" />,
-  Document: <FileText className="size-4 text-rose-500" />,
-  Spreadsheet: <FileSpreadsheet className="size-4 text-green-500" />,
+const typeConfig: Record<string, {
+  icon: React.ElementType
+  iconColor: string
+  iconBg: string
+  badgeColor: string
+  label: string
+}> = {
+  Video:        { icon: Film,            iconColor: 'text-primary',       iconBg: 'bg-primary/10',       badgeColor: 'bg-primary/10 text-primary border-primary/20',             label: 'Video' },
+  Image:        { icon: ImageIcon,       iconColor: 'text-blue-500',      iconBg: 'bg-blue-500/10',      badgeColor: 'bg-blue-500/10 text-blue-600 border-blue-500/20',           label: 'Image' },
+  WebApp:       { icon: Globe,           iconColor: 'text-indigo-500',    iconBg: 'bg-indigo-500/10',    badgeColor: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20',     label: 'WebApp' },
+  Ad:           { icon: Megaphone,       iconColor: 'text-amber-500',     iconBg: 'bg-amber-500/10',     badgeColor: 'bg-amber-500/10 text-amber-600 border-amber-500/20',         label: 'Ad' },
+  Slideshow:    { icon: Presentation,    iconColor: 'text-emerald-500',   iconBg: 'bg-emerald-500/10',   badgeColor: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',   label: 'Slideshow' },
+  Presentation: { icon: Presentation,    iconColor: 'text-purple-500',    iconBg: 'bg-purple-500/10',    badgeColor: 'bg-purple-500/10 text-purple-600 border-purple-500/20',       label: 'Presentation' },
+  Document:     { icon: FileText,        iconColor: 'text-rose-500',      iconBg: 'bg-rose-500/10',      badgeColor: 'bg-rose-500/10 text-rose-600 border-rose-500/20',             label: 'Document' },
+  Spreadsheet:  { icon: FileSpreadsheet, iconColor: 'text-green-500',     iconBg: 'bg-green-500/10',     badgeColor: 'bg-green-500/10 text-green-600 border-green-500/20',         label: 'Spreadsheet' },
 }
 
-const typeStyles: Record<string, string> = {
-  Ad: 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  Slideshow: 'border-primary/30 bg-primary/10 text-primary',
-  Presentation: 'border-purple-500/30 bg-purple-500/10 text-purple-600 dark:text-purple-400',
-  Document: 'border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400',
-  Spreadsheet: 'border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400',
+const fallbackConfig = {
+  icon: FileText,
+  iconColor: 'text-muted-foreground',
+  iconBg: 'bg-muted',
+  badgeColor: 'bg-muted text-muted-foreground border-border',
+  label: 'File',
 }
 
 function ContentCard({ item, onDelete }: ContentCardProps) {
   const { id, name, content_type, url, duration_secs, tags } = item
-  const variant = content_type === 'Image' ? 'secondary' : content_type === 'Video' ? 'default' : 'outline'
+  const cfg = typeConfig[content_type] ?? fallbackConfig
+  const IconComponent = cfg.icon
+  const source = url || item.file_path || ''
+  // Show just filename for local paths
+  const displaySource = source.startsWith('/') || source.startsWith('C:')
+    ? source.split('/').pop() || source.split('\\').pop() || source
+    : source
 
   return (
-    <Card className="group relative overflow-hidden border-border bg-card transition-all duration-200 hover:shadow-md hover:border-border/60 hover:-translate-y-0.5">
-      {/* Delete button */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="absolute right-2 top-2 z-10 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-destructive/10 hover:text-destructive"
-            onClick={() => onDelete(id)}
-          >
-            <Trash2 className="size-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>Delete content</TooltipContent>
-      </Tooltip>
+    <div className="group relative flex flex-col rounded-xl border border-border/60 bg-card overflow-hidden transition-all duration-200 hover:border-border hover:shadow-md hover:-translate-y-0.5">
 
-      <CardContent className="p-3">
-        {/* Icon and Type Badge */}
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <div className={cn(
-            "flex size-8 items-center justify-center rounded-lg border",
-            "bg-muted/50 border-border/60"
-          )}>
-            {typeIcons[content_type] || <span className="text-xs">❓</span>}
-          </div>
-          <Badge 
-            variant={variant} 
-            className={cn('text-[10px] px-1.5 py-0 h-5', typeStyles[content_type])}
-          >
-            {content_type}
-          </Badge>
-        </div>
+      {/* Thumbnail / Preview area */}
+      <div className={cn('relative flex items-center justify-center h-24 w-full', cfg.iconBg)}>
+        <IconComponent className={cn('size-8 opacity-60', cfg.iconColor)} />
 
+        {/* Type badge top-right */}
+        <span className={cn(
+          'absolute top-2 right-2 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold leading-none',
+          cfg.badgeColor
+        )}>
+          {cfg.label}
+        </span>
+
+        {/* Delete button — appears on hover */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 left-2 size-6 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 hover:bg-destructive/10 hover:text-destructive rounded-md"
+              onClick={() => onDelete(id)}
+            >
+              <Trash2 className="size-3" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">Delete</TooltipContent>
+        </Tooltip>
+      </div>
+
+      {/* Content */}
+      <div className="flex flex-col gap-1.5 p-3 flex-1">
         {/* Name */}
-        <h3 className="font-medium text-sm leading-tight line-clamp-2 mb-1 pr-6" title={name}>
+        <h3 className="text-xs font-semibold leading-snug line-clamp-2 text-foreground" title={name}>
           {name}
         </h3>
 
-        {/* Source */}
-        <p className="text-[10px] text-muted-foreground truncate mb-2" title={url || item.file_path || undefined}>
-          {url || item.file_path || 'Local file'}
+        {/* Source URL */}
+        <p className="text-[10px] text-muted-foreground/70 truncate leading-tight" title={displaySource}>
+          {displaySource || '—'}
         </p>
 
-        {/* Footer: Tags and Duration */}
-        <div className="flex items-center justify-between pt-2 border-t border-border/50">
-          <div className="flex flex-wrap gap-1">
+        {/* Footer */}
+        <div className="flex items-center justify-between mt-auto pt-2 border-t border-border/40">
+          <div className="flex flex-wrap gap-1 min-w-0">
             {tags?.slice(0, 2).map((tag) => (
-              <span key={tag} className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+              <span key={tag} className="text-[10px] text-muted-foreground/80 bg-muted/60 px-1.5 py-0.5 rounded-md">
                 #{tag}
               </span>
             ))}
             {tags && tags.length > 2 && (
-              <span className="text-[10px] text-muted-foreground">+{tags.length - 2}</span>
+              <span className="text-[10px] text-muted-foreground/60">+{tags.length - 2}</span>
             )}
           </div>
-          <span className="text-xs font-mono text-muted-foreground">
+          <span className="flex items-center gap-0.5 text-[10px] font-mono text-muted-foreground shrink-0 ml-1">
+            <Clock className="size-2.5" />
             {duration_secs}s
           </span>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
 
