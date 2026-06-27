@@ -17,7 +17,7 @@ import {
 import StatCard from '@/components/StatCard'
 import { showToast } from '@/components/Toast'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { playlistsApi, scheduleApi, screensApi } from '@/lib/tauri'
 import type { ScheduleSlot } from '@/lib/types'
@@ -96,28 +96,35 @@ export default function DashboardPage() {
       label: 'Add Screen',
       description: 'Register a new display',
       href: '/screens',
-      variant: 'default' as const,
+      iconBg: 'bg-emerald-500/10',
+      iconText: 'text-emerald-600 dark:text-emerald-400',
+      danger: false,
     },
     {
       icon: PlaySquare,
       label: 'Upload Content',
       description: 'Add media to library',
       href: '/content',
-      variant: 'secondary' as const,
+      iconBg: 'bg-blue-500/10',
+      iconText: 'text-blue-600 dark:text-blue-400',
+      danger: false,
     },
     {
       icon: Rows3,
       label: 'Create Playlist',
       description: 'Organize your content',
       href: '/playlists',
-      variant: 'outline' as const,
+      iconBg: 'bg-violet-500/10',
+      iconText: 'text-violet-600 dark:text-violet-400',
+      danger: false,
     },
     {
       icon: CircleStop,
       label: 'Emergency Stop',
       description: 'Power off all screens',
       onClick: handleEmergencyStop,
-      variant: 'destructive' as const,
+      iconBg: 'bg-red-500/10',
+      iconText: 'text-red-500',
       danger: true,
     },
   ]
@@ -171,38 +178,38 @@ export default function DashboardPage() {
             <CardContent>
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 {quickActions.map((action) => (
-                  <Button
+                  <button
                     key={action.label}
-                    variant={action.variant}
+                    type="button"
                     className={cn(
-                      'h-auto justify-start gap-2 p-3 text-left',
-                      action.danger && 'border-red-500/50 hover:bg-red-500/10'
+                      'flex items-center gap-3 rounded-lg border border-border/60 bg-card p-3 text-left',
+                      'transition-all duration-150 hover:bg-muted/60 hover:border-border',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      action.danger && 'hover:border-red-500/30 hover:bg-red-500/5'
                     )}
                     onClick={action.onClick || (() => router.push(action.href!))}
                   >
                     <span className={cn(
-                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-md',
-                      action.danger 
-                        ? 'bg-red-500/10 text-red-500' 
-                        : 'bg-primary/10 text-primary'
+                      'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                      action.iconBg
                     )}>
-                      <action.icon className="h-3.5 w-3.5" />
+                      <action.icon className={cn('h-4 w-4', action.iconText)} />
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className={cn(
-                        'text-sm font-medium',
-                        action.danger && 'text-red-500'
+                        'text-sm font-semibold leading-tight',
+                        action.danger ? 'text-red-500' : 'text-foreground'
                       )}>
                         {action.label}
                       </p>
-                      <p className="text-[10px] text-muted-foreground truncate">
+                      <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
                         {action.description}
                       </p>
                     </div>
                     {!action.danger && (
-                      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
                     )}
-                  </Button>
+                  </button>
                 ))}
               </div>
             </CardContent>

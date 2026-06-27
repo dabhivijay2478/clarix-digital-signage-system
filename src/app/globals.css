@@ -10,25 +10,25 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 :root {
-  /* ── Core Colors ───────────────────────────────────────────────────────── */
-  --background: #0a0a0b;
-  --foreground: #fafafa;
-  --card: #111113;
-  --card-foreground: #fafafa;
-  --popover: #0a0a0b;
-  --popover-foreground: #fafafa;
+  /* ── Core Colors (Light Theme) ────────────────────────────────────────── */
+  --background: #f8f9fa;
+  --foreground: #0a0a0b;
+  --card: #ffffff;
+  --card-foreground: #0a0a0b;
+  --popover: #ffffff;
+  --popover-foreground: #0a0a0b;
   --primary: #10b981;
   --primary-foreground: #ffffff;
   --secondary: #3b82f6;
   --secondary-foreground: #ffffff;
-  --muted: #1a1a1c;
-  --muted-foreground: #a1a1aa;
+  --muted: #f1f3f5;
+  --muted-foreground: #71717a;
   --accent: #8b5cf6;
   --accent-foreground: #ffffff;
   --destructive: #ef4444;
   --destructive-foreground: #fafafa;
-  --border: #27272a;
-  --input: #27272a;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
   --ring: #10b981;
   
   /* ── Chart Colors ────────────────────────────────────────────────────────── */
@@ -38,14 +38,14 @@
   --chart-4: #f59e0b;
   --chart-5: #ef4444;
   
-  /* ── Sidebar ────────────────────────────────────────────────────────────── */
-  --sidebar: #0f0f11;
-  --sidebar-foreground: #a1a1aa;
+  /* ── Sidebar (Light) ──────────────────────────────────────────────── */
+  --sidebar: #f0f0f2;
+  --sidebar-foreground: #3f3f46;
   --sidebar-primary: #10b981;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: rgba(16, 185, 129, 0.1);
-  --sidebar-accent-foreground: #10b981;
-  --sidebar-border: #27272a;
+  --sidebar-accent-foreground: #059669;
+  --sidebar-border: #e4e4e7;
   --sidebar-ring: #10b981;
   
   /* ── Typography ──────────────────────────────────────────────────────────── */
@@ -121,9 +121,9 @@
   --bg-tertiary: var(--muted);
   --bg-elevated: var(--popover);
   --bg-hover: var(--accent);
-  --glass-bg: rgba(17, 17, 19, 0.8);
+  --glass-bg: rgba(255, 255, 255, 0.85);
   --glass-border: var(--border);
-  --glass-hover: rgba(26, 26, 28, 0.9);
+  --glass-hover: rgba(241, 243, 245, 0.95);
   --glass-blur: 16px;
   --accent-primary: var(--primary);
   --accent-secondary: var(--secondary);

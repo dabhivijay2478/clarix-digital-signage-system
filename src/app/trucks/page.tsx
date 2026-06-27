@@ -13,6 +13,11 @@ import {
   Upload,
   ArrowUp,
   ArrowDown,
+  Timer,
+  CheckCircle2,
+  CalendarDays,
+  TrendingUp,
+  Activity,
 } from 'lucide-react'
 import { useTrucks } from '@/hooks/useTrucks'
 import { useScreens } from '@/hooks/useScreens'
@@ -37,47 +42,40 @@ import type { ProductionImportResult, ProductionRow, TruckDispatchSummary, Truck
 import { useGateStore, isValidGateNumber, normalizeGateNumber } from '@/store/gateStore'
 import { cn } from '@/lib/utils'
 
-// ── Compact Stat Component ──────────────────────────────────────────────────
+// ── Minimal Stat Card ────────────────────────────────────────────────────────
 
-function CompactStat({ 
-  icon, 
-  value, 
-  label, 
-  color = 'emerald' 
-}: { 
-  icon: string
+function StatCard({
+  icon: Icon,
+  value,
+  label,
+  sublabel,
+}: {
+  icon: React.ElementType
   value: number | string
   label: string
-  color?: 'emerald' | 'amber' | 'blue' | 'violet' | 'cyan' | 'red'
+  sublabel?: string
 }) {
-  const colorStyles = {
-    emerald: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500 shadow-emerald-500/10',
-    amber: 'bg-amber-500/10 border-amber-500/20 text-amber-500 shadow-amber-500/10',
-    blue: 'bg-blue-500/10 border-blue-500/20 text-blue-500 shadow-blue-500/10',
-    violet: 'bg-violet-500/10 border-violet-500/20 text-violet-500 shadow-violet-500/10',
-    cyan: 'bg-cyan-500/10 border-cyan-500/20 text-cyan-500 shadow-cyan-500/10',
-    red: 'bg-red-500/10 border-red-500/20 text-red-500 shadow-red-500/10',
-  }
-
   return (
-    <Card className="border-border/60 bg-card/50 transition-all duration-200 hover:shadow-md hover:border-border hover:-translate-y-0.5 hover:bg-card">
-      <CardContent className="p-2.5 flex items-center gap-2.5">
-        <div className={cn(
-          "flex size-7 items-center justify-center rounded-md border text-xs font-medium shrink-0 shadow-sm",
-          colorStyles[color]
-        )}>
-          {icon}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-[11px] text-muted-foreground leading-tight">{label}</p>
-          <p className="text-base font-bold tracking-tight">{value}</p>
-        </div>
-      </CardContent>
-    </Card>
+    <div
+      className="relative rounded-xl border border-border/60 bg-card/50 p-4 flex items-center gap-3.5 transition-colors duration-200 hover:bg-card hover:border-border cursor-default"
+    >
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted/60">
+        <Icon className="size-4 text-muted-foreground" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-medium text-muted-foreground tracking-wide uppercase">{label}</p>
+        <p className="text-2xl font-bold tracking-tight leading-none mt-0.5">{value}</p>
+        {sublabel && (
+          <p className="text-[10px] text-muted-foreground/60 mt-1">{sublabel}</p>
+        )}
+      </div>
+    </div>
   )
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 const delimitedExtensions = new Set(['csv', 'tsv', 'txt'])
 const excelExtensions = new Set(['xlsx', 'xls', 'xlsm', 'xlsb'])
@@ -87,7 +85,6 @@ type TruckImportRow = {
   gate_no: string
 }
 
-/** Validate gate_no from CSV against the configured gate list (case-insensitive). Accepts any non-empty value as-is when no gates configured. */
 function makeGateNormalizer(configuredGates: string[]) {
   return function normalizeGateNo(value: string | null | undefined): string {
     const raw = (value ?? '').trim().toLowerCase()
@@ -160,7 +157,6 @@ function formatDurationSeconds(seconds: number | null | undefined): string {
   return `${minutes}m`
 }
 
-/** Parse a delimited string into rows of string arrays. Handles quoted fields. */
 function parseDelimitedText(text: string, delimiter = ','): string[][] {
   const rows: string[][] = []
   const lines = text.split(/\r?\n/)
@@ -218,7 +214,7 @@ function parseTruckRowsFromProductionImport(result: ProductionImportResult, norm
     .filter((truck) => truck.registration_number)
 }
 
-// ── Main Page ───────────────────────────────────────────────────────────────
+// ── Main Page ────────────────────────────────────────────────────────────────
 
 export default function TrucksPage() {
   const {
@@ -232,18 +228,14 @@ export default function TrucksPage() {
     moveTruck,
   } = useTrucks()
 
-  // Gate store
   const { gates } = useGateStore()
   const { screens } = useScreens()
 
-  // Gate normalizer built from current configured gates
   const normalizeGateNo = useMemo(() => makeGateNormalizer(gates.map((g) => g.number)), [gates])
 
   const [search, setSearch] = useState('')
   const [activeGateTab, setActiveGateTab] = useState<string>('all')
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  // ── Modal states ────────────────────────────────────────────────────────
 
   const [showAddTruck, setShowAddTruck] = useState(false)
   const [editingTruckId, setEditingTruckId] = useState<string | null>(null)
@@ -256,7 +248,6 @@ export default function TrucksPage() {
     gate_no: string
   }>>([])
 
-  // Truck form fields
   const [fRegNo, setFRegNo] = useState('')
   const [fGateNo, setFGateNo] = useState('')
 
@@ -272,14 +263,10 @@ export default function TrucksPage() {
     refreshDispatchSummary()
   }, [refreshDispatchSummary])
 
-  // ── Form Resets ─────────────────────────────────────────────────────────
-
   const resetTruckForm = () => {
     setFRegNo('')
     setFGateNo('')
   }
-
-  // ── Truck CRUD Handlers ─────────────────────────────────────────────────
 
   const handleAddTruck = () => {
     if (!fRegNo.trim() || !fGateNo.trim()) {
@@ -348,15 +335,11 @@ export default function TrucksPage() {
 
     try {
       const gateVal = (preview.gate_no ?? '').toLowerCase()
-      // Calculate the active and next trucks for this gate, taking into account the preview status of the changing truck
       const gateTrucks = trucks
         .map(t => t.id === preview.id ? preview : t)
         .filter((t) => (t.gate_no ?? '').toLowerCase() === gateVal)
 
-      // Active truck: currently Loading or In Gate, but not Out yet
       const active = gateTrucks.find((t) => (t.is_loading || t.is_in) && !t.is_out) || null
-
-      // Next truck: in Waiting queue, not yet Loading/In/Out
       const waitingList = gateTrucks.filter((t) => t.is_waiting && !t.is_loading && !t.is_in && !t.is_out)
       const next = waitingList[0] || null
 
@@ -377,7 +360,6 @@ export default function TrucksPage() {
         deleteTruck(truck.id)
       }
 
-      // Trigger a force sync on all paired screens by default
       const { screensApi, localNetworkApi } = await import('@/lib/tauri')
       const screens = await screensApi.getAll()
       for (const screen of screens) {
@@ -391,8 +373,6 @@ export default function TrucksPage() {
       console.warn('Failed to publish truck alert:', error)
     }
   }
-
-  // ── CSV Import ──────────────────────────────────────────────────────────
 
   const handleFileSelect = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -446,9 +426,6 @@ export default function TrucksPage() {
     setShowImportPreview(false)
   }
 
-  // ── Filtered data ───────────────────────────────────────────────────────
-
-  // All unique gate numbers from configured gates + truck data
   const allGateNumbers = useMemo(() => {
     const fromGates = gates.map((g) => g.number)
     return fromGates
@@ -456,11 +433,9 @@ export default function TrucksPage() {
 
   const filteredTrucks = trucks.filter((t) => {
     if (t.is_out) return false
-
     const matchesSearch = t.registration_number.toLowerCase().includes(search.toLowerCase()) ||
                          (t.gate_no ?? '').toLowerCase().includes(search.toLowerCase())
     if (!matchesSearch) return false
-
     if (activeGateTab !== 'all') return (t.gate_no ?? '').toLowerCase() === activeGateTab
     return true
   })
@@ -475,10 +450,6 @@ export default function TrucksPage() {
     }
     return ranks
   }, [trucks, allGateNumbers])
-
-
-
-  // ── Truck Form Modal Body ───────────────────────────────────────────────
 
   const renderTruckFormFields = () => (
     <div className="grid gap-4">
@@ -506,25 +477,35 @@ export default function TrucksPage() {
     </div>
   )
 
-  // ── Render ──────────────────────────────────────────────────────────────
+  // Computed stats
+  const totalActive = trucks.filter(t => !t.is_out).length
+  const waitingCount = trucks.filter(t => t.is_waiting && !t.is_out).length
+  const loadingCount = trucks.filter(t => t.is_loading && !t.is_out).length
+  const dispatchedCount = trucks.filter(t => t.is_out).length
 
   return (
-    <div className="space-y-7 lg:space-y-9 animate-fadeIn">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-6 animate-fadeIn">
+
+      {/* ── Page Header ──────────────────────────────────────────────────────── */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <Badge variant="outline" className="mb-2 border-primary/20 bg-primary/5 text-primary">
-            <Truck className="mr-1 size-3" /> Truck Token
-          </Badge>
+          <div className="flex items-center gap-2 mb-1.5">
+            <div className="flex size-7 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
+              <Truck className="size-4 text-primary" />
+            </div>
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-primary">Truck Token</span>
+          </div>
           <h1 className="text-2xl font-bold tracking-tight">Truck Token</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage your trucks and track loading status.</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Manage your trucks and track loading status in real‑time.
+          </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search trucks..."
-              className="w-[220px] pl-9"
+              className="w-[220px] pl-9 bg-card/60 border-border/60"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -532,288 +513,257 @@ export default function TrucksPage() {
         </div>
       </div>
 
-      {/* Stats row - Compact */}
+      {/* ── Stat Cards ───────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <CompactStat 
-          icon="🚛" 
-          value={trucks.filter(t => !t.is_out).length} 
-          label="Total" 
-          color="emerald"
-        />
-        <CompactStat 
-          icon="⏳" 
-          value={trucks.filter(t => t.is_waiting && !t.is_out).length} 
-          label="Waiting" 
-          color="amber"
-        />
-        <CompactStat 
-          icon="📦" 
-          value={trucks.filter(t => t.is_loading && !t.is_out).length} 
-          label="Loading" 
-          color="blue"
-        />
-        <CompactStat 
-          icon="✅" 
-          value={trucks.filter(t => t.is_out).length} 
-          label="Dispatched" 
-          color="emerald"
-        />
-        <CompactStat 
-          icon="24h" 
-          value={dispatchSummary?.last_24h ?? 0} 
-          label="24h Dispatch" 
-          color="violet"
-        />
-        <CompactStat 
-          icon="M" 
-          value={dispatchSummary?.this_month ?? 0} 
-          label="Month" 
-          color="cyan"
-        />
+        <StatCard icon={Truck} value={totalActive} label="Total" sublabel="Active trucks" />
+        <StatCard icon={Timer} value={waitingCount} label="Waiting" sublabel="In queue" />
+        <StatCard icon={Activity} value={loadingCount} label="Loading" sublabel="In progress" />
+        <StatCard icon={CheckCircle2} value={dispatchedCount} label="Dispatched" sublabel="Today" />
+        <StatCard icon={TrendingUp} value={dispatchSummary?.last_24h ?? 0} label="24h Dispatch" sublabel="Last 24 hours" />
+        <StatCard icon={CalendarDays} value={dispatchSummary?.this_month ?? 0} label="This Month" sublabel="Month total" />
       </div>
 
-      {/* Info Cards - Compact */}
-      <div className="grid gap-3 md:grid-cols-3">
-        <Card className="border-border bg-card">
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground mb-1">Last Alert</p>
-            <p className="font-mono text-base font-semibold truncate">{lastAlert?.truck_number ?? 'No alert yet'}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
-              {lastAlert ? `${lastAlert.status_label} · Gate ${lastAlert.gate?.toUpperCase() ?? '—'}` : 'Status changes appear for 30s'}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-border bg-card">
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground mb-1">Avg Loading Time</p>
-            <p className="font-mono text-base font-semibold">{formatDurationSeconds(dispatchSummary?.avg_loading_secs)}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">From Loading In to Out</p>
-          </CardContent>
-        </Card>
-        <Card className="border-border bg-card">
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground mb-1">Queue Rule</p>
-            <p className="text-base font-semibold">First 2 trucks only</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">Lower positions are locked</p>
-          </CardContent>
-        </Card>
-      </div>
 
-      <div className="space-y-5">
-          {/* Gate sub-filters for truck queue */}
-          <div className="flex border-b border-border">
+
+      {/* ── Truck Table Section ───────────────────────────────────────────────── */}
+      <div className="space-y-4">
+        {/* Gate Tabs */}
+        <div className="flex border-b border-border/60">
+          <button
+            onClick={() => setActiveGateTab('all')}
+            className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer ${
+              activeGateTab === 'all'
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            All Trucks
+          </button>
+          {allGateNumbers.map((gateNum) => (
             <button
-              onClick={() => setActiveGateTab('all')}
+              key={gateNum}
+              onClick={() => setActiveGateTab(gateNum)}
               className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer ${
-                activeGateTab === 'all'
+                activeGateTab === gateNum
                   ? 'border-primary text-foreground'
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
-              All Trucks
+              Gate {gateNum.toUpperCase()}
             </button>
-            {allGateNumbers.map((gateNum) => (
-              <button
-                key={gateNum}
-                onClick={() => setActiveGateTab(gateNum)}
-                className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer ${
-                  activeGateTab === gateNum
-                    ? 'border-primary text-foreground'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Gate {gateNum.toUpperCase()}
-              </button>
-            ))}
+          ))}
+        </div>
+
+        {/* Action bar */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">
+              {filteredTrucks.length} truck{filteredTrucks.length !== 1 ? 's' : ''}
+            </span>
+            {filteredTrucks.length > 0 && (
+              <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                <span className="size-1.5 rounded-full bg-primary animate-pulse" />
+                Live
+              </span>
+            )}
           </div>
-
-          {/* Action bar */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-muted-foreground">{filteredTrucks.length} truck{filteredTrucks.length !== 1 ? 's' : ''}</p>
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv,.tsv,.txt,.xlsx,.xls,.xlsm,.xlsb"
-                className="hidden"
-                onChange={handleFileSelect}
-              />
-              <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-                <Upload className="mr-1.5 size-4" /> Import CSV / Excel
-              </Button>
-              <Button onClick={() => { resetTruckForm(); setShowAddTruck(true) }}>
-                <Plus className="mr-1 size-4" /> Add Truck
-              </Button>
-            </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.tsv,.txt,.xlsx,.xls,.xlsm,.xlsb"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+            <Button variant="outline" onClick={() => fileInputRef.current?.click()} className="border-border/60">
+              <Upload className="mr-1.5 size-4" /> Import CSV / Excel
+            </Button>
+            <Button onClick={() => { resetTruckForm(); setShowAddTruck(true) }}>
+              <Plus className="mr-1 size-4" /> Add Truck
+            </Button>
           </div>
+        </div>
 
-          {/* Truck Table */}
-          {filteredTrucks.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                <Truck className="mb-4 size-12 text-muted-foreground/30" />
-                <p className="text-lg font-medium">No trucks yet</p>
-                <p className="mt-1 text-sm text-muted-foreground">Add a truck manually or import from a CSV/Excel file.</p>
-                <div className="mt-5 flex flex-wrap justify-center gap-3">
-                  <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-                    <Upload className="mr-1.5 size-4" /> Import CSV / Excel
-                  </Button>
-                  <Button onClick={() => { resetTruckForm(); setShowAddTruck(true) }}>
-                    <Plus className="mr-1 size-4" /> Add Truck
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="overflow-hidden">
-              <CardContent className="overflow-x-auto p-0">
-                <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[60px]">Sr no</TableHead>
-                  <TableHead className="min-w-[140px]">Truck Number</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-center">Up/Down</TableHead>
-                  <TableHead>Gate No</TableHead>
-                  <TableHead className="text-center">Waiting</TableHead>
-                  <TableHead className="text-center">Loading In</TableHead>
-                  <TableHead className="text-center">Loading Out</TableHead>
-                  <TableHead className="w-[120px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredTrucks.map((truck, index) => {
-                  // Sequential enable logic: each step requires the previous step to be checked
-                  const canLoading = truck.is_waiting === true
-                  const queueRank = gateRanks.get(truck.id) ?? 999
-                  const canAdvanceByQueue = queueRank <= 1
-                  const canOut = truck.is_loading === true && canAdvanceByQueue
+        {/* Truck Table / Empty State */}
+        {filteredTrucks.length === 0 ? (
+          <Card className="border-border/60 bg-card/40">
+            <CardContent className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="mb-4 flex size-16 items-center justify-center rounded-2xl bg-muted/50 border border-border">
+                <Truck className="size-8 text-muted-foreground/40" />
+              </div>
+              <p className="text-base font-semibold">No trucks yet</p>
+              <p className="mt-1 text-sm text-muted-foreground max-w-xs">
+                Add a truck manually or import from a CSV / Excel file to get started.
+              </p>
+              <div className="mt-6 flex flex-wrap justify-center gap-3">
+                <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+                  <Upload className="mr-1.5 size-4" /> Import CSV / Excel
+                </Button>
+                <Button onClick={() => { resetTruckForm(); setShowAddTruck(true) }}>
+                  <Plus className="mr-1 size-4" /> Add Truck
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="overflow-hidden border-border/60 bg-card/60">
+            <CardContent className="overflow-x-auto p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-border/60 hover:bg-transparent">
+                    <TableHead className="w-[52px] text-[11px] font-semibold uppercase tracking-wide">#</TableHead>
+                    <TableHead className="min-w-[150px] text-[11px] font-semibold uppercase tracking-wide">Truck Number</TableHead>
+                    <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Status</TableHead>
+                    <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wide">Move</TableHead>
+                    <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Gate</TableHead>
+                    <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wide">Waiting</TableHead>
+                    <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wide">Loading In</TableHead>
+                    <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wide">Loading Out</TableHead>
+                    <TableHead className="w-[100px] text-[11px] font-semibold uppercase tracking-wide">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredTrucks.map((truck, index) => {
+                    const canLoading = truck.is_waiting === true
+                    const queueRank = gateRanks.get(truck.id) ?? 999
+                    const canAdvanceByQueue = queueRank <= 1
+                    const canOut = truck.is_loading === true && canAdvanceByQueue
 
-                  const getStatusColor = (status: string) => {
-                    switch (status) {
-                      case 'Loading Out.': return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
-                      case 'Loading in.': return 'bg-blue-500/10 text-blue-600 border-blue-500/20'
-                      case 'Waiting': return 'bg-amber-500/10 text-amber-600 border-amber-500/20'
-                      default: return 'bg-muted text-muted-foreground'
+                    const statusLabel = getTruckStatusInfo(truck).status_label
+                    const isWaiting = statusLabel === 'Waiting'
+                    const fullIndex = trucks.findIndex((t) => t.id === truck.id)
+                    const canMoveUp = trucks.slice(0, fullIndex).some((t) => t.is_waiting)
+                    const canMoveDown = trucks.slice(fullIndex + 1).some((t) => t.is_waiting)
+
+                    const statusStyles: Record<string, string> = {
+                      'Loading Out.': 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
+                      'Loading in.': 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+                      'Waiting': 'bg-amber-500/10 text-amber-500 border-amber-500/20',
                     }
-                  }
 
-                  const statusLabel = getTruckStatusInfo(truck).status_label
-                  const isWaiting = statusLabel === 'Waiting'
-                  const fullIndex = trucks.findIndex((t) => t.id === truck.id)
-                  const canMoveUp = trucks.slice(0, fullIndex).some((t) => t.is_waiting)
-                  const canMoveDown = trucks.slice(fullIndex + 1).some((t) => t.is_waiting)
-
-                  return (
-                    <TableRow
-                      key={truck.id}
-                      className="cursor-pointer hover:bg-muted/50 transition-colors"
-                      onClick={() => setSelectedTruckForDetails(truck)}
-                    >
-                      <TableCell className="text-muted-foreground font-mono text-xs">
-                        {index + 1}
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-mono font-medium">{truck.registration_number}</span>
-                        <span className="mt-1 block text-[11px] text-muted-foreground">Waiting {formatDurationFrom(truck.waiting_at)}</span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={getStatusColor(statusLabel)}>
-                          {statusLabel.toLowerCase()}
-                        </Badge>
-                      </TableCell>
-                      {/* Up/Down buttons for waiting queue reordering */}
-                      <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                        {isWaiting ? (
-                          <div className="flex items-center justify-center gap-1">
+                    return (
+                      <TableRow
+                        key={truck.id}
+                        className="cursor-pointer hover:bg-muted/40 transition-colors border-border/40 group"
+                        onClick={() => setSelectedTruckForDetails(truck)}
+                      >
+                        <TableCell className="text-muted-foreground font-mono text-xs">
+                          {index + 1}
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <span className="font-mono font-semibold text-sm">{truck.registration_number}</span>
+                            <span className="mt-0.5 block text-[10px] text-muted-foreground/70">
+                              Waiting {formatDurationFrom(truck.waiting_at)}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={cn('text-[11px] font-medium border', statusStyles[statusLabel] ?? 'bg-muted text-muted-foreground')}
+                          >
+                            {statusLabel.toLowerCase()}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                          {isWaiting ? (
+                            <div className="flex items-center justify-center gap-0.5">
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className="size-6 p-0 opacity-60 hover:opacity-100"
+                                disabled={!canMoveUp}
+                                onClick={() => moveTruck(truck.id, 'up')}
+                                title="Move Up"
+                              >
+                                <ArrowUp className="size-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className="size-6 p-0 opacity-60 hover:opacity-100"
+                                disabled={!canMoveDown}
+                                onClick={() => moveTruck(truck.id, 'down')}
+                                title="Move Down"
+                              >
+                                <ArrowDown className="size-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground/30 text-xs">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          {truck.gate_no ? (
+                            <Badge variant="secondary" className="bg-primary/8 text-primary border-primary/15 text-[11px] font-semibold uppercase">
+                              {truck.gate_no}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground/30 text-xs">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={truck.is_waiting ?? false}
+                            onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_waiting', checked === true)}
+                          />
+                        </TableCell>
+                        <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={truck.is_loading ?? false}
+                            disabled={!canLoading || !canAdvanceByQueue}
+                            title={!canAdvanceByQueue ? 'Only first and second trucks in this gate queue can change status.' : undefined}
+                            onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_loading', checked === true)}
+                          />
+                        </TableCell>
+                        <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={truck.is_out ?? false}
+                            disabled={!canOut}
+                            title={!canAdvanceByQueue ? 'Only first and second trucks in this gate queue can change status.' : undefined}
+                            onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_out', checked === true)}
+                          />
+                        </TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center gap-0.5">
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              className="size-7 p-0"
-                              disabled={!canMoveUp}
-                              onClick={() => moveTruck(truck.id, 'up')}
-                              title="Move Up"
+                              className="size-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => setSelectedTruckForDetails(truck)}
                             >
-                              <ArrowUp className="size-3.5" />
+                              <Eye className="size-3.5" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              className="size-7 p-0"
-                              disabled={!canMoveDown}
-                              onClick={() => moveTruck(truck.id, 'down')}
-                              title="Move Down"
+                              className="size-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => openEditTruck(truck.id)}
                             >
-                              <ArrowDown className="size-3.5" />
+                              <Edit2 className="size-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="size-7 text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => handleDeleteTruck(truck.id)}
+                            >
+                              <Trash2 className="size-3.5" />
                             </Button>
                           </div>
-                        ) : (
-                          <span className="text-muted-foreground/30">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="font-medium text-xs">
-                        {truck.gate_no ? (
-                          <Badge variant="secondary" className="bg-primary/5 text-primary border-primary/10">
-                            {truck.gate_no}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground/30">—</span>
-                        )}
-                      </TableCell>
-                      {/* Step 1: Waiting — always enabled */}
-                      <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                        <Checkbox
-                          checked={truck.is_waiting ?? false}
-                          onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_waiting', checked === true)}
-                        />
-                      </TableCell>
-                      {/* Step 2: Loading In — enabled only after Waiting is checked */}
-                      <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                        <Checkbox
-                          checked={truck.is_loading ?? false}
-                          disabled={!canLoading || !canAdvanceByQueue}
-                          title={!canAdvanceByQueue ? 'Only first and second trucks in this gate queue can change status.' : undefined}
-                          onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_loading', checked === true)}
-                        />
-                      </TableCell>
-                      {/* Step 3: Loading Out — enabled only after Loading In is checked */}
-                      <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                        <Checkbox
-                          checked={truck.is_out ?? false}
-                          disabled={!canOut}
-                          title={!canAdvanceByQueue ? 'Only first and second trucks in this gate queue can change status.' : undefined}
-                          onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_out', checked === true)}
-                        />
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="icon-sm" onClick={() => setSelectedTruckForDetails(truck)}>
-                            <Eye className="size-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="icon-sm" onClick={() => openEditTruck(truck.id)}>
-                            <Edit2 className="size-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            className="text-destructive hover:bg-destructive/10"
-                            onClick={() => handleDeleteTruck(truck.id)}
-                          >
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
-      {/* ── ADD TRUCK MODAL ─────────────────────────────────────────────────── */}
+      {/* ── ADD TRUCK MODAL ────────────────────────────────────────────────────── */}
       <Modal
         isOpen={showAddTruck}
         onClose={() => setShowAddTruck(false)}
@@ -828,7 +778,7 @@ export default function TrucksPage() {
         {renderTruckFormFields()}
       </Modal>
 
-      {/* ── EDIT TRUCK MODAL ────────────────────────────────────────────────── */}
+      {/* ── EDIT TRUCK MODAL ──────────────────────────────────────────────────── */}
       <Modal
         isOpen={!!editingTruckId}
         onClose={() => { setEditingTruckId(null); resetTruckForm() }}
@@ -843,7 +793,7 @@ export default function TrucksPage() {
         {renderTruckFormFields()}
       </Modal>
 
-      {/* ── TRUCK DETAILS & STATUS LOG MODAL ────────────────────────────────── */}
+      {/* ── TRUCK DETAILS & STATUS LOG MODAL ──────────────────────────────────── */}
       <Modal
         isOpen={!!selectedTruckForDetails}
         onClose={() => setSelectedTruckForDetails(null)}
@@ -855,48 +805,54 @@ export default function TrucksPage() {
         {selectedTruckForDetails && (
           <div className="space-y-6">
             {/* Header info */}
-            <div className="flex items-start gap-4 rounded-xl border border-border bg-card p-4">
-              <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <Truck className="size-6" />
+            <div className="flex items-start gap-4 rounded-xl border border-border/60 bg-muted/20 p-4">
+              <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 border border-primary/20">
+                <Truck className="size-6 text-primary" />
               </div>
               <div className="space-y-1">
                 <h3 className="font-mono text-lg font-bold tracking-tight">
                   {selectedTruckForDetails.registration_number}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  {selectedTruckForDetails.gate_no ? `Gate: ${selectedTruckForDetails.gate_no}` : 'No gate selected'}
+                  {selectedTruckForDetails.gate_no
+                    ? `Gate: ${selectedTruckForDetails.gate_no.toUpperCase()}`
+                    : 'No gate selected'}
                 </p>
               </div>
             </div>
 
             {/* Timeline Log */}
             <div className="space-y-4">
-              <h4 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <Clock className="size-4" /> Status Transition Log
+              <h4 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                <Clock className="size-3.5" /> Status Transition Log
               </h4>
-              
-              <div className="relative border-l border-border pl-6 ml-3 space-y-6 py-2">
+
+              <div className="relative border-l-2 border-border/60 pl-6 ml-3 space-y-6 py-2">
                 {/* Step 1: Waiting */}
                 <div className="relative">
-                  <div className={`absolute left-[-31px] top-0.5 flex size-5 items-center justify-center rounded-full border text-[10px] font-bold ${
-                    selectedTruckForDetails.is_waiting 
-                      ? 'bg-amber-500 border-amber-500 text-white' 
-                      : 'bg-muted border-muted-foreground/30 text-muted-foreground'
+                  <div className={`absolute left-[-29px] top-0.5 flex size-5 items-center justify-center rounded-full border-2 text-[10px] font-bold transition-colors ${
+                    selectedTruckForDetails.is_waiting
+                      ? 'bg-amber-500 border-amber-500 text-white shadow-amber-500/30 shadow-md'
+                      : 'bg-card border-border text-muted-foreground'
                   }`}>
                     1
                   </div>
                   <div>
-                    <h5 className="font-medium text-sm">Waiting</h5>
+                    <h5 className="font-semibold text-sm flex items-center gap-1.5">
+                      Waiting
+                      {selectedTruckForDetails.is_waiting && (
+                        <span className="inline-block size-1.5 rounded-full bg-amber-400 animate-pulse" />
+                      )}
+                    </h5>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {selectedTruckForDetails.waiting_at ? (
-                        <>
-                          Entered Waiting State at:{' '}
+                        <>Entered at{' '}
                           <span className="font-medium text-foreground">
                             {new Date(selectedTruckForDetails.waiting_at).toLocaleString()}
                           </span>
                         </>
                       ) : (
-                        <span className="text-muted-foreground/60 italic">Not reached yet</span>
+                        <span className="italic">Not reached yet</span>
                       )}
                     </p>
                   </div>
@@ -904,25 +860,29 @@ export default function TrucksPage() {
 
                 {/* Step 2: Loading In */}
                 <div className="relative">
-                  <div className={`absolute left-[-31px] top-0.5 flex size-5 items-center justify-center rounded-full border text-[10px] font-bold ${
-                    selectedTruckForDetails.is_loading 
-                      ? 'bg-blue-500 border-blue-500 text-white' 
-                      : 'bg-muted border-muted-foreground/30 text-muted-foreground'
+                  <div className={`absolute left-[-29px] top-0.5 flex size-5 items-center justify-center rounded-full border-2 text-[10px] font-bold transition-colors ${
+                    selectedTruckForDetails.is_loading
+                      ? 'bg-blue-500 border-blue-500 text-white shadow-blue-500/30 shadow-md'
+                      : 'bg-card border-border text-muted-foreground'
                   }`}>
                     2
                   </div>
                   <div>
-                    <h5 className="font-medium text-sm">Loading In</h5>
+                    <h5 className="font-semibold text-sm flex items-center gap-1.5">
+                      Loading In
+                      {selectedTruckForDetails.is_loading && (
+                        <span className="inline-block size-1.5 rounded-full bg-blue-400 animate-pulse" />
+                      )}
+                    </h5>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {selectedTruckForDetails.loading_at ? (
-                        <>
-                          Started Loading In at:{' '}
+                        <>Started at{' '}
                           <span className="font-medium text-foreground">
                             {new Date(selectedTruckForDetails.loading_at).toLocaleString()}
                           </span>
                         </>
                       ) : (
-                        <span className="text-muted-foreground/60 italic">Not reached yet</span>
+                        <span className="italic">Not reached yet</span>
                       )}
                     </p>
                   </div>
@@ -930,25 +890,29 @@ export default function TrucksPage() {
 
                 {/* Step 3: Loading Out */}
                 <div className="relative">
-                  <div className={`absolute left-[-31px] top-0.5 flex size-5 items-center justify-center rounded-full border text-[10px] font-bold ${
-                    selectedTruckForDetails.is_out 
-                      ? 'bg-emerald-500 border-emerald-500 text-white' 
-                      : 'bg-muted border-muted-foreground/30 text-muted-foreground'
+                  <div className={`absolute left-[-29px] top-0.5 flex size-5 items-center justify-center rounded-full border-2 text-[10px] font-bold transition-colors ${
+                    selectedTruckForDetails.is_out
+                      ? 'bg-emerald-500 border-emerald-500 text-white shadow-emerald-500/30 shadow-md'
+                      : 'bg-card border-border text-muted-foreground'
                   }`}>
                     3
                   </div>
                   <div>
-                    <h5 className="font-medium text-sm">Loading Out</h5>
+                    <h5 className="font-semibold text-sm flex items-center gap-1.5">
+                      Loading Out / Dispatched
+                      {selectedTruckForDetails.is_out && (
+                        <span className="inline-block size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      )}
+                    </h5>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {selectedTruckForDetails.out_at ? (
-                        <>
-                          Dispatched / Loading Out at:{' '}
+                        <>Dispatched at{' '}
                           <span className="font-medium text-foreground">
                             {new Date(selectedTruckForDetails.out_at).toLocaleString()}
                           </span>
                         </>
                       ) : (
-                        <span className="text-muted-foreground/60 italic">Not reached yet</span>
+                        <span className="italic">Not reached yet</span>
                       )}
                     </p>
                   </div>
@@ -957,14 +921,14 @@ export default function TrucksPage() {
             </div>
 
             {/* Created timestamp */}
-            <div className="text-[11px] text-muted-foreground text-right">
-              Created: {new Date(selectedTruckForDetails.created_at).toLocaleString()}
+            <div className="text-[11px] text-muted-foreground text-right border-t border-border/40 pt-3">
+              Token created: {new Date(selectedTruckForDetails.created_at).toLocaleString()}
             </div>
           </div>
         )}
       </Modal>
 
-      {/* ── IMPORT PREVIEW MODAL ────────────────────────────────────────────── */}
+      {/* ── IMPORT PREVIEW MODAL ──────────────────────────────────────────────── */}
       <Modal
         isOpen={showImportPreview}
         onClose={() => { setShowImportPreview(false); setImportPreviewData([]) }}
@@ -980,10 +944,10 @@ export default function TrucksPage() {
       >
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            {importPreviewData.length} truck record{importPreviewData.length !== 1 ? 's' : ''} found in the file.
-            Review the preview below and click &quot;Confirm Import&quot; to add them.
+            {importPreviewData.length} truck record{importPreviewData.length !== 1 ? 's' : ''} found.
+            Review below and click &quot;Confirm Import&quot; to add them.
           </p>
-          <div className="max-h-[350px] overflow-auto rounded-lg border border-border">
+          <div className="max-h-[350px] overflow-auto rounded-lg border border-border/60">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1008,7 +972,8 @@ export default function TrucksPage() {
             <div>
               <p className="font-medium">Import Format Tip</p>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Your CSV or Excel file should have only these columns: <code className="rounded bg-muted px-1 font-mono text-[11px]">truck_number, gate</code>. Gate values should be lower-case <code className="rounded bg-muted px-1 font-mono text-[11px]">d4</code> or <code className="rounded bg-muted px-1 font-mono text-[11px]">d5</code>.
+                Your CSV or Excel file should have columns: <code className="rounded bg-muted px-1 font-mono text-[11px]">truck_number, gate</code>.
+                Gate values should be lower-case like <code className="rounded bg-muted px-1 font-mono text-[11px]">d1</code> or <code className="rounded bg-muted px-1 font-mono text-[11px]">d2</code>.
               </p>
             </div>
           </div>

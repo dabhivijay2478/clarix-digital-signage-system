@@ -42,7 +42,7 @@ const navItems: NavItem[] = [
   { href: '/screens', label: 'Screens', icon: Monitor },
   { href: '/content', label: 'Content', icon: PlaySquare },
   { href: '/production-data', label: 'Production Data', icon: FileSpreadsheet },
-  { href: '/trucks', label: 'Fleet', icon: Truck },
+  { href: '/trucks', label: 'Truck Token', icon: Truck },
   { href: '/team', label: 'Team', icon: Users },
   { href: '/settings', label: 'Settings', icon: Settings, developerOnly: true },
 ]
