@@ -291,10 +291,12 @@ fn normalize_purpose(value: Option<&str>) -> String {
 }
 
 fn normalize_gate(value: Option<String>) -> Option<String> {
-    match value.unwrap_or_default().trim().to_lowercase().as_str() {
-        "d4" => Some("d4".to_string()),
-        "d5" => Some("d5".to_string()),
-        _ => None,
+    let gate = value.unwrap_or_default().trim().to_lowercase();
+    // Allow any gate format: letter prefix + digits (e.g., d1, d4, g10)
+    if gate.is_empty() {
+        None
+    } else {
+        Some(gate)
     }
 }
 

@@ -68,7 +68,7 @@ interface GateStore {
 export const useGateStore = create<GateStore>()(
   persist(
     (set, get) => ({
-      gates: [],
+      gates: [], // No default gates - user adds them manually
       assignments: {},
 
       addGate: (number) => {
@@ -173,7 +173,14 @@ export const useGateStore = create<GateStore>()(
     }),
     {
       name: 'mg-enterprise-gates',
-      version: 1,
+      version: 2, // Bumped to clear old default gates
+      migrate: (persistedState: any, version: number) => {
+        // Clear all gates on version upgrade to remove default D4/D5
+        if (version < 2) {
+          return { gates: [], assignments: {} }
+        }
+        return persistedState
+      },
     }
   )
 )
