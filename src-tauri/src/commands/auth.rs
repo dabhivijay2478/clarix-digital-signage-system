@@ -73,85 +73,134 @@ pub async fn login_user(
     let pool = pool.inner().clone();
     tokio::task::spawn_blocking(move || {
         let normalized_email = email.trim().to_lowercase();
-
-        // ── Read admin user from ADMIN_USER env var ──
-        let (name, env_password, role_str, raw_email, is_developer) = parse_env_admin_user()
-            .ok_or_else(|| anyhow::anyhow!("ADMIN_USER env var not set or invalid. Format: email,password,name,role,is_developer"))?;
-
-        // Only dev users can login
-        if !is_developer {
-            anyhow::bail!("Only dev users can login. Set is_developer to true in ADMIN_USER env var.");
-        }
-
-        // Check email match
-        if raw_email.to_lowercase().trim() != normalized_email {
-            anyhow::bail!("Invalid email or password.");
-        }
-
-        // Compare plain-text password
-        if password.trim() != env_password.trim() {
-            anyhow::bail!("Invalid email or password.");
-        }
-
         let conn = pool.get()?;
 
-        // Upsert user in DB to ensure user_id exists for session
-        let user_id = uuid::Uuid::new_v4().to_string();
-        let now = Utc::now().to_rfc3339();
-        let existing_id: Option<String> = conn
+        // First, check if this is the env-based admin user
+        if let Some((name, env_password, role_str, raw_email, is_developer)) = parse_env_admin_user() {
+            if raw_email.to_lowercase().trim() == normalized_email {
+                // Compare plain-text password for env admin
+                if password.trim() != env_password.trim() {
+                    anyhow::bail!("Invalid email or password.");
+                }
+
+                // Upsert env admin user in DB
+                let user_id = uuid::Uuid::new_v4().to_string();
+                let now = Utc::now().to_rfc3339();
+                let existing_id: Option<String> = conn
+                    .query_row(
+                        "SELECT id FROM users WHERE lower(email) = ?1",
+                        params![normalized_email],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
+
+                let user_id = if let Some(uid) = existing_id {
+                    conn.execute(
+                        "UPDATE users SET name = ?1, role = ?2, is_developer = ?3, updated_at = ?4 WHERE id = ?5",
+                        params![name, role_str, is_developer, now, uid],
+                    )?;
+                    uid
+                } else {
+                    conn.execute(
+                        "INSERT INTO users (id, name, email, password_hash, role, is_developer, created_at, updated_at)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+                        params![user_id, name, raw_email, "", role_str, is_developer, now],
+                    )?;
+                    user_id
+                };
+
+                // Create session
+                let token = uuid::Uuid::new_v4().to_string();
+                let session_id = uuid::Uuid::new_v4().to_string();
+                let created_at = Utc::now();
+                let expires_at = created_at + Duration::days(7);
+                conn.execute(
+                    "INSERT INTO sessions (id, user_id, token, created_at, expires_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![
+                        session_id,
+                        user_id,
+                        token,
+                        created_at.to_rfc3339(),
+                        expires_at.to_rfc3339(),
+                    ],
+                )?;
+
+                let user = AuthUser {
+                    id: user_id,
+                    name,
+                    email: raw_email,
+                    role: AdminRole::from_str(&role_str),
+                    is_developer,
+                    created_at: parse_date(now),
+                };
+
+                return Ok::<_, anyhow::Error>(AuthSession {
+                    token,
+                    expires_at,
+                    user,
+                });
+            }
+        }
+
+        // Check for regular users (invited users) - using plain text password for debugging
+        let user_row: Option<(String, String, String, String, bool, String)> = conn
             .query_row(
-                "SELECT id FROM users WHERE lower(email) = ?1",
+                "SELECT id, name, email, role, is_developer, password_hash FROM users WHERE lower(email) = ?1",
                 params![normalized_email],
-                |row| row.get(0),
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
             )
             .optional()?;
 
-        let user_id = if let Some(uid) = existing_id {
-            conn.execute(
-                "UPDATE users SET name = ?1, role = ?2, is_developer = ?3, updated_at = ?4 WHERE id = ?5",
-                params![name, role_str, is_developer, now, uid],
-            )?;
-            uid
-        } else {
-            conn.execute(
-                "INSERT INTO users (id, name, email, password_hash, role, is_developer, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
-                params![user_id, name, raw_email, "", role_str, is_developer, now],
-            )?;
-            user_id
-        };
+        if let Some((user_id, name, user_email, role_str, is_developer, stored_password)) = user_row {
+            // Plain text password comparison for debugging
+            if password.trim() != stored_password.trim() {
+                anyhow::bail!("Invalid email or password.");
+            }
 
-        // Create session
-        let token = uuid::Uuid::new_v4().to_string();
-        let session_id = uuid::Uuid::new_v4().to_string();
-        let created_at = Utc::now();
-        let expires_at = created_at + Duration::days(7);
-        conn.execute(
-            "INSERT INTO sessions (id, user_id, token, created_at, expires_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![
-                session_id,
-                user_id,
+            // Create session
+            let token = uuid::Uuid::new_v4().to_string();
+            let session_id = uuid::Uuid::new_v4().to_string();
+            let created_at = Utc::now();
+            let expires_at = created_at + Duration::days(7);
+            conn.execute(
+                "INSERT INTO sessions (id, user_id, token, created_at, expires_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    session_id,
+                    user_id,
+                    token,
+                    created_at.to_rfc3339(),
+                    expires_at.to_rfc3339(),
+                ],
+            )?;
+
+            let user = AuthUser {
+                id: user_id,
+                name,
+                email: user_email,
+                role: AdminRole::from_str(&role_str),
+                is_developer,
+                created_at: parse_date(created_at.to_rfc3339()),
+            };
+
+            return Ok::<_, anyhow::Error>(AuthSession {
                 token,
-                created_at.to_rfc3339(),
-                expires_at.to_rfc3339(),
-            ],
-        )?;
+                expires_at,
+                user,
+            });
+        }
 
-        let user = AuthUser {
-            id: user_id,
-            name,
-            email: raw_email,
-            role: AdminRole::from_str(&role_str),
-            is_developer,
-            created_at: parse_date(now),
-        };
-
-        Ok::<_, anyhow::Error>(AuthSession {
-            token,
-            expires_at,
-            user,
-        })
+        anyhow::bail!("Invalid email or password.");
     })
     .await
     .map_err(|error| error.to_string())?
@@ -310,6 +359,7 @@ pub async fn accept_team_invite(
         }
 
         let user_id = uuid::Uuid::new_v4().to_string();
+        // Store plain text password for debugging (as requested)
         tx.execute(
             "INSERT INTO users (id, name, email, password_hash, role, is_developer, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
@@ -317,7 +367,7 @@ pub async fn accept_team_invite(
                 user_id,
                 name.trim(),
                 invite.email,
-                security::hash_password(&password)?,
+                password.trim(), // Plain text for debugging
                 invite.role.as_str(),
                 invite.is_developer,
                 now.to_rfc3339(),
@@ -364,6 +414,117 @@ pub async fn get_role_permissions(token: String, pool: State<'_, DbPool>) -> Res
             Vec::new()
         };
         Ok::<_, anyhow::Error>(perms)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_team_invite(
+    token: String,
+    invite_id: String,
+    pool: State<'_, DbPool>,
+) -> Result<(), String> {
+    let pool = pool.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+        // Only super admins (dev users) can delete invites
+        ensure_super_admin(&conn, &token)?;
+        conn.execute(
+            "DELETE FROM team_invites WHERE id = ?1",
+            params![invite_id],
+        )?;
+        Ok::<_, anyhow::Error>(())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_team_member(
+    token: String,
+    user_id: String,
+    pool: State<'_, DbPool>,
+) -> Result<(), String> {
+    let pool = pool.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+        // Only super admins (dev users) can delete members
+        ensure_super_admin(&conn, &token)?;
+        // Delete user's sessions first
+        conn.execute(
+            "DELETE FROM sessions WHERE user_id = ?1",
+            params![user_id],
+        )?;
+        // Delete user
+        conn.execute(
+            "DELETE FROM users WHERE id = ?1",
+            params![user_id],
+        )?;
+        Ok::<_, anyhow::Error>(())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn update_team_member(
+    token: String,
+    user_id: String,
+    role: String,
+    is_developer: bool,
+    pool: State<'_, DbPool>,
+) -> Result<AuthUser, String> {
+    let pool = pool.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+        // Only super admins (dev users) can update members
+        ensure_super_admin(&conn, &token)?;
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "UPDATE users SET role = ?1, is_developer = ?2, updated_at = ?3 WHERE id = ?4",
+            params![role, is_developer, now, user_id],
+        )?;
+        // Return updated user
+        let user = conn.query_row(
+            "SELECT id, name, email, role, is_developer, created_at FROM users WHERE id = ?1",
+            params![user_id],
+            row_to_user,
+        )?;
+        Ok::<_, anyhow::Error>(user)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn reset_team_member_password(
+    token: String,
+    user_id: String,
+    new_password: String,
+    pool: State<'_, DbPool>,
+) -> Result<(), String> {
+    let pool = pool.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+        // Only super admins (dev users) can reset passwords
+        ensure_super_admin(&conn, &token)?;
+        let now = Utc::now().to_rfc3339();
+        // Store plain text password for debugging
+        conn.execute(
+            "UPDATE users SET password_hash = ?1, updated_at = ?2 WHERE id = ?3",
+            params![new_password.trim(), now, user_id],
+        )?;
+        // Delete all existing sessions for this user to force re-login
+        conn.execute(
+            "DELETE FROM sessions WHERE user_id = ?1",
+            params![user_id],
+        )?;
+        Ok::<_, anyhow::Error>(())
     })
     .await
     .map_err(|error| error.to_string())?

@@ -459,10 +459,18 @@ export const authApi = {
     tauriInvoke<AuthUser[]>('get_team_members', { token }),
   invites: (token: string) =>
     tauriInvoke<TeamInvite[]>('get_team_invites', { token }),
-  createInvite: (token: string, email: string, role: AdminRole, isDeveloper: boolean) =>
-    tauriInvoke<TeamInvite>('create_team_invite', { token, email, role, isDeveloper }),
+  createInvite: (token: string, email: string, role: AdminRole, isDeveloper: boolean, password?: string) =>
+    tauriInvoke<TeamInvite>('create_team_invite', { token, email, role, isDeveloper, password }),
+  deleteInvite: (token: string, inviteId: string) =>
+    tauriInvoke<void>('delete_team_invite', { token, inviteId }),
   acceptInvite: (code: string, name: string, password: string) =>
     tauriInvoke<AuthSession>('accept_team_invite', { code, name, password }),
+  updateMember: (token: string, userId: string, role: AdminRole, isDeveloper: boolean) =>
+    tauriInvoke<AuthUser>('update_team_member', { token, userId, role, isDeveloper }),
+  deleteMember: (token: string, userId: string) =>
+    tauriInvoke<void>('delete_team_member', { token, userId }),
+  resetMemberPassword: (token: string, userId: string, newPassword: string) =>
+    tauriInvoke<void>('reset_team_member_password', { token, userId, newPassword }),
   getRolePermissions: (token: string) =>
     tauriInvoke<string[]>('get_role_permissions', { token }),
 };
