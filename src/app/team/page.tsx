@@ -25,13 +25,14 @@ const roleOptions: Array<{ value: AdminRole; label: string }> = [
 
 export default function TeamPage() {
   const { token, user } = useAuthStore()
-  const { hasPermission } = usePermissions()
+  const { hasPermission, isSuperAdmin } = usePermissions()
   const [members, setMembers] = useState<AuthUser[]>([])
   const [invites, setInvites] = useState<TeamInvite[]>([])
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<AdminRole>('Manager')
   const [isDeveloper, setIsDeveloper] = useState(false)
   const [loading, setLoading] = useState(false)
+  const canAddTeamMember = isSuperAdmin && hasPermission('team')
 
   const loadTeam = useCallback(async () => {
     if (!token || !hasPermission('team')) return
@@ -90,29 +91,31 @@ export default function TeamPage() {
         <p className="page-subtitle">Invite local users and assign their MG Enterprise role.</p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><UserPlus className="size-5" /> Invite Team Member</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 lg:grid-cols-[1fr_220px_180px_auto] lg:items-end">
-          <div className="space-y-2">
-            <Label>Email</Label>
-            <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="operator@company.com" />
-          </div>
-          <div className="space-y-2">
-            <Label>Role</Label>
-            <Select value={role} onValueChange={(value) => setRole(value as AdminRole)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>{roleOptions.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">
-            <Label>Developer</Label>
-            <Switch checked={isDeveloper} onCheckedChange={setIsDeveloper} />
-          </div>
-          <Button onClick={createInvite}>Create Invite</Button>
-        </CardContent>
-      </Card>
+      {canAddTeamMember && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><UserPlus className="size-5" /> Invite Team Member</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 lg:grid-cols-[1fr_220px_180px_auto] lg:items-end">
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="operator@company.com" />
+            </div>
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <Select value={role} onValueChange={(value) => setRole(value as AdminRole)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{roleOptions.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">
+              <Label>Developer</Label>
+              <Switch checked={isDeveloper} onCheckedChange={setIsDeveloper} />
+            </div>
+            <Button onClick={createInvite}>Create Invite</Button>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-2">
         <Card>

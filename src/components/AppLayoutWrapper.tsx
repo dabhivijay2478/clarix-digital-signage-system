@@ -177,7 +177,7 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
     )
   }
 
-  if (pathname === '/settings' && !hasPermission('all')) {
+  if (pathname === '/settings' && !hasPermission('settings')) {
     return (
       <div className="min-h-screen bg-background">
         <Sidebar isCollapsed={isCollapsed} onToggle={toggle} />

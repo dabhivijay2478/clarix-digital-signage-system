@@ -3,10 +3,11 @@
 import { useMemo } from 'react'
 import { useAuthStore } from '@/store/authStore'
 
-export type AppPermission = 'all' | 'screens' | 'content' | 'production' | 'trucks' | 'team' | 'view'
+export type AppPermission = 'all' | 'screens' | 'content' | 'production' | 'trucks' | 'team' | 'view' | 'settings'
 
 const rolePerms: Record<string, AppPermission[]> = {
-  SiteSuperAdmin: ['screens', 'content', 'production', 'trucks', 'team'],
+  SuperAdmin: ['screens', 'content', 'production', 'trucks', 'team', 'settings'],
+  SiteSuperAdmin: ['screens', 'content', 'production', 'trucks', 'team', 'settings'],
   Manager: ['screens', 'content', 'production', 'trucks'],
   User: ['view'],
 }
@@ -19,8 +20,15 @@ export function usePermissions() {
     return rolePerms[user.role] ?? ['view']
   }, [user])
 
+  const isSuperAdmin = useMemo(() => {
+    if (!user) return false
+    if (user.is_developer) return true
+    return user.role === 'SuperAdmin' || user.role === 'SiteSuperAdmin'
+  }, [user])
+
   return {
     perms,
+    isSuperAdmin,
     hasPermission(perm: AppPermission) {
       if (perms.length === 0) return false
       if (perms.includes('all')) return true

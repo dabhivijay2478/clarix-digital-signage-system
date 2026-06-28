@@ -116,7 +116,7 @@ export default function ScreensPage() {
   // Gate store configuration hooks
   const { gates, assignments, addGate, removeGate, assignScreen, unassignScreen, getAllAssignedScreenIds, unassignScreenFromAll, getAssignedGateForScreen } = useGateStore();
   const authUser = useAuthStore((s) => s.user);
-  const { hasPermission } = usePermissions();
+  const { hasPermission, isSuperAdmin } = usePermissions();
   const [showAddGate, setShowAddGate] = useState(false);
   const [newGateNumber, setNewGateNumber] = useState('');
   const [selectedGateForAssign, setSelectedGateForAssign] = useState<string | null>(null);
@@ -1270,7 +1270,8 @@ export default function ScreensPage() {
     );
   }
 
-  const canAddScreen = hasPermission('screens');
+  const canAddScreen = isSuperAdmin && hasPermission('screens');
+  const canManageGates = isSuperAdmin;
 
   return (
     <div className="space-y-6">
@@ -1386,9 +1387,11 @@ export default function ScreensPage() {
             <p className="text-sm text-muted-foreground">
               {gates.length} gate{gates.length !== 1 ? 's' : ''} configured
             </p>
-            <Button onClick={() => { setNewGateNumber(''); setShowAddGate(true) }} size="sm">
-              <Plus className="size-4 mr-1.5" /> Add Gate
-            </Button>
+            {canManageGates && (
+              <Button onClick={() => { setNewGateNumber(''); setShowAddGate(true) }} size="sm">
+                <Plus className="size-4 mr-1.5" /> Add Gate
+              </Button>
+            )}
           </div>
 
           {gates.length === 0 ? (

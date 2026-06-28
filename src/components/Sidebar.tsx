@@ -45,7 +45,7 @@ const navItems: NavItem[] = [
   { href: '/production-data', label: 'Production Data', icon: FileSpreadsheet, permission: 'production' },
   { href: '/trucks', label: 'Truck Token', icon: Truck, permission: 'trucks' },
   { href: '/team', label: 'Team', icon: Users, permission: 'team' },
-  { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/settings', label: 'Settings', icon: Settings, permission: 'settings' },
 ]
 
 interface SidebarProps {
