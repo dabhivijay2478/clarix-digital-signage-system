@@ -34,7 +34,6 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { createWidget, displayValue, getProductionTable, isNumericColumn } from '@/lib/production'
 import { customConfirm, productionApi, screensApi } from '@/lib/tauri'
@@ -302,13 +301,12 @@ export default function ProductionDataPage() {
     if (!bundle) return
     setSaving(true)
     try {
-      const dataset = await productionApi.updateDataset({ ...bundle.dataset, selected_table_id: activeTableId })
       const dashboard = await productionApi.updateDashboard(bundle.dashboard)
-      setBundle({ dataset, dashboard })
+      setBundle({ ...bundle, dashboard })
       await loadDashboards(dashboard.id)
-      showToast('Names and default table saved', 'success')
+      showToast('Dashboard name saved', 'success')
     } catch (error) {
-      showToast(`Failed to save names: ${error}`, 'error')
+      showToast(`Failed to save name: ${error}`, 'error')
     } finally {
       setSaving(false)
     }
@@ -445,39 +443,20 @@ export default function ProductionDataPage() {
               </SelectContent>
             </Select>
           )}
-          <Button variant="outline" onClick={handleSaveDashboard} disabled={saving}><Save />Save</Button>
-          {activeTab === 'dashboard' && (
-            <Button onClick={handleAddToContent} disabled={contentSaving} className="ml-auto h-9"><Send className="size-4 shrink-0" /><span className="hidden sm:inline">{contentSaving ? 'Adding...' : 'Add to Content'}</span></Button>
-          )}
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="outline" onClick={handleSaveDashboard} disabled={saving} className="h-9"><Save className="size-4 shrink-0" /><span className="hidden sm:inline">Save</span></Button>
+            {activeTab === 'dashboard' && (
+              <Button onClick={handleAddToContent} disabled={contentSaving} className="h-9"><Send className="size-4 shrink-0" /><span className="hidden sm:inline">{contentSaving ? 'Adding...' : 'Add to Content'}</span></Button>
+            )}
+          </div>
         </div>
 
         <TabsContent value="dashboard" className="space-y-4">
-          <Card>
-            <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:flex-wrap">
-              <Input
-                className="max-w-xs"
-                value={bundle.dashboard.name}
-                onChange={(event) => updateDashboard((dashboard) => ({ ...dashboard, name: event.target.value }))}
-                placeholder="Dashboard name"
-              />
-              <Input
-                className="max-w-xs"
-                value={bundle.dataset.name}
-                onChange={(event) => setBundle((current) => current ? { ...current, dataset: { ...current.dataset, name: event.target.value } } : current)}
-                placeholder="Dataset name"
-              />
-              <div className="flex flex-wrap gap-2 sm:ml-auto">
-                <Button variant="outline" onClick={() => liveRefreshInputRef.current?.click()} disabled={saving} className="h-9"><RefreshCw className="size-4 shrink-0" /><span className="hidden sm:inline">Refresh file</span></Button>
-                <Button variant="outline" onClick={handleSaveNames} disabled={saving} className="h-9"><Save className="size-4 shrink-0" /><span className="hidden sm:inline">Save</span></Button>
-                <Button variant="ghost" size="icon" onClick={handleDeleteDataset} disabled={saving} title="Delete dashboard & dataset" className="h-9 w-9 text-destructive hover:text-destructive"><Trash2 className="size-4" /></Button>
-              </div>
-            </CardContent>
-          </Card>
           <ProductionDashboardRenderer bundle={bundle} />
         </TabsContent>
 
         <TabsContent value="data" className={cn("m-0 w-full min-w-0", isEntriesTab && "flex-1 min-h-0 flex flex-col w-full min-w-0")}>
-          <div className={cn("flex flex-col w-full min-w-0 overflow-hidden rounded-xl border border-border/70 bg-card", isEntriesTab && "flex-1 min-h-0 w-full min-w-0")}>
+          <div className={cn("flex flex-col w-full min-w-0 rounded-xl border border-border/70 bg-card", isEntriesTab && "flex-1 min-h-0 w-full min-w-0 overflow-hidden")}>
             <div className="flex flex-wrap items-center gap-2 border-b border-border/50 px-3 py-2 sm:px-4 shrink-0">
               <Select value={activeTableId ?? undefined} onValueChange={setActiveTableId}>
                 <SelectTrigger className="h-9 w-[140px] sm:w-[180px]"><SelectValue placeholder="Table" /></SelectTrigger>
@@ -494,10 +473,10 @@ export default function ProductionDataPage() {
                 <Button onClick={handleSaveRows} disabled={saving} size="sm" className="h-9"><Save className="size-4 shrink-0" /><span className="hidden sm:inline">Save</span></Button>
               </div>
             </div>
-            <div className="flex-1 min-h-0 w-full">
+            <div className="flex-1 min-h-0 w-full min-w-0 relative">
               {activeTable ? (
-                <ScrollArea className="h-full w-full">
-                  <Table>
+                <div className="absolute inset-0 overflow-auto">
+                  <Table className="min-w-max">
                     <TableHeader className="sticky top-0 z-10 bg-card">
                       <TableRow>
                         {activeTable.columns.map((column) => <TableHead key={column.key} className="whitespace-nowrap">{column.label}</TableHead>)}
@@ -530,7 +509,7 @@ export default function ProductionDataPage() {
                       ))}
                     </TableBody>
                   </Table>
-                </ScrollArea>
+                </div>
               ) : (
                 <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Choose a table to edit.</div>
               )}
@@ -770,11 +749,21 @@ export default function ProductionDataPage() {
                   <CollapsibleTrigger asChild>
                     <button type="button" className="group flex w-full flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 text-sm transition-colors hover:bg-muted/40 sm:gap-3 sm:px-4 sm:py-3">
                       <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
-                      <span className="font-semibold truncate">{bundle.dashboard.name}</span>
+                      <Input
+                        value={bundle.dashboard.name}
+                        onChange={(event) => updateDashboard((dashboard) => ({ ...dashboard, name: event.target.value }))}
+                        placeholder="Dashboard name"
+                        className="h-8 w-48 sm:w-56 bg-transparent border-0 px-0 text-sm font-semibold focus-visible:ring-0 focus-visible:ring-offset-0"
+                        onClick={(e) => e.stopPropagation()}
+                      />
                       <span className="text-xs text-muted-foreground sm:text-sm">{bundle.dataset.tables.length} tables</span>
                       <span className="text-xs text-muted-foreground sm:text-sm">{dashboardRowCount.toLocaleString()} rows</span>
-                      <span className="text-xs text-muted-foreground sm:text-sm">{assignedProductionScreens} screens</span>
                       <span className="ml-auto hidden truncate text-xs text-muted-foreground sm:inline">{bundle.dataset.source_name}</span>
+                      <div className="flex items-center gap-1.5 ml-2" onClick={(e) => e.stopPropagation()}>
+                        <Button variant="ghost" size="icon-sm" onClick={() => liveRefreshInputRef.current?.click()} disabled={saving} title="Refresh file" className="h-8 w-8"><RefreshCw className="size-4" /></Button>
+                        <Button variant="ghost" size="icon-sm" onClick={handleSaveNames} disabled={saving} title="Save" className="h-8 w-8"><Save className="size-4" /></Button>
+                        <Button variant="ghost" size="icon-sm" onClick={handleDeleteDataset} disabled={saving} title="Delete" className="h-8 w-8 text-destructive hover:text-destructive"><Trash2 className="size-4" /></Button>
+                      </div>
                     </button>
                   </CollapsibleTrigger>
                   <CollapsibleContent className={cn("pt-5", isEntriesTab && "flex-1 min-h-0 flex flex-col pt-4 w-full min-w-0")}>
@@ -810,11 +799,21 @@ export default function ProductionDataPage() {
               <CollapsibleTrigger asChild>
                 <button type="button" className="group flex w-full flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 text-sm transition-colors hover:bg-muted/40 sm:gap-3 sm:px-4 sm:py-3">
                   <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
-                  <span className="font-semibold truncate">{bundle.dashboard.name}</span>
+                  <Input
+                    value={bundle.dashboard.name}
+                    onChange={(event) => updateDashboard((dashboard) => ({ ...dashboard, name: event.target.value }))}
+                    placeholder="Dashboard name"
+                    className="h-8 w-48 sm:w-56 bg-transparent border-0 px-0 text-sm font-semibold focus-visible:ring-0 focus-visible:ring-offset-0"
+                    onClick={(e) => e.stopPropagation()}
+                  />
                   <span className="text-xs text-muted-foreground sm:text-sm">{bundle.dataset.tables.length} tables</span>
                   <span className="text-xs text-muted-foreground sm:text-sm">{dashboardRowCount.toLocaleString()} rows</span>
-                  <span className="text-xs text-muted-foreground sm:text-sm">{assignedProductionScreens} screens</span>
                   <span className="ml-auto hidden truncate text-xs text-muted-foreground sm:inline">{bundle.dataset.source_name}</span>
+                  <div className="flex items-center gap-1.5 ml-2" onClick={(e) => e.stopPropagation()}>
+                    <Button variant="ghost" size="icon-sm" onClick={() => liveRefreshInputRef.current?.click()} disabled={saving} title="Refresh file" className="h-8 w-8"><RefreshCw className="size-4" /></Button>
+                    <Button variant="ghost" size="icon-sm" onClick={handleSaveNames} disabled={saving} title="Save" className="h-8 w-8"><Save className="size-4" /></Button>
+                    <Button variant="ghost" size="icon-sm" onClick={handleDeleteDataset} disabled={saving} title="Delete" className="h-8 w-8 text-destructive hover:text-destructive"><Trash2 className="size-4" /></Button>
+                  </div>
                 </button>
               </CollapsibleTrigger>
               <CollapsibleContent className={cn("pt-5", isEntriesTab && "flex-1 min-h-0 flex flex-col pt-4 w-full min-w-0")}>
