@@ -157,7 +157,7 @@ export default function ContentPage() {
 
   const handleDelete = async (id: string) => {
     await deleteItem(id);
-    showToast('Content deleted', 'info');
+    showToast('Content deleted', 'error');
     setDeleteId(null);
   };
 

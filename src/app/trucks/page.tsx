@@ -24,6 +24,7 @@ import { useScreens } from '@/hooks/useScreens'
 import { showToast } from '@/components/Toast'
 import Modal from '@/components/Modal'
 import { customConfirm, productionApi, truckAlertsApi } from '@/lib/tauri'
+import { formatDateTime } from '@/lib/utils'
 import {
   createTruckScreenAlert,
   getTruckStatusInfo,
@@ -327,7 +328,7 @@ export default function TrucksPage() {
     const confirmed = await customConfirm(`Delete truck "${truck?.registration_number}"?`)
     if (confirmed) {
       deleteTruck(id)
-      showToast('Truck deleted', 'info')
+      showToast('Truck deleted', 'error')
     }
   }
 
@@ -857,7 +858,7 @@ export default function TrucksPage() {
                       {selectedTruckForDetails.waiting_at ? (
                         <>Entered at{' '}
                           <span className="font-medium text-foreground">
-                            {new Date(selectedTruckForDetails.waiting_at).toLocaleString()}
+                            {formatDateTime(selectedTruckForDetails.waiting_at)}
                           </span>
                         </>
                       ) : (
@@ -887,7 +888,7 @@ export default function TrucksPage() {
                       {selectedTruckForDetails.loading_at ? (
                         <>Started at{' '}
                           <span className="font-medium text-foreground">
-                            {new Date(selectedTruckForDetails.loading_at).toLocaleString()}
+                            {formatDateTime(selectedTruckForDetails.loading_at)}
                           </span>
                         </>
                       ) : (
@@ -917,7 +918,7 @@ export default function TrucksPage() {
                       {selectedTruckForDetails.out_at ? (
                         <>Dispatched at{' '}
                           <span className="font-medium text-foreground">
-                            {new Date(selectedTruckForDetails.out_at).toLocaleString()}
+                            {formatDateTime(selectedTruckForDetails.out_at)}
                           </span>
                         </>
                       ) : (
@@ -931,7 +932,7 @@ export default function TrucksPage() {
 
             {/* Created timestamp */}
             <div className="text-[11px] text-muted-foreground text-right border-t border-border/40 pt-3">
-              Token created: {new Date(selectedTruckForDetails.created_at).toLocaleString()}
+              Token created: {formatDateTime(selectedTruckForDetails.created_at)}
             </div>
           </div>
         )}

@@ -48,6 +48,7 @@ pub fn init_db(app_data_dir: &str) -> Result<DbPool> {
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN last_seen TEXT", []);
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN last_sync_revision INTEGER NOT NULL DEFAULT 0", []);
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN force_sync BOOLEAN NOT NULL DEFAULT 0", []);
+    let _ = conn.execute("ALTER TABLE device_settings ADD COLUMN content_library_path TEXT", []);
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN is_fullscreen BOOLEAN NOT NULL DEFAULT 0", []);
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN purpose TEXT NOT NULL DEFAULT 'playlist'", []);
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN gate TEXT", []);
@@ -76,65 +77,6 @@ pub fn init_db(app_data_dir: &str) -> Result<DbPool> {
             rusqlite::params![device_id, hostname, NETWORK_PROTOCOL_VERSION],
         )?;
     }
-
-    let now = chrono::Utc::now().to_rfc3339();
-    conn.execute(
-        "INSERT OR IGNORE INTO screens (id, name, location, resolution_w, resolution_h, brightness, power_on, orientation, created_at, pairing_status)
-         VALUES ('d4-gate-screen', 'D4 Gate Screen', 'Gate D4', 1920, 1080, 80, 1, 'Landscape', ?1, 'unpaired')",
-        rusqlite::params![now],
-    )?;
-    conn.execute(
-        "INSERT OR IGNORE INTO screens (id, name, location, resolution_w, resolution_h, brightness, power_on, orientation, created_at, pairing_status)
-         VALUES ('d5-gate-screen', 'D5 Gate Screen', 'Gate D5', 1920, 1080, 80, 1, 'Landscape', ?1, 'unpaired')",
-        rusqlite::params![now],
-    )?;
-
-    let now = chrono::Utc::now().to_rfc3339();
-    // Seed default content items
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO content_items (id, name, content_type, url, duration_secs, tags, created_at)
-         VALUES ('d4-gate-display-content', 'D4 Gate Display', 'WebApp', '/trucks/display?gate=d4', 30, '[\"gate\",\"d4\"]', ?1)",
-        rusqlite::params![now],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO content_items (id, name, content_type, url, duration_secs, tags, created_at)
-         VALUES ('d5-gate-display-content', 'D5 Gate Display', 'WebApp', '/trucks/display?gate=d5', 30, '[\"gate\",\"d5\"]', ?1)",
-        rusqlite::params![now],
-    );
-
-    // Seed default playlists
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO playlists (id, name, loop_enabled, transition, created_at)
-         VALUES ('d4-gate-playlist', 'Playlist for D4 Gate Screen', 1, 'Fade', ?1)",
-        rusqlite::params![now],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO playlists (id, name, loop_enabled, transition, created_at)
-         VALUES ('d5-gate-playlist', 'Playlist for D5 Gate Screen', 1, 'Fade', ?1)",
-        rusqlite::params![now],
-    );
-
-    // Seed default playlist items
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO playlist_items (id, playlist_id, content_id, order_index, override_duration, display_schedule)
-         VALUES ('d4-gate-playlist-item', 'd4-gate-playlist', 'd4-gate-display-content', 0, NULL, '{}')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO playlist_items (id, playlist_id, content_id, order_index, override_duration, display_schedule)
-         VALUES ('d5-gate-playlist-item', 'd5-gate-playlist', 'd5-gate-display-content', 0, NULL, '{}')",
-        [],
-    );
-
-    // Update screens to link to these playlists
-    let _ = conn.execute(
-        "UPDATE screens SET playlist_id = 'd4-gate-playlist' WHERE id = 'd4-gate-screen' AND playlist_id IS NULL",
-        [],
-    );
-    let _ = conn.execute(
-        "UPDATE screens SET playlist_id = 'd5-gate-playlist' WHERE id = 'd5-gate-screen' AND playlist_id IS NULL",
-        [],
-    );
 
     // Reset stale ports left by old port-scanning fallback logic.
     // The canonical default is 7420; runtime overrides use CLARIX_PORT or SIGNALOS_PORT env var.

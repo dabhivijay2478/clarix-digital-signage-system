@@ -39,7 +39,7 @@ pub async fn save_production_import(
         let now = Utc::now();
         let dataset_id = uuid::Uuid::new_v4().to_string();
         let dashboard_id = uuid::Uuid::new_v4().to_string();
-        let selected_table_id = choose_default_table(&import_result.tables).map(|table| table.id.clone());
+        let selected_table_id = import_result.tables.iter().find(|table| table.kind == "raw").or_else(|| import_result.tables.first()).map(|table| table.id.clone());
         let widgets = default_widgets(&import_result.tables);
         let dataset = ProductionDataset {
             id: dataset_id.clone(),
@@ -206,7 +206,7 @@ pub async fn refresh_production_dataset_from_file(
             .unwrap_or(false)
             == false
         {
-            dataset.selected_table_id = choose_default_table(&dataset.tables).map(|table| table.id.clone());
+            dataset.selected_table_id = dataset.tables.iter().find(|table| table.kind == "raw").or_else(|| dataset.tables.first()).map(|table| table.id.clone());
         }
         dataset.updated_at = Utc::now();
         let conn = pool.get()?;
@@ -438,6 +438,37 @@ fn delete_dashboard_content_shortcuts(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn clear_all_production_data(
+    pool: State<'_, DbPool>,
+    events: State<'_, crate::lan::server::SyncEventBus>,
+) -> Result<(), String> {
+    let pool = pool.inner().clone();
+    let event_bus = events.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get()?;
+        let tx = conn.transaction()?;
+
+        let dashboard_ids: Vec<String> = {
+            let mut stmt = tx.prepare("SELECT id FROM production_dashboards")?;
+            let ids = stmt.query_map([], |row| row.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            ids
+        };
+        delete_dashboard_content_shortcuts(&tx, &dashboard_ids)?;
+
+        tx.execute("DELETE FROM production_live_sources", [])?;
+        tx.execute("DELETE FROM production_dashboards", [])?;
+        tx.execute("DELETE FROM production_datasets", [])?;
+        tx.commit()?;
+        let _ = crate::lan::server::publish_revision(&pool, &event_bus);
+        Ok::<_, anyhow::Error>(())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())
+}
+
 pub fn query_dataset_summaries(pool: &DbPool) -> anyhow::Result<Vec<ProductionDatasetSummary>> {
     let conn = pool.get()?;
     let mut stmt = conn.prepare(
@@ -515,16 +546,6 @@ fn parse_excel_path(filename: String, path: &PathBuf) -> anyhow::Result<Producti
         if matrix.iter().all(|row| row.iter().all(is_empty_value)) {
             continue;
         }
-        if sheet_name.eq_ignore_ascii_case("summary") {
-            if let Some(table) = detect_summary_trend(&sheet_name, &matrix) {
-                detected.push("Detected Summary trend table with Date, FSL1, PSL1, and PSL2.".to_string());
-                tables.push(table);
-            }
-            if let Some(table) = detect_summary_kpi(&sheet_name, &matrix) {
-                detected.push("Detected Summary KPI table with Lines, ABP, Plan, Actual, Production Rate, Asking Rate, and Forecast.".to_string());
-                tables.push(table);
-            }
-        }
         if let Some(table) = table_from_matrix(&sheet_name, &sheet_name, "raw", &matrix) {
             if sheet_name.eq_ignore_ascii_case("dump") {
                 detected.push(format!("Detected raw Dump table with {} rows.", table.rows.len()));
@@ -567,87 +588,6 @@ fn write_temp_import(filename: &str, bytes: &[u8]) -> anyhow::Result<PathBuf> {
     let path = std::env::temp_dir().join(format!("clarix-{}-{safe}", uuid::Uuid::new_v4()));
     fs::write(&path, bytes)?;
     Ok(path)
-}
-
-fn detect_summary_trend(sheet_name: &str, matrix: &[Vec<serde_json::Value>]) -> Option<ProductionTable> {
-    let header_index = matrix.iter().position(|row| {
-        row.iter().any(|value| string_value(value).eq_ignore_ascii_case("FSL1"))
-            && row.iter().any(|value| string_value(value).eq_ignore_ascii_case("PSL1"))
-            && row.iter().any(|value| string_value(value).eq_ignore_ascii_case("PSL2"))
-    })?;
-    let headers = &matrix[header_index];
-    let mut indices = vec![0usize];
-    for label in ["FSL1", "PSL1", "PSL2"] {
-        let index = headers.iter().position(|value| string_value(value).eq_ignore_ascii_case(label))?;
-        indices.push(index);
-    }
-    let columns = vec![
-        ProductionColumn { key: "date".to_string(), label: "Date".to_string(), data_type: "date".to_string() },
-        ProductionColumn { key: "FSL1".to_string(), label: "FSL1".to_string(), data_type: "number".to_string() },
-        ProductionColumn { key: "PSL1".to_string(), label: "PSL1".to_string(), data_type: "number".to_string() },
-        ProductionColumn { key: "PSL2".to_string(), label: "PSL2".to_string(), data_type: "number".to_string() },
-    ];
-    let mut rows = Vec::new();
-    for row in matrix.iter().skip(header_index + 1) {
-        let label = row.get(indices[0]).map(string_value).unwrap_or_default();
-        if label.is_empty() || label.eq_ignore_ascii_case("total") {
-            break;
-        }
-        let mut item = RowMap::new();
-        for (column, index) in columns.iter().zip(indices.iter()) {
-            item.insert(column.key.clone(), row.get(*index).cloned().unwrap_or(serde_json::Value::Null));
-        }
-        rows.push(item);
-    }
-    if rows.is_empty() { return None; }
-    Some(ProductionTable {
-        id: "summary-trend".to_string(),
-        name: "Production Trend".to_string(),
-        sheet_name: sheet_name.to_string(),
-        kind: "trend".to_string(),
-        columns,
-        rows,
-    })
-}
-
-fn detect_summary_kpi(sheet_name: &str, matrix: &[Vec<serde_json::Value>]) -> Option<ProductionTable> {
-    let header_index = matrix.iter().position(|row| {
-        row.iter().any(|value| string_value(value).eq_ignore_ascii_case("Lines"))
-            && row.iter().any(|value| string_value(value).eq_ignore_ascii_case("Forecast"))
-    })?;
-    let header_row = &matrix[header_index];
-    let mut headers = Vec::new();
-    let mut indices = Vec::new();
-    for (index, value) in header_row.iter().enumerate() {
-        let label = string_value(value);
-        if label.is_empty() { continue; }
-        if ["Lines", "ABP", "Plan", "Actual", "Production Rate", "Asking Rate", "Forecast"].iter().any(|expected| label.eq_ignore_ascii_case(expected)) {
-            headers.push(label);
-            indices.push(index);
-        }
-    }
-    if headers.len() < 4 { return None; }
-    let columns = columns_from_headers(&headers, Some(&["line"]));
-    let mut rows = Vec::new();
-    for row in matrix.iter().skip(header_index + 1) {
-        let first = row.get(indices[0]).map(string_value).unwrap_or_default();
-        if first.is_empty() { break; }
-        let mut item = RowMap::new();
-        for (column, index) in columns.iter().zip(indices.iter()) {
-            item.insert(column.key.clone(), row.get(*index).cloned().unwrap_or(serde_json::Value::Null));
-        }
-        rows.push(item);
-        if first.eq_ignore_ascii_case("Total") { break; }
-    }
-    if rows.is_empty() { return None; }
-    Some(ProductionTable {
-        id: "summary-kpi".to_string(),
-        name: "Production Summary".to_string(),
-        sheet_name: sheet_name.to_string(),
-        kind: "kpi".to_string(),
-        columns: infer_columns_from_rows(&rows, Some(&columns)),
-        rows,
-    })
 }
 
 fn table_from_matrix(id_seed: &str, sheet_name: &str, kind: &str, matrix: &[Vec<serde_json::Value>]) -> Option<ProductionTable> {
@@ -787,23 +727,15 @@ fn is_empty_value(value: &serde_json::Value) -> bool {
     }
 }
 
-fn choose_default_table(tables: &[ProductionTable]) -> Option<&ProductionTable> {
-    tables
-        .iter()
-        .find(|table| table.kind == "trend")
-        .or_else(|| tables.iter().find(|table| table.kind == "raw"))
-        .or_else(|| tables.first())
-}
-
 fn default_widgets(tables: &[ProductionTable]) -> Vec<ProductionWidget> {
-    let mut widgets = Vec::new();
-    if let Some(kpi) = tables.iter().find(|table| table.kind == "kpi") {
-        widgets.push(ProductionWidget {
+    let table = tables.iter().find(|table| table.kind == "raw").or_else(|| tables.first());
+    if let Some(table) = table {
+        vec![ProductionWidget {
             id: uuid::Uuid::new_v4().to_string(),
-            title: "Production Summary".to_string(),
+            title: table.name.clone(),
             widget_type: "table".to_string(),
             chart_type: "kpi-table".to_string(),
-            source_table_id: kpi.id.clone(),
+            source_table_id: table.id.clone(),
             x_key: None,
             series_keys: Vec::new(),
             measure_key: None,
@@ -812,60 +744,10 @@ fn default_widgets(tables: &[ProductionTable]) -> Vec<ProductionWidget> {
             filters: Vec::new(),
             top_n: None,
             color_map: HashMap::new(),
-        });
+        }]
+    } else {
+        vec![]
     }
-    if let Some(trend) = tables.iter().find(|table| table.kind == "trend") {
-        widgets.push(ProductionWidget {
-            id: uuid::Uuid::new_v4().to_string(),
-            title: "Production trend Jun'26(MT)".to_string(),
-            widget_type: "chart".to_string(),
-            chart_type: "line".to_string(),
-            source_table_id: trend.id.clone(),
-            x_key: Some("date".to_string()),
-            series_keys: trend
-                .columns
-                .iter()
-                .filter(|column| column.data_type == "number")
-                .map(|column| column.key.clone())
-                .collect(),
-            measure_key: None,
-            group_by_key: None,
-            aggregation: "sum".to_string(),
-            filters: Vec::new(),
-            top_n: None,
-            color_map: default_color_map(&trend.columns),
-        });
-    }
-    if widgets.is_empty() {
-        if let Some(table) = choose_default_table(tables) {
-            widgets.push(ProductionWidget {
-                id: uuid::Uuid::new_v4().to_string(),
-                title: table.name.clone(),
-                widget_type: "table".to_string(),
-                chart_type: "kpi-table".to_string(),
-                source_table_id: table.id.clone(),
-                x_key: None,
-                series_keys: Vec::new(),
-                measure_key: None,
-                group_by_key: None,
-                aggregation: "sum".to_string(),
-                filters: Vec::new(),
-                top_n: None,
-                color_map: HashMap::new(),
-            });
-        }
-    }
-    widgets
-}
-
-fn default_color_map(columns: &[ProductionColumn]) -> HashMap<String, String> {
-    let palette = ["#007fff", "#f97316", "#00a859", "#8a2be2", "#f59e0b"];
-    columns
-        .iter()
-        .filter(|column| column.data_type == "number")
-        .enumerate()
-        .map(|(index, column)| (column.key.clone(), palette[index % palette.len()].to_string()))
-        .collect()
 }
 
 fn dataset_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProductionDataset> {
@@ -953,34 +835,4 @@ fn slugify(value: &str) -> String {
     slug.trim_matches('_').to_string()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{detect_summary_kpi, detect_summary_trend};
-    use serde_json::json;
 
-    #[test]
-    fn detects_summary_trend_rows() {
-        let matrix = vec![
-            vec![json!(null), json!("Production(MT)")],
-            vec![json!(null), json!("FSL1"), json!("PSL1"), json!("PSL2")],
-            vec![json!("2026-06-01"), json!(10), json!(20), json!(30)],
-            vec![json!("Total"), json!(10), json!(20), json!(30)],
-        ];
-        let table = detect_summary_trend("Summary", &matrix).expect("trend table");
-        assert_eq!(table.rows.len(), 1);
-        assert_eq!(table.columns[0].key, "date");
-    }
-
-    #[test]
-    fn detects_summary_kpi_rows() {
-        let matrix = vec![
-            vec![json!(null)],
-            vec![json!(null), json!("Lines"), json!("ABP"), json!("Plan"), json!("Forecast")],
-            vec![json!(null), json!("FSL1"), json!(1), json!(2), json!(3)],
-            vec![json!(null), json!("Total"), json!(1), json!(2), json!(3)],
-        ];
-        let table = detect_summary_kpi("Summary", &matrix).expect("kpi table");
-        assert_eq!(table.rows.len(), 2);
-        assert_eq!(table.columns[0].key, "line");
-    }
-}

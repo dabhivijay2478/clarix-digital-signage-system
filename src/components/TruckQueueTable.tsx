@@ -1,6 +1,7 @@
 'use client'
 
 import type { Truck } from '@/lib/types'
+import { formatDateTime } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
@@ -37,10 +38,7 @@ function getStatus(truck: TruckLike): string {
 }
 
 function formatDate(value?: string | null): string {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '-'
-  return date.toLocaleString()
+  return formatDateTime(value)
 }
 
 export function TruckQueueTable({ trucks, emptyMessage = 'No trucks found.' }: TruckQueueTableProps) {

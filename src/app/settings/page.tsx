@@ -15,6 +15,10 @@ import {
   Database,
   Info,
   Cpu,
+  Folder,
+  HardDrive,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react'
 import { SettingsRow, SettingsSection } from '@/components/SettingsSection'
 import { showToast } from '@/components/Toast'
@@ -24,11 +28,19 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { APP_VERSION } from '@/lib/constants'
-import { appConfigApi, localNetworkApi, networkApi, screensApi } from '@/lib/tauri'
-import type { DeviceIdentity, MarqueeSettings, PairingRequest, PeerScreen, Screen } from '@/lib/types'
+import { appConfigApi, contentLibraryApi, localNetworkApi, networkApi, screensApi } from '@/lib/tauri'
+import type { ContentStorageInfo, DeviceIdentity, MarqueeSettings, PairingRequest, PeerScreen, Screen } from '@/lib/types'
 import { useBrandingStore } from '@/store/ui'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  const value = bytes / Math.pow(1024, i)
+  return `${value.toFixed(i > 0 ? 1 : 0)} ${units[i]}`
+}
 
 export default function SettingsPage() {
   const router = useRouter()
@@ -44,6 +56,8 @@ export default function SettingsPage() {
   const [pairingSelections, setPairingSelections] = useState<Record<string, string>>({})
   const [discoveredControllers, setDiscoveredControllers] = useState<PeerScreen[]>([])
   const [marquee, setMarquee] = useState<MarqueeSettings | null>(null)
+  const [contentStorage, setContentStorage] = useState<ContentStorageInfo | null>(null)
+  const [pickingDir, setPickingDir] = useState(false)
 
   const loadNetworkState = useCallback(async () => {
     try {
@@ -60,6 +74,7 @@ export default function SettingsPage() {
         setPairingRequests(await networkApi.getPairingRequests())
       }
       setMarquee(await appConfigApi.getMarquee())
+      setContentStorage(await contentLibraryApi.getStorage())
     } catch (error) {
       console.error('Failed to load network state:', error)
     }
@@ -90,6 +105,22 @@ export default function SettingsPage() {
       showToast('Marquee updated and synced to players', 'success')
     } catch (error) {
       showToast(`Failed to save marquee: ${error}`, 'error')
+    }
+  }
+
+  const handlePickDirectory = async () => {
+    setPickingDir(true)
+    try {
+      const result = await contentLibraryApi.pickDirectory()
+      setContentStorage(result)
+      showToast('Content library directory updated', 'success')
+      await loadNetworkState()
+    } catch (error) {
+      if (error !== 'No folder selected') {
+        showToast(`Failed to set directory: ${error}`, 'error')
+      }
+    } finally {
+      setPickingDir(false)
     }
   }
 
@@ -404,6 +435,49 @@ export default function SettingsPage() {
               <Button size="sm" variant="outline" className="h-8 text-xs shrink-0" onClick={() => router.push('/database')}>
                 <Database className="size-3.5 mr-1.5" /> Open
               </Button>
+            </div>
+          </Card>
+        </section>
+
+        {/* Content Library */}
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold">Content Library</h2>
+          <Card className="border-border/60 overflow-hidden">
+            <div className="p-4 space-y-3">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">Storage Location</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate" title={contentStorage?.path ?? ''}>
+                    <Folder className="size-3 inline mr-1 -mt-0.5" />
+                    {contentStorage?.path || 'Loading…'}
+                  </p>
+                </div>
+                <Button size="sm" variant="outline" className="h-8 text-xs shrink-0" onClick={handlePickDirectory} disabled={pickingDir}>
+                  {pickingDir ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <Folder className="size-3.5 mr-1.5" />}
+                  Browse
+                </Button>
+              </div>
+
+              {contentStorage && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <HardDrive className="size-3" />
+                    <span>Used: {formatBytes(contentStorage.used_bytes)}</span>
+                    <span className="text-muted-foreground/40">/</span>
+                    <span>Free: {formatBytes(contentStorage.free_bytes)}</span>
+                    <span className="text-muted-foreground/40">/</span>
+                    <span>Total: {formatBytes(contentStorage.total_bytes)}</span>
+                  </div>
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary rounded-full transition-all"
+                      style={{
+                        width: `${contentStorage.total_bytes > 0 ? (contentStorage.used_bytes / contentStorage.total_bytes) * 100 : 0}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
         </section>

@@ -49,7 +49,7 @@ export function displayValue(value: unknown): string {
     if (datePrefix) {
       const date = new Date(`${datePrefix[1]}T00:00:00`)
       if (!Number.isNaN(date.getTime())) {
-        return date.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: '2-digit' })
+        return date.toLocaleDateString('en-GB')
       }
     }
     return value

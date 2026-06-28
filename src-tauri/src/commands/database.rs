@@ -147,19 +147,14 @@ pub async fn export_db_table_to_csv(table_name: String, pool: State<'_, DbPool>)
 pub async fn backup_content_library_to_zip(
     save_path: String,
     app_handle: tauri::AppHandle,
+    pool: State<'_, crate::db::DbPool>,
 ) -> Result<(), String> {
-    use tauri::Manager;
+    use crate::commands::content::content_base_dir;
     use std::fs::File;
     use std::io::{Write, Read};
 
-    let app_data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .to_string_lossy()
-        .to_string();
-
-    let media_dir = std::path::PathBuf::from(&app_data_dir).join("media");
+    let base_dir = content_base_dir(&app_handle, &pool)?;
+    let media_dir = base_dir.join("media");
     if !media_dir.exists() {
         return Err("Media directory does not exist".to_string());
     }

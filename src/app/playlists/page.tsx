@@ -51,7 +51,7 @@ export default function PlaylistsPage() {
     await deletePlaylist(id);
     if (selectedId === id) setSelectedId(null);
     setDeleteId(null);
-    showToast('Playlist deleted', 'info');
+    showToast('Playlist deleted', 'error');
   };
 
   return (

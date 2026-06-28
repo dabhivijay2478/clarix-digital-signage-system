@@ -175,6 +175,8 @@ pub fn run() {
             commands::content::save_local_content_file,
             commands::content::save_local_content_file_chunk,
             commands::content::prepare_presentation_content,
+            commands::content::get_content_storage,
+            commands::content::pick_content_directory,
             // Playlists
             commands::playlists::get_playlists,
             commands::playlists::create_playlist,
@@ -215,6 +217,7 @@ pub fn run() {
             commands::production::delete_production_dashboard,
             commands::production::delete_production_dataset,
             commands::production::add_production_dashboard_to_content,
+            commands::production::clear_all_production_data,
             // Truck screen alerts
             commands::trucks::publish_truck_alert,
             commands::trucks::save_dispatched_truck,

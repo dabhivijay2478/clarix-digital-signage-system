@@ -36,7 +36,7 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="dark">
           <TooltipProvider>
             <AppLayoutWrapper>{children}</AppLayoutWrapper>
-            <Toaster position="top-right" richColors />
+            <Toaster position="top-right" />
           </TooltipProvider>
         </ThemeProvider>
       </body>

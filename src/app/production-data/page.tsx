@@ -1,8 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { cn } from '@/lib/utils'
 import {
   BarChart3,
+  ChevronDown,
   FileSpreadsheet,
   LayoutDashboard,
   Plus,
@@ -23,6 +25,7 @@ import { useGateStore } from '@/store/gateStore'
 import { ProductionDashboardRenderer } from '@/components/production/ProductionDashboardRenderer'
 import { showToast } from '@/components/Toast'
 import { Badge } from '@/components/ui/badge'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -31,6 +34,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { createWidget, displayValue, getProductionTable, isNumericColumn } from '@/lib/production'
 import { customConfirm, productionApi, screensApi } from '@/lib/tauri'
@@ -84,6 +88,8 @@ export default function ProductionDataPage() {
   const { playlists } = usePlaylists()
   const { gates, assignments, updateGateConfig } = useGateStore()
   const [selectedGateForAssign, setSelectedGateForAssign] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState('dashboard')
+  const isEntriesTab = useMemo(() => Boolean(bundle && activeTab === 'data'), [bundle, activeTab])
 
   // preferredId: string → load that dashboard
   //              null   → gate has no dashboard; explicitly clear the bundle
@@ -405,20 +411,213 @@ export default function ProductionDataPage() {
     }
   }
 
+  const handleClearAll = async () => {
+    const confirmed = await customConfirm('This will permanently delete all production dashboards and datasets. Continue?')
+    if (!confirmed) return
+    try {
+      await productionApi.clearAll()
+      setBundle(null)
+      setActiveTableId(null)
+      setSelectedWidgetId(null)
+      setImportResult(null)
+      setDashboards([])
+      showToast('All production data cleared', 'success')
+    } catch (error) {
+      showToast(`Failed to clear: ${error}`, 'error')
+    }
+  }
+
+  function DashboardTabsPanel() {
+    if (!bundle) return null
+    return (
+      <Tabs defaultValue="dashboard" value={activeTab} onValueChange={setActiveTab} className={cn("space-y-4", isEntriesTab && "flex-1 min-h-0 flex flex-col space-y-0 gap-4 w-full min-w-0")}>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <TabsList>
+            <TabsTrigger value="dashboard"><LayoutDashboard className="size-4" /><span className="hidden sm:inline">Dashboard</span></TabsTrigger>
+            <TabsTrigger value="data"><FileSpreadsheet className="size-4" /><span className="hidden sm:inline">Entries</span></TabsTrigger>
+            <TabsTrigger value="builder"><BarChart3 className="size-4" /><span className="hidden sm:inline">Chart Builder</span></TabsTrigger>
+          </TabsList>
+          {dashboards.length > 1 && (
+            <Select value={bundle.dashboard.id} onValueChange={(id) => loadDashboards(id)}>
+              <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {dashboards.map((dashboard) => <SelectItem key={dashboard.id} value={dashboard.id}>{dashboard.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
+          <Button variant="outline" onClick={handleSaveDashboard} disabled={saving}><Save />Save</Button>
+          {activeTab === 'dashboard' && (
+            <Button onClick={handleAddToContent} disabled={contentSaving} className="ml-auto h-9"><Send className="size-4 shrink-0" /><span className="hidden sm:inline">{contentSaving ? 'Adding...' : 'Add to Content'}</span></Button>
+          )}
+        </div>
+
+        <TabsContent value="dashboard" className="space-y-4">
+          <Card>
+            <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:flex-wrap">
+              <Input
+                className="max-w-xs"
+                value={bundle.dashboard.name}
+                onChange={(event) => updateDashboard((dashboard) => ({ ...dashboard, name: event.target.value }))}
+                placeholder="Dashboard name"
+              />
+              <Input
+                className="max-w-xs"
+                value={bundle.dataset.name}
+                onChange={(event) => setBundle((current) => current ? { ...current, dataset: { ...current.dataset, name: event.target.value } } : current)}
+                placeholder="Dataset name"
+              />
+              <div className="flex flex-wrap gap-2 sm:ml-auto">
+                <Button variant="outline" onClick={() => liveRefreshInputRef.current?.click()} disabled={saving} className="h-9"><RefreshCw className="size-4 shrink-0" /><span className="hidden sm:inline">Refresh file</span></Button>
+                <Button variant="outline" onClick={handleSaveNames} disabled={saving} className="h-9"><Save className="size-4 shrink-0" /><span className="hidden sm:inline">Save</span></Button>
+                <Button variant="ghost" size="icon" onClick={handleDeleteDataset} disabled={saving} title="Delete dashboard & dataset" className="h-9 w-9 text-destructive hover:text-destructive"><Trash2 className="size-4" /></Button>
+              </div>
+            </CardContent>
+          </Card>
+          <ProductionDashboardRenderer bundle={bundle} />
+        </TabsContent>
+
+        <TabsContent value="data" className={cn("m-0 w-full min-w-0", isEntriesTab && "flex-1 min-h-0 flex flex-col w-full min-w-0")}>
+          <div className={cn("flex flex-col w-full min-w-0 overflow-hidden rounded-xl border border-border/70 bg-card", isEntriesTab && "flex-1 min-h-0 w-full min-w-0")}>
+            <div className="flex flex-wrap items-center gap-2 border-b border-border/50 px-3 py-2 sm:px-4 shrink-0">
+              <Select value={activeTableId ?? undefined} onValueChange={setActiveTableId}>
+                <SelectTrigger className="h-9 w-[140px] sm:w-[180px]"><SelectValue placeholder="Table" /></SelectTrigger>
+                <SelectContent>{bundle.dataset.tables.map((table) => <SelectItem key={table.id} value={table.id}>{table.name}</SelectItem>)}</SelectContent>
+              </Select>
+              <div className="relative h-9 flex-1 sm:max-w-[240px]">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search..." className="h-9 w-full pl-8" />
+              </div>
+              <div className="ml-auto flex items-center gap-1.5">
+                <Button variant="outline" size="icon-sm" onClick={handleAddRow} title="Add row" className="h-9 w-9"><Plus className="size-4" /></Button>
+                <Button variant="ghost" size="icon-sm" onClick={handleResetRows} disabled={saving} title="Reset edits" className="h-9 w-9"><RotateCcw className="size-4" /></Button>
+                <Button variant="ghost" size="icon-sm" onClick={handleDeleteTable} disabled={saving} title="Delete table" className="h-9 w-9 text-destructive hover:text-destructive"><Trash2 className="size-4" /></Button>
+                <Button onClick={handleSaveRows} disabled={saving} size="sm" className="h-9"><Save className="size-4 shrink-0" /><span className="hidden sm:inline">Save</span></Button>
+              </div>
+            </div>
+            <div className="flex-1 min-h-0 w-full">
+              {activeTable ? (
+                <ScrollArea className="h-full w-full">
+                  <Table>
+                    <TableHeader className="sticky top-0 z-10 bg-card">
+                      <TableRow>
+                        {activeTable.columns.map((column) => <TableHead key={column.key} className="whitespace-nowrap">{column.label}</TableHead>)}
+                        <TableHead className="w-10"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredRows.slice(0, 80).map((row, rowIndex) => (
+                        <TableRow key={rowIndex}>
+                          {activeTable.columns.map((column) => (
+                            <TableCell key={column.key}>
+                              <Input
+                                value={displayValue(row[column.key])}
+                                type={column.data_type === 'number' ? 'number' : 'text'}
+                                onChange={(event) => {
+                                  const idx = editingRows.indexOf(row)
+                                  if (idx !== -1) setEditingRows((r) => r.map((item, i) => i === idx ? { ...item, [column.key]: event.target.value } : item))
+                                }}
+                                className="h-8 w-full min-w-24 text-sm"
+                              />
+                            </TableCell>
+                          ))}
+                          <TableCell className="w-10">
+                            <Button variant="ghost" size="icon-sm" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => {
+                              const idx = editingRows.indexOf(row)
+                              if (idx !== -1) customConfirm('Delete this row?').then((ok) => { if (ok) setEditingRows((r) => r.filter((_, i) => i !== idx)) })
+                            }} aria-label="Delete row"><Trash2 className="size-3.5" /></Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Choose a table to edit.</div>
+              )}
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="builder" className="space-y-4">
+          <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
+            <Card>
+              <CardHeader>
+                <CardTitle>Widgets</CardTitle>
+                <CardDescription>Add charts or tables for non-technical screen dashboards.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3">
+                  <Label>New widget source</Label>
+                  <Select value={newWidgetTableId} onValueChange={setNewWidgetTableId}>
+                    <SelectTrigger><SelectValue placeholder="Choose table" /></SelectTrigger>
+                    <SelectContent>{bundle.dataset.tables.map((table) => <SelectItem key={table.id} value={table.id}>{table.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Select value={newWidgetType} onValueChange={setNewWidgetType}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{chartTypes.map((type) => <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Button onClick={handleAddWidget} className="h-9"><Plus className="size-4 shrink-0" /><span className="hidden sm:inline">Add widget</span></Button>
+                </div>
+                <div className="space-y-2">
+                  {bundle.dashboard.widgets.map((widget) => (
+                    <button
+                      key={widget.id}
+                      type="button"
+                      onClick={() => setSelectedWidgetId(widget.id)}
+                      className={`w-full rounded-xl border p-3 text-left transition-colors ${selectedWidgetId === widget.id ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted/50'}`}
+                    >
+                      <p className="truncate text-sm font-semibold">{widget.title}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{widget.chart_type} · {getProductionTable(bundle.dataset, widget.source_table_id)?.name ?? 'Missing source'}</p>
+                    </button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <CardTitle>Customize chart</CardTitle>
+                  <CardDescription>Pick fields, aggregation, and series without writing formulas.</CardDescription>
+                </div>
+                {selectedWidget && <Button variant="ghost" onClick={() => handleConfirmedDeleteWidget(selectedWidget.id)}><Trash2 />Remove</Button>}
+              </CardHeader>
+              <CardContent>
+                {selectedWidget && selectedWidgetTable ? (
+                  <WidgetEditor
+                    widget={selectedWidget}
+                    table={selectedWidgetTable}
+                    tables={bundle.dataset.tables}
+                    onChange={(next) => updateWidget(selectedWidget.id, () => next)}
+                  />
+                ) : (
+                  <div className="rounded-xl border border-dashed p-12 text-center text-sm text-muted-foreground">Select or add a widget to customize it.</div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
+    )
+  }
+
   return (
-    <div className="space-y-7 animate-fadeIn">
-      <div className="page-header">
+    <div className={cn(
+      "space-y-7 animate-fadeIn",
+      isEntriesTab && "h-[calc(100vh-92px)] lg:h-[calc(100vh-52px)] flex flex-col overflow-hidden space-y-0 gap-6 w-full min-w-0"
+    )}>
+      <div className="page-header shrink-0">
         <Badge variant="outline" className="mb-3 border-primary/20 bg-primary/5 text-primary"><FileSpreadsheet /> Excel / CSV dashboards</Badge>
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:flex-wrap">
+          <div className="min-w-0">
             <h1 className="page-title">Production Data</h1>
             <p className="page-subtitle">Import production sheets, edit entries, build charts, and publish a screen-ready dashboard.</p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.xlsm,.xlsb,.csv,.tsv,.txt" className="hidden" onChange={handleFileSelect} />
             <input ref={liveRefreshInputRef} type="file" accept=".xlsx,.xls,.xlsm,.xlsb,.csv,.tsv,.txt" className="hidden" onChange={handleLiveRefreshSelect} />
-            <Button onClick={() => { importingForGateRef.current = selectedGateForAssign; setImportingForGate(selectedGateForAssign); fileInputRef.current?.click() }} disabled={importing}><Upload />{importing ? 'Importing...' : selectedGateForAssign ? `Import for Gate ${selectedGateForAssign.toUpperCase()}` : 'Import Excel / CSV'}</Button>
-            <Button variant="outline" onClick={() => loadDashboards()} disabled={loading}><RefreshCw className={loading ? 'animate-spin' : ''} />Refresh</Button>
+            <Button onClick={() => { importingForGateRef.current = selectedGateForAssign; setImportingForGate(selectedGateForAssign); fileInputRef.current?.click() }} disabled={importing} className="h-9 min-w-0"><Upload className="size-4 shrink-0" /><span className="hidden truncate sm:inline">{importing ? 'Importing...' : selectedGateForAssign ? `Import for Gate ${selectedGateForAssign.toUpperCase()}` : 'Import Excel / CSV'}</span><span className="sm:hidden">{importing ? '...' : 'Import'}</span></Button>
+            <Button variant="outline" onClick={() => loadDashboards()} disabled={loading} className="h-9"><RefreshCw className={loading ? 'size-4 shrink-0 animate-spin' : 'size-4 shrink-0'} /><span className="hidden sm:inline">Refresh</span></Button>
+            {dashboards.length > 0 && <Button variant="outline" className="h-9 text-destructive hover:text-destructive" onClick={handleClearAll}><Trash2 className="size-4 shrink-0" /><span className="hidden sm:inline">Clear All</span></Button>}
           </div>
         </div>
       </div>
@@ -498,7 +697,6 @@ export default function ProductionDataPage() {
         </div>
       )}
 
-
       {/* Gate tabs — underline style */}
       {gates.length > 0 ? (
         <Tabs
@@ -514,11 +712,11 @@ export default function ProductionDataPage() {
               setSelectedWidgetId(null)
             }
           }}
-          className="space-y-5"
+          className={cn("space-y-5", isEntriesTab && "flex-1 min-h-0 flex flex-col space-y-0 gap-4 w-full min-w-0")}
         >
           {/* Underline tab bar */}
-          <div className="border-b border-border/50">
-            <TabsList variant="line" className="h-10 gap-0 rounded-none bg-transparent p-0">
+          <div className="overflow-x-auto border-b border-border/50 shrink-0">
+            <TabsList variant="line" className="h-10 min-w-max gap-0 rounded-none bg-transparent p-0">
               {gates.map((gate) => {
                 const gateDashboard = dashboards.find((d) => d.id === gate.productionDashboardId)
                 return (
@@ -540,7 +738,7 @@ export default function ProductionDataPage() {
           </div>
 
           {gates.map((gate) => (
-            <TabsContent key={gate.id} value={gate.number} className="mt-0 space-y-5">
+            <TabsContent key={gate.id} value={gate.number} className={cn("mt-0 space-y-5", isEntriesTab && "flex-1 min-h-0 flex flex-col mt-0 space-y-0 w-full min-w-0")}>
               {loading && !bundle ? (
                 <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
                   <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -560,162 +758,36 @@ export default function ProductionDataPage() {
                       importingForGateRef.current = gate.number
                       setImportingForGate(gate.number)
                       fileInputRef.current?.click()
-                    }}>
-                      <Upload />Import for Gate {gate.number.toUpperCase()}
+                    }} className="h-9">
+                      <Upload className="size-4 shrink-0" />Import Gate {gate.number.toUpperCase()}
                     </Button>
                   </CardContent>
                 </Card>
-              ) : (
-                <>
-                  {bundle && (
-                    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-border/60 bg-muted/20 px-4 py-3 text-sm">
+              ) : null}
+
+              {bundle && (
+                <Collapsible defaultOpen className={cn(isEntriesTab && "flex-1 min-h-0 flex flex-col w-full min-w-0")}>
+                  <CollapsibleTrigger asChild>
+                    <button type="button" className="group flex w-full flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 text-sm transition-colors hover:bg-muted/40 sm:gap-3 sm:px-4 sm:py-3">
+                      <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
                       <span className="font-semibold truncate">{bundle.dashboard.name}</span>
-                      <span className="text-muted-foreground">{bundle.dataset.tables.length} tables</span>
-                      <span className="text-muted-foreground">{dashboardRowCount.toLocaleString()} rows</span>
-                      <span className="text-muted-foreground">{assignedProductionScreens} screens</span>
-                      <span className="ml-auto truncate text-xs text-muted-foreground">{bundle.dataset.source_name}</span>
-                    </div>
-                  )}
-
-                  <Tabs defaultValue="dashboard" className="space-y-5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <TabsList>
-                        <TabsTrigger value="dashboard"><LayoutDashboard className="size-4" />Dashboard</TabsTrigger>
-                        <TabsTrigger value="data"><FileSpreadsheet className="size-4" />Entries</TabsTrigger>
-                        <TabsTrigger value="builder"><BarChart3 className="size-4" />Chart Builder</TabsTrigger>
-                      </TabsList>
-                      {dashboards.length > 1 && (
-                        <Select value={bundle.dashboard.id} onValueChange={(id) => loadDashboards(id)}>
-                          <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            {dashboards.map((dashboard) => <SelectItem key={dashboard.id} value={dashboard.id}>{dashboard.name}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      )}
-                      <Button variant="outline" onClick={handleSaveDashboard} disabled={saving}><Save />Save</Button>
-                      <Button onClick={handleAddToContent} disabled={contentSaving} className="ml-auto"><Send />{contentSaving ? 'Adding...' : 'Add to Content'}</Button>
-                    </div>
-
-                    <TabsContent value="dashboard" className="space-y-5">
-                      <Card>
-                        <CardContent className="flex flex-wrap items-center gap-3 py-4">
-                          <Input
-                            className="max-w-xs"
-                            value={bundle.dashboard.name}
-                            onChange={(event) => updateDashboard((dashboard) => ({ ...dashboard, name: event.target.value }))}
-                            placeholder="Dashboard name"
-                          />
-                          <Input
-                            className="max-w-xs"
-                            value={bundle.dataset.name}
-                            onChange={(event) => setBundle((current) => current ? { ...current, dataset: { ...current.dataset, name: event.target.value } } : current)}
-                            placeholder="Dataset name"
-                          />
-                          <div className="ml-auto flex flex-wrap gap-2">
-                            <Button variant="outline" onClick={() => liveRefreshInputRef.current?.click()} disabled={saving}><RefreshCw />Refresh file</Button>
-                            <Button variant="outline" onClick={handleSaveNames} disabled={saving}><Save />Save</Button>
-                            <Button variant="ghost" size="icon" onClick={handleDeleteDashboard} disabled={saving} title="Delete dashboard"><Trash2 className="size-4" /></Button>
-                            <Button variant="ghost" size="icon" onClick={handleDeleteDataset} disabled={saving} title="Delete dataset" className="text-destructive hover:text-destructive"><Trash2 className="size-4" /></Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                      <ProductionDashboardRenderer bundle={bundle} />
-                    </TabsContent>
-
-                    <TabsContent value="data" className="space-y-5">
-                      <Card>
-                        <CardContent className="space-y-4 py-4">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Select value={activeTableId ?? undefined} onValueChange={setActiveTableId}>
-                              <SelectTrigger className="w-[220px]"><SelectValue placeholder="Choose table" /></SelectTrigger>
-                              <SelectContent>{bundle.dataset.tables.map((table) => <SelectItem key={table.id} value={table.id}>{table.name}</SelectItem>)}</SelectContent>
-                            </Select>
-                            <div className="relative max-w-xs flex-1">
-                              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search..." className="pl-9" />
-                            </div>
-                            <Button variant="outline" onClick={handleAddRow}><Plus />Add row</Button>
-                            <Button variant="ghost" size="icon" onClick={handleResetRows} disabled={saving} title="Reset edits"><RotateCcw className="size-4" /></Button>
-                            <Button variant="ghost" size="icon" onClick={handleClearFilteredRows} disabled={saving} title="Delete visible rows" className="text-destructive hover:text-destructive"><Trash2 className="size-4" /></Button>
-                            <Button variant="ghost" size="icon" onClick={handleDeleteTable} disabled={saving} title="Delete table" className="text-destructive hover:text-destructive"><Trash2 className="size-4" /></Button>
-                            <Button onClick={handleSaveRows} disabled={saving} className="ml-auto"><Save />Save</Button>
-                          </div>
-                          {activeTable ? (
-                            <EditableTable table={activeTable} rows={filteredRows.slice(0, 80)} allRows={editingRows} setRows={setEditingRows} />
-                          ) : (
-                            <div className="rounded-xl border border-dashed p-12 text-center text-sm text-muted-foreground">Choose a table to edit.</div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    </TabsContent>
-
-                    <TabsContent value="builder" className="space-y-5">
-                      <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
-                        <Card>
-                          <CardHeader>
-                            <CardTitle>Widgets</CardTitle>
-                            <CardDescription>Add charts or tables for non-technical screen dashboards.</CardDescription>
-                          </CardHeader>
-                          <CardContent className="space-y-4">
-                            <div className="grid gap-3">
-                              <Label>New widget source</Label>
-                              <Select value={newWidgetTableId} onValueChange={setNewWidgetTableId}>
-                                <SelectTrigger><SelectValue placeholder="Choose table" /></SelectTrigger>
-                                <SelectContent>{bundle.dataset.tables.map((table) => <SelectItem key={table.id} value={table.id}>{table.name}</SelectItem>)}</SelectContent>
-                              </Select>
-                              <Select value={newWidgetType} onValueChange={setNewWidgetType}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>{chartTypes.map((type) => <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>)}</SelectContent>
-                              </Select>
-                              <Button onClick={handleAddWidget}><Plus />Add widget</Button>
-                            </div>
-                            <div className="space-y-2">
-                              {bundle.dashboard.widgets.map((widget) => (
-                                <button
-                                  key={widget.id}
-                                  type="button"
-                                  onClick={() => setSelectedWidgetId(widget.id)}
-                                  className={`w-full rounded-xl border p-3 text-left transition-colors ${selectedWidgetId === widget.id ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted/50'}`}
-                                >
-                                  <p className="truncate text-sm font-semibold">{widget.title}</p>
-                                  <p className="mt-1 text-xs text-muted-foreground">{widget.chart_type} · {getProductionTable(bundle.dataset, widget.source_table_id)?.name ?? 'Missing source'}</p>
-                                </button>
-                              ))}
-                            </div>
-                          </CardContent>
-                        </Card>
-                        <Card>
-                          <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
-                            <div>
-                              <CardTitle>Customize chart</CardTitle>
-                              <CardDescription>Pick fields, aggregation, and series without writing formulas.</CardDescription>
-                            </div>
-                            {selectedWidget && <Button variant="ghost" onClick={() => handleConfirmedDeleteWidget(selectedWidget.id)}><Trash2 />Remove</Button>}
-                          </CardHeader>
-                          <CardContent>
-                            {selectedWidget && selectedWidgetTable ? (
-                              <WidgetEditor
-                                widget={selectedWidget}
-                                table={selectedWidgetTable}
-                                tables={bundle.dataset.tables}
-                                onChange={(next) => updateWidget(selectedWidget.id, () => next)}
-                              />
-                            ) : (
-                              <div className="rounded-xl border border-dashed p-12 text-center text-sm text-muted-foreground">Select or add a widget to customize it.</div>
-                            )}
-                          </CardContent>
-                        </Card>
-                      </div>
-                    </TabsContent>
-                  </Tabs>
-                </>
+                      <span className="text-xs text-muted-foreground sm:text-sm">{bundle.dataset.tables.length} tables</span>
+                      <span className="text-xs text-muted-foreground sm:text-sm">{dashboardRowCount.toLocaleString()} rows</span>
+                      <span className="text-xs text-muted-foreground sm:text-sm">{assignedProductionScreens} screens</span>
+                      <span className="ml-auto hidden truncate text-xs text-muted-foreground sm:inline">{bundle.dataset.source_name}</span>
+                    </button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className={cn("pt-5", isEntriesTab && "flex-1 min-h-0 flex flex-col pt-4 w-full min-w-0")}>
+                    {DashboardTabsPanel()}
+                  </CollapsibleContent>
+                </Collapsible>
               )}
             </TabsContent>
           ))}
         </Tabs>
       ) : (
         /* No gates configured — original flow */
-        <>
+        <div className={cn("flex flex-col space-y-5", isEntriesTab && "flex-1 min-h-0 flex flex-col space-y-0 w-full min-w-0")}>
           {loading && !bundle ? (
             <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
               <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -729,125 +801,29 @@ export default function ProductionDataPage() {
                   <p className="font-semibold">No production dashboards yet</p>
                   <p className="mt-1 text-sm text-muted-foreground">Import the June production workbook or any Excel/CSV file to start.</p>
                 </div>
-                <Button onClick={() => fileInputRef.current?.click()}><Upload />Import first file</Button>
+                <Button onClick={() => fileInputRef.current?.click()} className="h-9"><Upload className="size-4 shrink-0" />Import first file</Button>
               </CardContent>
             </Card>
-          ) : (
-            <Tabs defaultValue="dashboard" className="space-y-5">
-              <div className="flex flex-wrap items-center gap-2">
-                <TabsList>
-                  <TabsTrigger value="dashboard"><LayoutDashboard className="size-4" />Dashboard</TabsTrigger>
-                  <TabsTrigger value="data"><FileSpreadsheet className="size-4" />Entries</TabsTrigger>
-                  <TabsTrigger value="builder"><BarChart3 className="size-4" />Chart Builder</TabsTrigger>
-                </TabsList>
-                {dashboards.length > 1 && (
-                  <Select value={bundle.dashboard.id} onValueChange={(id) => loadDashboards(id)}>
-                    <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {dashboards.map((dashboard) => <SelectItem key={dashboard.id} value={dashboard.id}>{dashboard.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                )}
-                <Button variant="outline" onClick={handleSaveDashboard} disabled={saving}><Save />Save</Button>
-                <Button onClick={handleAddToContent} disabled={contentSaving} className="ml-auto"><Send />{contentSaving ? 'Adding...' : 'Add to Content'}</Button>
-              </div>
-
-              <TabsContent value="dashboard" className="space-y-5">
-                <Card>
-                  <CardContent className="flex flex-wrap items-center gap-3 py-4">
-                    <Input className="max-w-xs" value={bundle.dashboard.name} onChange={(event) => updateDashboard((dashboard) => ({ ...dashboard, name: event.target.value }))} placeholder="Dashboard name" />
-                    <Input className="max-w-xs" value={bundle.dataset.name} onChange={(event) => setBundle((current) => current ? { ...current, dataset: { ...current.dataset, name: event.target.value } } : current)} placeholder="Dataset name" />
-                    <div className="ml-auto flex flex-wrap gap-2">
-                      <Button variant="outline" onClick={() => liveRefreshInputRef.current?.click()} disabled={saving}><RefreshCw />Refresh file</Button>
-                      <Button variant="outline" onClick={handleSaveNames} disabled={saving}><Save />Save</Button>
-                      <Button variant="ghost" size="icon" onClick={handleDeleteDashboard} disabled={saving} title="Delete dashboard"><Trash2 className="size-4" /></Button>
-                      <Button variant="ghost" size="icon" onClick={handleDeleteDataset} disabled={saving} title="Delete dataset" className="text-destructive hover:text-destructive"><Trash2 className="size-4" /></Button>
-                    </div>
-                  </CardContent>
-                </Card>
-                <ProductionDashboardRenderer bundle={bundle} />
-              </TabsContent>
-
-              <TabsContent value="data" className="space-y-5">
-                <Card>
-                  <CardContent className="space-y-4 py-4">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Select value={activeTableId ?? undefined} onValueChange={setActiveTableId}>
-                        <SelectTrigger className="w-[220px]"><SelectValue placeholder="Choose table" /></SelectTrigger>
-                        <SelectContent>{bundle.dataset.tables.map((table) => <SelectItem key={table.id} value={table.id}>{table.name}</SelectItem>)}</SelectContent>
-                      </Select>
-                      <div className="relative max-w-xs flex-1">
-                        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search..." className="pl-9" />
-                      </div>
-                      <Button variant="outline" onClick={handleAddRow}><Plus />Add row</Button>
-                      <Button variant="ghost" size="icon" onClick={handleResetRows} disabled={saving} title="Reset edits"><RotateCcw className="size-4" /></Button>
-                      <Button variant="ghost" size="icon" onClick={handleClearFilteredRows} disabled={saving} title="Delete visible rows" className="text-destructive hover:text-destructive"><Trash2 className="size-4" /></Button>
-                      <Button variant="ghost" size="icon" onClick={handleDeleteTable} disabled={saving} title="Delete table" className="text-destructive hover:text-destructive"><Trash2 className="size-4" /></Button>
-                      <Button onClick={handleSaveRows} disabled={saving} className="ml-auto"><Save />Save</Button>
-                    </div>
-                    {activeTable ? (
-                      <EditableTable table={activeTable} rows={filteredRows.slice(0, 80)} allRows={editingRows} setRows={setEditingRows} />
-                    ) : (
-                      <div className="rounded-xl border border-dashed p-12 text-center text-sm text-muted-foreground">Choose a table to edit.</div>
-                    )}
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="builder" className="space-y-5">
-                <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Widgets</CardTitle>
-                      <CardDescription>Add charts or tables for non-technical screen dashboards.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid gap-3">
-                        <Label>New widget source</Label>
-                        <Select value={newWidgetTableId} onValueChange={setNewWidgetTableId}>
-                          <SelectTrigger><SelectValue placeholder="Choose table" /></SelectTrigger>
-                          <SelectContent>{bundle.dataset.tables.map((table) => <SelectItem key={table.id} value={table.id}>{table.name}</SelectItem>)}</SelectContent>
-                        </Select>
-                        <Select value={newWidgetType} onValueChange={setNewWidgetType}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>{chartTypes.map((type) => <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>)}</SelectContent>
-                        </Select>
-                        <Button onClick={handleAddWidget}><Plus />Add widget</Button>
-                      </div>
-                      <div className="space-y-2">
-                        {bundle.dashboard.widgets.map((widget) => (
-                          <button key={widget.id} type="button" onClick={() => setSelectedWidgetId(widget.id)} className={`w-full rounded-xl border p-3 text-left transition-colors ${selectedWidgetId === widget.id ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted/50'}`}>
-                            <p className="truncate text-sm font-semibold">{widget.title}</p>
-                            <p className="mt-1 text-xs text-muted-foreground">{widget.chart_type} · {getProductionTable(bundle.dataset, widget.source_table_id)?.name ?? 'Missing source'}</p>
-                          </button>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div>
-                        <CardTitle>Customize chart</CardTitle>
-                        <CardDescription>Pick fields, aggregation, and series without writing formulas.</CardDescription>
-                      </div>
-                      {selectedWidget && <Button variant="ghost" onClick={() => handleConfirmedDeleteWidget(selectedWidget.id)}><Trash2 />Remove</Button>}
-                    </CardHeader>
-                    <CardContent>
-                      {selectedWidget && selectedWidgetTable ? (
-                        <WidgetEditor widget={selectedWidget} table={selectedWidgetTable} tables={bundle.dataset.tables} onChange={(next) => updateWidget(selectedWidget.id, () => next)} />
-                      ) : (
-                        <div className="rounded-xl border border-dashed p-12 text-center text-sm text-muted-foreground">Select or add a widget to customize it.</div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
-              </TabsContent>
-            </Tabs>
+          ) : null}
+          {bundle && (
+            <Collapsible defaultOpen className={cn(isEntriesTab && "flex-1 min-h-0 flex flex-col w-full min-w-0")}>
+              <CollapsibleTrigger asChild>
+                <button type="button" className="group flex w-full flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 text-sm transition-colors hover:bg-muted/40 sm:gap-3 sm:px-4 sm:py-3">
+                  <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
+                  <span className="font-semibold truncate">{bundle.dashboard.name}</span>
+                  <span className="text-xs text-muted-foreground sm:text-sm">{bundle.dataset.tables.length} tables</span>
+                  <span className="text-xs text-muted-foreground sm:text-sm">{dashboardRowCount.toLocaleString()} rows</span>
+                  <span className="text-xs text-muted-foreground sm:text-sm">{assignedProductionScreens} screens</span>
+                  <span className="ml-auto hidden truncate text-xs text-muted-foreground sm:inline">{bundle.dataset.source_name}</span>
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className={cn("pt-5", isEntriesTab && "flex-1 min-h-0 flex flex-col pt-4 w-full min-w-0")}>
+                {DashboardTabsPanel()}
+              </CollapsibleContent>
+            </Collapsible>
           )}
-        </>
+        </div>
       )}
-
     </div>
   )
 }

@@ -161,7 +161,7 @@ export default function ModuleScreenManager({
     const confirmed = await customConfirm(`Delete screen "${screen.name}"?`)
     if (!confirmed) return
     await deleteScreen(screen.id)
-    showToast('Screen deleted', 'info')
+    showToast('Screen deleted', 'error')
     await refresh()
   }
 

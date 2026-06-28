@@ -391,3 +391,10 @@ export interface TruckDispatchSummary {
   this_month: number;
   avg_loading_secs: number | null;
 }
+
+export interface ContentStorageInfo {
+  path: string
+  used_bytes: number
+  free_bytes: number
+  total_bytes: number
+}

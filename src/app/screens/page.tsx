@@ -514,7 +514,7 @@ export default function ScreensPage() {
     const confirmed = await customConfirm(`Delete screen "${screen?.name}"?`);
     if (confirmed) {
       await deleteScreen(id);
-      showToast('Screen deleted', 'info');
+      showToast('Screen deleted', 'error');
     }
   };
 

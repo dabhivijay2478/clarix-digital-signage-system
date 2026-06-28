@@ -163,8 +163,10 @@ pub async fn save_local_content_file(
     filename: String,
     bytes: Vec<u8>,
     app_handle: tauri::AppHandle,
+    pool: State<'_, DbPool>,
 ) -> Result<String, String> {
-    let file_path = local_content_path(&app_handle, &filename).await?;
+    let base_dir = content_base_dir(&app_handle, &pool)?;
+    let file_path = local_content_path(&base_dir, &filename).await?;
     tokio::fs::write(&file_path, &bytes).await.map_err(|e| e.to_string())?;
 
     Ok(file_path.to_string_lossy().to_string())
@@ -176,8 +178,10 @@ pub async fn save_local_content_file_chunk(
     bytes: Vec<u8>,
     append: bool,
     app_handle: tauri::AppHandle,
+    pool: State<'_, DbPool>,
 ) -> Result<String, String> {
-    let file_path = local_content_path(&app_handle, &filename).await?;
+    let base_dir = content_base_dir(&app_handle, &pool)?;
+    let file_path = local_content_path(&base_dir, &filename).await?;
     let mut options = tokio::fs::OpenOptions::new();
     options.create(true).write(true);
     if append {
@@ -232,9 +236,25 @@ pub async fn prepare_presentation_content(file_path: String) -> Result<String, S
     .map_err(|error| error.to_string())?
 }
 
-async fn local_content_path(app_handle: &tauri::AppHandle, filename: &str) -> Result<PathBuf, String> {
-    let app_data_dir = app_handle.path().app_data_dir().map_err(|e| e.to_string())?;
-    let media_dir = app_data_dir.join("media");
+pub(crate) fn content_base_dir(app_handle: &tauri::AppHandle, pool: &DbPool) -> Result<PathBuf, String> {
+    let default_dir = app_handle.path().app_data_dir().map_err(|e| e.to_string())?;
+    let conn = pool.get().map_err(|e| e.to_string())?;
+    let custom_path: Option<String> = conn
+        .query_row(
+            "SELECT content_library_path FROM device_settings WHERE singleton = 1",
+            [],
+            |row| row.get(0),
+        )
+        .ok()
+        .flatten();
+    Ok(custom_path
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or(default_dir))
+}
+
+async fn local_content_path(base_dir: &Path, filename: &str) -> Result<PathBuf, String> {
+    let media_dir = base_dir.join("media");
     tokio::fs::create_dir_all(&media_dir).await.map_err(|e| e.to_string())?;
     let safe_name = Path::new(filename)
         .file_name()
@@ -242,6 +262,125 @@ async fn local_content_path(app_handle: &tauri::AppHandle, filename: &str) -> Re
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "Invalid file name".to_string())?;
     Ok(media_dir.join(safe_name))
+}
+
+#[derive(serde::Serialize)]
+pub struct ContentStorageInfo {
+    pub path: String,
+    pub used_bytes: u64,
+    pub free_bytes: u64,
+    pub total_bytes: u64,
+}
+
+#[tauri::command]
+pub async fn get_content_storage(
+    app_handle: tauri::AppHandle,
+    pool: State<'_, DbPool>,
+) -> Result<ContentStorageInfo, String> {
+    let base_dir = content_base_dir(&app_handle, &pool)?;
+    let media_dir = base_dir.join("media");
+
+    let total_bytes = media_disk_total(&base_dir);
+    let free_bytes = media_disk_avail(&base_dir);
+    let used_bytes = dir_size(&media_dir).await;
+
+    Ok(ContentStorageInfo {
+        path: base_dir.to_string_lossy().to_string(),
+        used_bytes,
+        free_bytes,
+        total_bytes,
+    })
+}
+
+#[tauri::command]
+pub async fn pick_content_directory(
+    app_handle: tauri::AppHandle,
+    pool: State<'_, DbPool>,
+) -> Result<ContentStorageInfo, String> {
+    use tauri_plugin_dialog::DialogExt;
+    use std::sync::mpsc;
+
+    let (tx, rx) = mpsc::channel();
+    app_handle
+        .dialog()
+        .file()
+        .pick_folder(move |folder| {
+            let _ = tx.send(folder);
+        });
+
+    let selected = tokio::task::spawn_blocking(move || rx.recv().ok().flatten())
+        .await
+        .ok()
+        .flatten();
+
+    let Some(folder) = selected else {
+        return Err("No folder selected".to_string());
+    };
+
+    let path_str = folder.to_string();
+
+    // Save to DB
+    let pool = pool.inner().clone();
+    let path_clone = path_str.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE device_settings SET content_library_path = ?1 WHERE singleton = 1",
+            params![path_clone],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok::<_, String>(())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    // Create media subdirectory and return storage info
+    let base_dir = PathBuf::from(&path_str);
+    let media_dir = base_dir.join("media");
+    tokio::fs::create_dir_all(&media_dir).await.map_err(|e| e.to_string())?;
+
+    let total_bytes = media_disk_total(&base_dir);
+    let free_bytes = media_disk_avail(&base_dir);
+    let used_bytes = dir_size(&media_dir).await;
+
+    Ok(ContentStorageInfo {
+        path: path_str,
+        used_bytes,
+        free_bytes,
+        total_bytes,
+    })
+}
+
+fn media_disk_total(path: &Path) -> u64 {
+    fs2::total_space(path).unwrap_or(0)
+}
+
+fn media_disk_avail(path: &Path) -> u64 {
+    fs2::available_space(path).unwrap_or(0)
+}
+
+async fn dir_size(path: &Path) -> u64 {
+    let mut total = 0u64;
+    if let Ok(mut rd) = tokio::fs::read_dir(path).await {
+        let mut entries = Vec::new();
+        loop {
+            match rd.next_entry().await {
+                Ok(Some(entry)) => entries.push(entry),
+                Ok(None) => break,
+                Err(_) => break,
+            }
+        }
+        for entry in entries {
+            if let Ok(meta) = entry.metadata().await {
+                if meta.is_file() {
+                    total += meta.len();
+                } else if meta.is_dir() {
+                    total += Box::pin(dir_size(&entry.path())).await;
+                }
+            }
+        }
+    }
+    total
 }
 
 fn file_extension(path: &Path) -> Option<String> {

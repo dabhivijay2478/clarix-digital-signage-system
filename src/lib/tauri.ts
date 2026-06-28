@@ -28,6 +28,7 @@ import type {
   MarqueeSettings,
   TruckDispatchSummary,
   ScreenPurpose,
+  ContentStorageInfo,
 } from './types';
 import { APP_NAME } from './branding';
 
@@ -385,6 +386,11 @@ export const contentApi = {
 
   preparePresentation: (filePath: string) =>
     tauriInvoke<string>('prepare_presentation_content', { filePath }),
+} as const;
+
+export const contentLibraryApi = {
+  getStorage: () => tauriInvoke<ContentStorageInfo>('get_content_storage'),
+  pickDirectory: () => tauriInvoke<ContentStorageInfo>('pick_content_directory'),
 };
 
 // ── Production Data API ────────────────────────────────────────────────────
@@ -424,6 +430,9 @@ export const productionApi = {
 
   addToContent: (dashboardId: string, durationSecs: number = 300) =>
     tauriInvoke<ContentItem>('add_production_dashboard_to_content', { dashboardId, durationSecs }),
+
+  clearAll: () =>
+    tauriInvoke<void>('clear_all_production_data'),
 };
 
 // ── Truck Alert API ────────────────────────────────────────────────────────
