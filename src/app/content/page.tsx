@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { useContent } from '../../hooks/useContent';
 import ContentCard from '../../components/ContentCard';
 import Modal from '../../components/Modal';
 import { showToast } from '../../components/Toast';
-import { LayoutGrid, Plus, Search, UploadCloud, Loader2, Table2, Trash2, Film, Image as ImageIcon, Globe, Megaphone, Presentation, FileText, FileSpreadsheet } from 'lucide-react';
+import { LayoutGrid, Plus, Search, UploadCloud, Loader2, Table2, Trash2, Eye, X, Film, Image as ImageIcon, Globe, Megaphone, Presentation, FileText, FileSpreadsheet } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import type { ContentItem } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 const contentTypes = ['Image', 'Video', 'Presentation', 'Document', 'Spreadsheet', 'WebApp', 'Ad', 'Slideshow'];
@@ -40,6 +42,8 @@ const typeStyles: Record<string, string> = {
 export default function ContentPage() {
   const { items, loading, search, setSearch, addItem, deleteItem } = useContent();
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [activeFilter, setActiveFilter] = useState<string | null>(null);
+  const [previewItem, setPreviewItem] = useState<ContentItem | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [formName, setFormName] = useState('');
   const [formType, setFormType] = useState('Image');
@@ -48,6 +52,14 @@ export default function ContentPage() {
   const [formTags, setFormTags] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  const filtered = useMemo(() => {
+    let result = items;
+    if (activeFilter) {
+      result = result.filter((i) => i.content_type === activeFilter);
+    }
+    return result;
+  }, [items, activeFilter]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -196,13 +208,37 @@ export default function ContentPage() {
         </div>
       </div>
 
+      {/* ── Category Filters ── */}
+      <div className="flex flex-wrap gap-1.5">
+        <Button
+          variant={activeFilter === null ? 'default' : 'outline'}
+          size="sm"
+          className="h-8 text-xs"
+          onClick={() => setActiveFilter(null)}
+        >
+          All
+        </Button>
+        {contentTypes.map((type) => (
+          <Button
+            key={type}
+            variant={activeFilter === type ? 'default' : 'outline'}
+            size="sm"
+            className="h-8 text-xs gap-1.5"
+            onClick={() => setActiveFilter(activeFilter === type ? null : type)}
+          >
+            {typeIcons[type]}
+            {type}
+          </Button>
+        ))}
+      </div>
+
       {/* Content */}
       {loading ? (
         <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
           <span className="text-sm font-medium">Loading content...</span>
         </div>
-      ) : items.length === 0 ? (
+      ) : items.length === 0 && !activeFilter ? (
         <Card className="border-dashed bg-transparent">
           <CardContent className="flex flex-col items-center py-16 text-center">
             <LayoutGrid className="mb-4 size-12 text-muted-foreground/40" />
@@ -216,14 +252,26 @@ export default function ContentPage() {
             </Button>
           </CardContent>
         </Card>
+      ) : filtered.length === 0 ? (
+        <Card className="border-dashed bg-transparent">
+          <CardContent className="flex flex-col items-center py-16 text-center">
+            <LayoutGrid className="mb-4 size-12 text-muted-foreground/40" />
+            <CardTitle>No {activeFilter} items</CardTitle>
+            <CardDescription className="mt-1">
+              No content items match the selected filter.
+            </CardDescription>
+            <Button variant="outline" className="mt-6" onClick={() => setActiveFilter(null)}>
+              Clear Filter
+            </Button>
+          </CardContent>
+        </Card>
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {items.map((item) => (
-            <ContentCard key={item.id} item={item} onDelete={setDeleteId} />
+          {filtered.map((item) => (
+            <ContentCard key={item.id} item={item} onDelete={setDeleteId} onView={setPreviewItem} />
           ))}
         </div>
       ) : (
-        /* Table View */
         <div className="border border-border rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
@@ -237,7 +285,7 @@ export default function ContentPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {items.map((item) => {
+              {filtered.map((item) => {
                 const variant = item.content_type === 'Image' ? 'secondary' : item.content_type === 'Video' ? 'default' : 'outline';
                 return (
                   <tr key={item.id} className="hover:bg-muted/30 transition-colors">
@@ -280,7 +328,15 @@ export default function ContentPage() {
                       {item.duration_secs}s
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center justify-end">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-8"
+                          onClick={() => setPreviewItem(item)}
+                        >
+                          <Eye className="size-4" />
+                        </Button>
                         <Button
                           size="icon"
                           variant="ghost"
@@ -428,6 +484,74 @@ export default function ContentPage() {
             />
           </div>
         </div>
+      </Modal>
+
+      {/* ── Preview Modal ── */}
+      <Modal
+        isOpen={!!previewItem}
+        onClose={() => setPreviewItem(null)}
+        title={previewItem?.name ?? ''}
+        actions={
+          <Button variant="outline" onClick={() => setPreviewItem(null)}>
+            Close
+          </Button>
+        }
+      >
+        {previewItem && (
+          <div className="space-y-4">
+            {/* Preview area */}
+            <div className="flex items-center justify-center rounded-xl border border-border/60 bg-black/5 min-h-[300px] max-h-[500px] overflow-hidden">
+              {previewItem.content_type === 'Image' && (previewItem.file_path || previewItem.url) ? (
+                <img
+                  src={previewItem.file_path ? convertFileSrc(previewItem.file_path) : previewItem.url!}
+                  alt={previewItem.name}
+                  className="max-h-[500px] w-full object-contain"
+                />
+              ) : previewItem.content_type === 'Video' && (previewItem.file_path || previewItem.url) ? (
+                <video
+                  src={previewItem.file_path ? convertFileSrc(previewItem.file_path) : previewItem.url!}
+                  controls
+                  autoPlay
+                  className="max-h-[500px] w-full"
+                />
+              ) : (
+                <div className="flex flex-col items-center gap-3 text-muted-foreground py-12">
+                  {typeIcons[previewItem.content_type] || <FileText className="size-12" />}
+                  <p className="text-sm font-medium">Preview not available for this content type</p>
+                  <p className="text-xs text-muted-foreground/60">
+                    Source: {previewItem.file_path || previewItem.url || 'N/A'}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Metadata */}
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p className="text-xs text-muted-foreground">Type</p>
+                <Badge variant="outline" className={cn('mt-1 text-xs', typeStyles[previewItem.content_type])}>
+                  {previewItem.content_type}
+                </Badge>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Duration</p>
+                <p className="mt-1 font-medium">{previewItem.duration_secs}s</p>
+              </div>
+              {previewItem.tags && previewItem.tags.length > 0 && (
+                <div className="col-span-2">
+                  <p className="text-xs text-muted-foreground">Tags</p>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {previewItem.tags.map((tag) => (
+                      <Badge key={tag} variant="secondary" className="text-xs">
+                        #{tag}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

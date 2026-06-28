@@ -5,7 +5,7 @@
   "identifier": "com.clarix.app",
   "build": {
     "frontendDist": "../out",
-    "devUrl": "http://localhost:3000",
+    "devUrl": "http://localhost:4200",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build"
   },

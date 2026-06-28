@@ -1,7 +1,8 @@
 'use client'
 
 import { memo } from 'react'
-import { Trash2, Film, Image as ImageIcon, Globe, Megaphone, Presentation, FileText, FileSpreadsheet, Clock } from 'lucide-react'
+import { Trash2, Eye, Film, Image as ImageIcon, Globe, Megaphone, Presentation, FileText, FileSpreadsheet, Clock } from 'lucide-react'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import type { ContentItem } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -10,6 +11,7 @@ import { cn } from '@/lib/utils'
 interface ContentCardProps {
   item: ContentItem
   onDelete: (id: string) => void
+  onView?: (item: ContentItem) => void
 }
 
 const typeConfig: Record<string, {
@@ -37,7 +39,7 @@ const fallbackConfig = {
   label: 'File',
 }
 
-function ContentCard({ item, onDelete }: ContentCardProps) {
+function ContentCard({ item, onDelete, onView }: ContentCardProps) {
   const { id, name, content_type, url, duration_secs, tags } = item
   const cfg = typeConfig[content_type] ?? fallbackConfig
   const IconComponent = cfg.icon
@@ -47,12 +49,30 @@ function ContentCard({ item, onDelete }: ContentCardProps) {
     ? source.split('/').pop() || source.split('\\').pop() || source
     : source
 
+  const mediaSrc = item.file_path ? convertFileSrc(item.file_path) : (item.url || '')
+
   return (
     <div className="group relative flex flex-col rounded-xl border border-border/60 bg-card overflow-hidden transition-all duration-200 hover:border-border hover:border-border">
 
       {/* Thumbnail / Preview area */}
-      <div className={cn('relative flex items-center justify-center h-24 w-full', cfg.iconBg)}>
-        <IconComponent className={cn('size-8 opacity-60', cfg.iconColor)} />
+      <div className={cn('relative flex items-center justify-center h-28 w-full overflow-hidden', item.content_type === 'Image' || item.content_type === 'Video' ? 'bg-black/5' : cfg.iconBg)}>
+        {item.content_type === 'Image' && (item.file_path || item.url) ? (
+          <img
+            src={mediaSrc}
+            alt={name}
+            className="size-full object-contain"
+            loading="lazy"
+          />
+        ) : item.content_type === 'Video' && (item.file_path || item.url) ? (
+          <video
+            src={mediaSrc}
+            className="size-full object-contain"
+            muted
+            preload="metadata"
+          />
+        ) : (
+          <IconComponent className={cn('size-8 opacity-60', cfg.iconColor)} />
+        )}
 
         {/* Type badge top-right */}
         <span className={cn(
@@ -62,6 +82,23 @@ function ContentCard({ item, onDelete }: ContentCardProps) {
           {cfg.label}
         </span>
 
+        {/* View button — appears on hover */}
+        {onView && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-2 left-2 size-6 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 hover:bg-primary/10 hover:text-primary rounded-md"
+                onClick={() => onView(item)}
+              >
+                <Eye className="size-3" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">View</TooltipContent>
+          </Tooltip>
+        )}
+
         {/* Delete button — appears on hover */}
         <Tooltip>
           <TooltipTrigger asChild>
@@ -69,6 +106,7 @@ function ContentCard({ item, onDelete }: ContentCardProps) {
               variant="ghost"
               size="icon"
               className="absolute top-2 left-2 size-6 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 hover:bg-destructive/10 hover:text-destructive rounded-md"
+              style={onView ? { left: '34px' } : undefined}
               onClick={() => onDelete(id)}
             >
               <Trash2 className="size-3" />

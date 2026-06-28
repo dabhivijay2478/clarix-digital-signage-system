@@ -43,10 +43,25 @@ fn query_user_by_token(conn: &rusqlite::Connection, token: &str) -> anyhow::Resu
 fn ensure_super_admin(conn: &rusqlite::Connection, token: &str) -> anyhow::Result<AuthUser> {
     let user = query_user_by_token(conn, token)?
         .ok_or_else(|| anyhow::anyhow!("Please log in again."))?;
-    if user.role != AdminRole::SuperAdmin {
-        anyhow::bail!("Only Super Admin users can manage team access.");
+    if !user.is_developer {
+        anyhow::bail!("Only dev users can manage team access.");
     }
     Ok(user)
+}
+
+fn parse_env_admin_user() -> Option<(String, String, String, String, bool)> {
+    let val = std::env::var("ADMIN_USER").ok()?;
+    let parts: Vec<&str> = val.splitn(5, ',').map(|p| p.trim()).collect();
+    if parts.len() < 5 {
+        return None;
+    }
+    Some((
+        parts[2].to_string(), // name
+        parts[1].to_string(), // password
+        parts[3].to_string(), // role
+        parts[0].to_string(), // email
+        parts[4].to_lowercase() == "true", // is_developer
+    ))
 }
 
 #[tauri::command]
@@ -58,26 +73,55 @@ pub async fn login_user(
     let pool = pool.inner().clone();
     tokio::task::spawn_blocking(move || {
         let normalized_email = email.trim().to_lowercase();
-        let conn = pool.get()?;
-        let row = conn
-            .query_row(
-                "SELECT id, name, email, role, is_developer, created_at, password_hash
-                 FROM users WHERE lower(email) = ?1",
-                params![normalized_email],
-                |row| {
-                    Ok((
-                        row_to_user(row)?,
-                        row.get::<_, String>(6)?,
-                    ))
-                },
-            )
-            .optional()?
-            .ok_or_else(|| anyhow::anyhow!("Invalid email or password."))?;
 
-        if !security::verify_password(&password, &row.1) {
+        // ── Read admin user from ADMIN_USER env var ──
+        let (name, env_password, role_str, raw_email, is_developer) = parse_env_admin_user()
+            .ok_or_else(|| anyhow::anyhow!("ADMIN_USER env var not set or invalid. Format: email,password,name,role,is_developer"))?;
+
+        // Only dev users can login
+        if !is_developer {
+            anyhow::bail!("Only dev users can login. Set is_developer to true in ADMIN_USER env var.");
+        }
+
+        // Check email match
+        if raw_email.to_lowercase().trim() != normalized_email {
             anyhow::bail!("Invalid email or password.");
         }
 
+        // Compare plain-text password
+        if password.trim() != env_password.trim() {
+            anyhow::bail!("Invalid email or password.");
+        }
+
+        let conn = pool.get()?;
+
+        // Upsert user in DB to ensure user_id exists for session
+        let user_id = uuid::Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+        let existing_id: Option<String> = conn
+            .query_row(
+                "SELECT id FROM users WHERE lower(email) = ?1",
+                params![normalized_email],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        let user_id = if let Some(uid) = existing_id {
+            conn.execute(
+                "UPDATE users SET name = ?1, role = ?2, is_developer = ?3, updated_at = ?4 WHERE id = ?5",
+                params![name, role_str, is_developer, now, uid],
+            )?;
+            uid
+        } else {
+            conn.execute(
+                "INSERT INTO users (id, name, email, password_hash, role, is_developer, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+                params![user_id, name, raw_email, "", role_str, is_developer, now],
+            )?;
+            user_id
+        };
+
+        // Create session
         let token = uuid::Uuid::new_v4().to_string();
         let session_id = uuid::Uuid::new_v4().to_string();
         let created_at = Utc::now();
@@ -87,17 +131,26 @@ pub async fn login_user(
              VALUES (?1, ?2, ?3, ?4, ?5)",
             params![
                 session_id,
-                row.0.id,
+                user_id,
                 token,
                 created_at.to_rfc3339(),
                 expires_at.to_rfc3339(),
             ],
         )?;
 
+        let user = AuthUser {
+            id: user_id,
+            name,
+            email: raw_email,
+            role: AdminRole::from_str(&role_str),
+            is_developer,
+            created_at: parse_date(now),
+        };
+
         Ok::<_, anyhow::Error>(AuthSession {
             token,
             expires_at,
-            user: row.0,
+            user,
         })
     })
     .await
@@ -304,20 +357,12 @@ pub async fn get_role_permissions(token: String, pool: State<'_, DbPool>) -> Res
         let conn = pool.get()?;
         let user = query_user_by_token(&conn, &token)?
             .ok_or_else(|| anyhow::anyhow!("Please log in again."))?;
-        // Use the serde-serialized role name (e.g. "SuperAdmin") to match the DB,
-        // NOT as_str() which returns "Super Admin" with a space.
-        let role_key = serde_json::to_string(&user.role)
-            .map(|s| s.trim_matches('"').to_string())
-            .unwrap_or_else(|_| "User".to_string());
-        let perms_json: String = conn
-            .query_row(
-                "SELECT permissions FROM role_permissions WHERE role = ?1",
-                params![role_key],
-                |row| row.get(0),
-            )
-            .optional()?
-            .unwrap_or_else(|| "[]".to_string());
-        let perms: Vec<String> = serde_json::from_str(&perms_json).unwrap_or_default();
+        // Dev users get full access; others get no permissions (frontend handles role defaults)
+        let perms = if user.is_developer {
+            vec!["all".to_string()]
+        } else {
+            Vec::new()
+        };
         Ok::<_, anyhow::Error>(perms)
     })
     .await

@@ -11,6 +11,9 @@ mod scheduler;
 mod security;
 
 pub fn run() {
+    // Load .env file before anything else reads env vars
+    dotenvy::dotenv().ok();
+
     // Initialize tracing/logging
     tracing_subscriber::fmt()
         .with_env_filter(

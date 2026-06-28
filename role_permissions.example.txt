@@ -1,29 +1,13 @@
-# MG Enterprise — Role Permissions Configuration
+# MG Enterprise — Role Permissions
 # ============================================================
-# LOCATION: This file lives in the app data directory, NOT here in the project.
-#   macOS: ~/Library/Application Support/com.mgenterprise.clarix/role_permissions.txt
+# Role permissions are hardcoded in the frontend (src/hooks/usePermissions.ts).
 #
-# Each non-blank, non-comment line defines permissions for one role.
-# Format (comma-separated):
+# Dev users (is_developer=true) automatically get full access.
 #
-#   role, permission1, permission2, ...
+# Non-dev role defaults:
+#   SiteSuperAdmin  → screens, content, production, trucks, team
+#   Manager          → screens, content, production, trucks
+#   User             → view (Dashboard only)
 #
-# Available permissions:
-#   all            - unrestricted access to everything
-#   screens        - manage display screens
-#   content        - manage media content library
-#   production     - access production data dashboards
-#   trucks         - manage truck token queue
-#   team           - manage team members and invites
-#   view           - read-only access to basic views
-#
-# Rules:
-#   - Changes take effect on next app restart.
-#   - Lines starting with # are comments and are ignored.
-#   - Blank lines are ignored.
+# To change these mappings, edit usePermissions.ts and rebuild.
 # ============================================================
-
-SuperAdmin,      all
-SiteSuperAdmin,  screens, content, production, trucks, team
-Manager,         screens, content, production, trucks
-User,            view

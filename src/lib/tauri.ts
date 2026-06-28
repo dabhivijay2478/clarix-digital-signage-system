@@ -113,7 +113,7 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
             id: 'browser-dev-user',
             name: 'Browser Dev Admin',
             email: String(args?.email ?? 'dev@mgenterprise.local'),
-            role: 'SuperAdmin',
+            role: 'SiteSuperAdmin',
             is_developer: true,
             created_at: new Date().toISOString(),
           },
@@ -124,7 +124,7 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
           id: 'browser-dev-user',
           name: 'Browser Dev Admin',
           email: 'dev@mgenterprise.local',
-          role: 'SuperAdmin',
+          role: 'SiteSuperAdmin',
           is_developer: true,
           created_at: new Date().toISOString(),
         } as T;

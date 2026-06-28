@@ -1,29 +1,20 @@
-# MG Enterprise — Admin Users Configuration
+# MG Enterprise — Admin User Configuration
 # ============================================================
-# LOCATION: This file lives in the app data directory, NOT here in the project.
-#   macOS: ~/Library/Application Support/com.mgenterprise.clarix/admin_users.txt
+# Admin user is configured via the ADMIN_USER environment variable.
 #
-# Each non-blank, non-comment line defines one user.
-# Format (comma-separated, 5 fields):
+# Format:
+#   ADMIN_USER=email,password,name,role,is_developer
 #
-#   email, password, name, role, is_developer
+# Example:
+#   ADMIN_USER=dev@mgenterprise.local,dev1234,Developer,SiteSuperAdmin,true
 #
 # Fields:
-#   email          - login email address (must be unique, case-insensitive)
-#   password       - plain-text password (hashed automatically on save)
-#   name           - display name shown in the UI
-#   role           - one of: SuperAdmin, SiteSuperAdmin, Manager, User
-#   is_developer   - true or false  (developers see Add Screen button etc.)
+#   email          - login email (case-insensitive)
+#   password       - plain-text password
+#   name           - display name in the UI
+#   role           - SiteSuperAdmin, Manager, or User (for permission grouping)
+#   is_developer   - must be true to log in (grants full access)
 #
-# How password changes work:
-#   1. Edit the password field in this file
-#   2. Restart the app
-#   3. The app detects the change via admin_users_applied.txt (internal)
-#      and re-hashes + saves the new password automatically
-#
-# Lines starting with # are comments and are ignored.
-# Blank lines are ignored.
+# Only the dev user (is_developer=true) can log in.
+# To change the admin user, update ADMIN_USER env var and restart the app.
 # ============================================================
-
-admin@mgenterprise.local, admin1234,  Super Admin, SuperAdmin, false
-dev@mgenterprise.local,   dev1234,    Developer,   SuperAdmin, true
