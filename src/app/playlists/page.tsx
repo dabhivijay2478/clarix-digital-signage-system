@@ -22,11 +22,13 @@ export default function PlaylistsPage() {
   const [formName, setFormName] = useState('');
   const [formTransition, setFormTransition] = useState('Fade');
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
 
   const selectedPlaylist = playlists.find((p) => p.id === selectedId);
 
   const handleCreate = async () => {
     if (!formName.trim()) return;
+    setIsCreating(true);
     try {
       const pl = await createPlaylist(formName, formTransition);
       showToast(`Playlist "${formName}" created`, 'success');
@@ -35,6 +37,8 @@ export default function PlaylistsPage() {
       setSelectedId(pl.id);
     } catch {
       showToast('Failed to create playlist', 'error');
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -113,8 +117,17 @@ export default function PlaylistsPage() {
         title="New Playlist"
         actions={
           <>
-            <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
-            <Button onClick={handleCreate}>Create</Button>
+            <Button variant="outline" onClick={() => setShowCreate(false)} disabled={isCreating}>Cancel</Button>
+            <Button onClick={handleCreate} disabled={isCreating}>
+              {isCreating ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                'Create'
+              )}
+            </Button>
           </>
         }
       >

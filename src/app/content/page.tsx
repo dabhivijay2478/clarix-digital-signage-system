@@ -52,6 +52,7 @@ export default function ContentPage() {
   const [formTags, setFormTags] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
 
   const filtered = useMemo(() => {
     let result = items;
@@ -114,6 +115,7 @@ export default function ContentPage() {
       return;
     }
 
+    setIsAdding(true);
     try {
       let filePath: string | undefined = undefined;
       const needsFile = isUploadType || (isWebType && selectedFile);
@@ -152,6 +154,8 @@ export default function ContentPage() {
       setSelectedFile(null);
     } catch (err) {
       showToast(`Failed to add content: ${err}`, 'error');
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -386,11 +390,18 @@ export default function ContentPage() {
             <Button variant="outline" onClick={() => {
               setShowAdd(false);
               setSelectedFile(null);
-            }}>
+            }} disabled={isAdding}>
               Cancel
             </Button>
-            <Button onClick={handleAdd}>
-              Add Content
+            <Button onClick={handleAdd} disabled={isAdding}>
+              {isAdding ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                'Add Content'
+              )}
             </Button>
           </>
         }

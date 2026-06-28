@@ -80,6 +80,11 @@ export default function TeamPage() {
   const [newPassword, setNewPassword] = useState('')
   const [showNewPassword, setShowNewPassword] = useState(false)
 
+  // Loading states
+  const [isInviting, setIsInviting] = useState(false)
+  const [isEditingMember, setIsEditingMember] = useState(false)
+  const [isResettingPassword, setIsResettingPassword] = useState(false)
+
   const loadTeam = useCallback(async () => {
     if (!token || !hasPermission('team')) return
     setLoading(true)
@@ -103,6 +108,7 @@ export default function TeamPage() {
 
   const createInvite = async () => {
     if (!token || !email.trim()) return
+    setIsInviting(true)
     try {
       const invitePassword = password.trim() || generatePassword(12)
       const invite = await authApi.createInvite(token, email.trim(), role, false, invitePassword)
@@ -114,6 +120,8 @@ export default function TeamPage() {
       showToast(`Invite created for ${invite.email}`, 'success')
     } catch (error) {
       showToast(`Invite failed: ${error}`, 'error')
+    } finally {
+      setIsInviting(false)
     }
   }
 
@@ -154,6 +162,7 @@ export default function TeamPage() {
 
   const saveMemberEdit = async () => {
     if (!token || !editingMember) return
+    setIsEditingMember(true)
     try {
       const updated = await authApi.updateMember(token, editingMember.id, editRole, editingMember.is_developer)
       setMembers((current) => current.map((m) => (m.id === updated.id ? updated : m)))
@@ -161,6 +170,8 @@ export default function TeamPage() {
       showToast('Member updated', 'success')
     } catch (error) {
       showToast(`Failed to update member: ${error}`, 'error')
+    } finally {
+      setIsEditingMember(false)
     }
   }
 
@@ -172,6 +183,7 @@ export default function TeamPage() {
 
   const saveResetPassword = async () => {
     if (!token || !resettingMember || !newPassword.trim()) return
+    setIsResettingPassword(true)
     try {
       await authApi.resetMemberPassword(token, resettingMember.id, newPassword.trim())
       showToast(`Password reset for ${resettingMember.name}`, 'success')
@@ -179,6 +191,8 @@ export default function TeamPage() {
       setNewPassword('')
     } catch (error) {
       showToast(`Failed to reset password: ${error}`, 'error')
+    } finally {
+      setIsResettingPassword(false)
     }
   }
 
@@ -269,7 +283,16 @@ export default function TeamPage() {
                 <SelectContent>{inviteRoleOptions.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <Button onClick={createInvite} disabled={!email.trim()}>Send Invite</Button>
+            <Button onClick={createInvite} disabled={!email.trim() || isInviting}>
+              {isInviting ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                'Send Invite'
+              )}
+            </Button>
           </CardContent>
         </Card>
       )}
@@ -452,8 +475,17 @@ export default function TeamPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingMember(null)}>Cancel</Button>
-            <Button onClick={saveMemberEdit}>Save Changes</Button>
+            <Button variant="outline" onClick={() => setEditingMember(null)} disabled={isEditingMember}>Cancel</Button>
+            <Button onClick={saveMemberEdit} disabled={isEditingMember}>
+              {isEditingMember ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Changes'
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -493,8 +525,17 @@ export default function TeamPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setResettingMember(null)}>Cancel</Button>
-            <Button onClick={saveResetPassword}>Reset Password</Button>
+            <Button variant="outline" onClick={() => setResettingMember(null)} disabled={isResettingPassword}>Cancel</Button>
+            <Button onClick={saveResetPassword} disabled={isResettingPassword}>
+              {isResettingPassword ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Resetting...
+                </>
+              ) : (
+                'Reset Password'
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
