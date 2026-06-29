@@ -347,6 +347,13 @@ export interface TruckScreenAlert {
   active_truck_status?: string | null;
   next_truck_number?: string | null;
   next_truck_status?: string | null;
+  queue_trucks?: Truck[];
+  queue_gates?: GateQueueSettings[];
+}
+
+export interface GateQueueSettings {
+  number: string;
+  loadingDurationMins?: number;
 }
 
 // ── Local Admin Auth ───────────────────────────────────────────────────────
@@ -387,6 +394,7 @@ export interface MarqueeSettings {
 }
 
 export interface TruckDispatchSummary {
+  today: number;
   last_24h: number;
   this_month: number;
   avg_loading_secs: number | null;

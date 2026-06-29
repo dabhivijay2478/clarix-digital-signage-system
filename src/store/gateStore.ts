@@ -13,6 +13,7 @@ export interface Gate {
   purpose: ScreenPurpose
   productionDashboardId: string | null
   playlistId: string | null
+  loadingDurationMins: number
 }
 
 // gate number → array of screen IDs assigned to that gate
@@ -61,6 +62,7 @@ interface GateStore {
     productionDashboardId: string | null,
     playlistId: string | null
   ) => void
+  updateGateLoadingDuration: (gateNumber: string, loadingDurationMins: number) => void
 }
 
 // ── Store ────────────────────────────────────────────────────────────────────
@@ -82,6 +84,7 @@ export const useGateStore = create<GateStore>()(
           purpose: 'playlist',
           productionDashboardId: null,
           playlistId: null,
+          loadingDurationMins: 30,
         }
         set((s) => ({ gates: [...s.gates, gate] }))
         return gate
@@ -170,14 +173,35 @@ export const useGateStore = create<GateStore>()(
           ),
         }))
       },
+
+      updateGateLoadingDuration: (gateNumber, loadingDurationMins) => {
+        const normalized = normalizeGateNumber(gateNumber)
+        const safeMinutes = Math.max(1, Math.min(Math.round(loadingDurationMins), 24 * 60))
+        set((s) => ({
+          gates: s.gates.map((g) =>
+            g.number === normalized
+              ? { ...g, loadingDurationMins: safeMinutes }
+              : g
+          ),
+        }))
+      },
     }),
     {
       name: 'mg-enterprise-gates',
-      version: 2, // Bumped to clear old default gates
+      version: 3, // Adds per-gate loading duration
       migrate: (persistedState: any, version: number) => {
         // Clear all gates on version upgrade to remove default D4/D5
         if (version < 2) {
           return { gates: [], assignments: {} }
+        }
+        if (version < 3) {
+          return {
+            ...persistedState,
+            gates: (persistedState?.gates ?? []).map((gate: Gate) => ({
+              ...gate,
+              loadingDurationMins: gate.loadingDurationMins ?? 30,
+            })),
+          }
         }
         return persistedState
       },

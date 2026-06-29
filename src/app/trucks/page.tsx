@@ -16,7 +16,6 @@ import {
   Timer,
   CheckCircle2,
   CalendarDays,
-  TrendingUp,
   Activity,
 } from 'lucide-react'
 import { useTrucks } from '@/hooks/useTrucks'
@@ -31,6 +30,10 @@ import {
   previewTruckStatusUpdate,
   type TruckStatusField,
 } from '@/lib/truck-alerts'
+import {
+  formatQueueDuration,
+  getEstimatedWaitMinsForTruck,
+} from '@/lib/truck-queue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -345,6 +348,7 @@ export default function TrucksPage() {
 
     try {
       const gateVal = (preview.gate_no ?? '').toLowerCase()
+      const queueSnapshot = trucks.map(t => t.id === preview.id ? preview : t)
       const gateTrucks = trucks
         .map(t => t.id === preview.id ? preview : t)
         .filter((t) => (t.gate_no ?? '').toLowerCase() === gateVal)
@@ -359,6 +363,11 @@ export default function TrucksPage() {
         active_truck_status: active ? getTruckStatusInfo(active).status_label : null,
         next_truck_number: next ? next.registration_number : null,
         next_truck_status: next ? getTruckStatusInfo(next).status_label : null,
+        queue_trucks: queueSnapshot,
+        queue_gates: gates.map((gate) => ({
+          number: gate.number,
+          loadingDurationMins: gate.loadingDurationMins,
+        })),
       }
       await truckAlertsApi.publish(alert)
       setLastAlert(alert)
@@ -441,6 +450,14 @@ export default function TrucksPage() {
     return fromGates
   }, [gates])
 
+  const gateQueueSettings = useMemo(
+    () => gates.map((gate) => ({
+      number: gate.number,
+      loadingDurationMins: gate.loadingDurationMins,
+    })),
+    [gates]
+  )
+
   const filteredTrucks = trucks.filter((t) => {
     if (t.is_out) return false
     const matchesSearch = t.registration_number.toLowerCase().includes(search.toLowerCase()) ||
@@ -491,7 +508,7 @@ export default function TrucksPage() {
   const totalActive = trucks.filter(t => !t.is_out).length
   const waitingCount = trucks.filter(t => t.is_waiting && !t.is_out).length
   const loadingCount = trucks.filter(t => t.is_loading && !t.is_out).length
-  const dispatchedCount = trucks.filter(t => t.is_out).length
+  const dispatchedTodayCount = dispatchSummary?.today ?? 0
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -524,12 +541,11 @@ export default function TrucksPage() {
       </div>
 
       {/* ── Stat Cards ───────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <StatCard icon={Truck} value={totalActive} label="Total" sublabel="Active trucks" color="primary" />
         <StatCard icon={Timer} value={waitingCount} label="Waiting" sublabel="In queue" color="amber" />
         <StatCard icon={Activity} value={loadingCount} label="Loading" sublabel="In progress" color="blue" />
-        <StatCard icon={CheckCircle2} value={dispatchedCount} label="Dispatched" sublabel="Today" color="green" />
-        <StatCard icon={TrendingUp} value={dispatchSummary?.last_24h ?? 0} label="24h Dispatch" sublabel="Last 24 hours" color="violet" />
+        <StatCard icon={CheckCircle2} value={dispatchedTodayCount} label="Dispatched" sublabel="Today" color="green" />
         <StatCard icon={CalendarDays} value={dispatchSummary?.this_month ?? 0} label="This Month" sublabel="Month total" color="rose" />
       </div>
 
@@ -626,6 +642,7 @@ export default function TrucksPage() {
                     <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Status</TableHead>
                     <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wide">Move</TableHead>
                     <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Gate</TableHead>
+                    <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Est. Wait</TableHead>
                     <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wide">Waiting</TableHead>
                     <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wide">Loading In</TableHead>
                     <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wide">Loading Out</TableHead>
@@ -675,6 +692,13 @@ export default function TrucksPage() {
                           >
                             {statusLabel.toLowerCase()}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-mono text-xs font-semibold text-muted-foreground">
+                            {statusLabel === 'Waiting'
+                              ? formatQueueDuration(getEstimatedWaitMinsForTruck(trucks, truck, gateQueueSettings))
+                              : 'Now'}
+                          </span>
                         </TableCell>
                         <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                           {isWaiting ? (

@@ -74,6 +74,11 @@ pub async fn get_truck_dispatch_summary(
     tokio::task::spawn_blocking(move || {
         let conn = pool.get().map_err(|e| e.to_string())?;
         let now = Utc::now();
+        let today_start = Utc
+            .with_ymd_and_hms(now.year(), now.month(), now.day(), 0, 0, 0)
+            .single()
+            .unwrap_or(now)
+            .to_rfc3339();
         let last_24h_start = (now - Duration::hours(24)).to_rfc3339();
         let month_start = Utc
             .with_ymd_and_hms(now.year(), now.month(), 1, 0, 0, 0)
@@ -81,6 +86,13 @@ pub async fn get_truck_dispatch_summary(
             .unwrap_or(now)
             .to_rfc3339();
 
+        let today: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM dispatched_trucks WHERE out_at IS NOT NULL AND out_at >= ?1",
+                rusqlite::params![today_start],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
         let last_24h: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM dispatched_trucks WHERE out_at IS NOT NULL AND out_at >= ?1",
@@ -120,6 +132,7 @@ pub async fn get_truck_dispatch_summary(
         }
 
         Ok(TruckDispatchSummary {
+            today: today as u32,
             last_24h: last_24h as u32,
             this_month: this_month as u32,
             avg_loading_secs: if count > 0 { Some((total_secs / count) as u32) } else { None },

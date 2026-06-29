@@ -166,6 +166,7 @@ pub struct MarqueeSettings {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TruckDispatchSummary {
+    pub today: u32,
     pub last_24h: u32,
     pub this_month: u32,
     pub avg_loading_secs: Option<u32>,
@@ -473,4 +474,6 @@ pub struct TruckScreenAlert {
     pub active_truck_status: Option<String>,
     pub next_truck_number: Option<String>,
     pub next_truck_status: Option<String>,
+    pub queue_trucks: Option<Vec<serde_json::Value>>,
+    pub queue_gates: Option<Vec<serde_json::Value>>,
 }

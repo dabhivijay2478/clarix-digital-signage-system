@@ -71,33 +71,92 @@ function expandDayWindow(start: string, end: string): Array<[number, number]> {
   return [[startMinutes, 1440], [0, endMinutes]];
 }
 
+function nextWeekday(day: AppWeekday): AppWeekday {
+  const index = APP_WEEKDAYS.indexOf(day);
+  return APP_WEEKDAYS[(index + 1) % APP_WEEKDAYS.length];
+}
+
+function formatTimeRange(range: [number, number]): string {
+  const format = (minutes: number) => {
+    const clamped = Math.min(minutes, 1439);
+    return `${String(Math.floor(clamped / 60)).padStart(2, '0')}:${String(clamped % 60).padStart(2, '0')}`;
+  };
+  return `${format(range[0])}-${range[1] === 1440 ? '24:00' : format(range[1])}`;
+}
+
+function getScheduleDateRange(schedule: PlaylistItemSchedule): { start: string; end: string } {
+  if (!schedule.date_restricted) return { start: '', end: '' };
+  return {
+    start: schedule.start_date || '',
+    end: schedule.end_date || '',
+  };
+}
+
+function dateRangesOverlap(
+  a: { start: string; end: string },
+  b: { start: string; end: string }
+): boolean {
+  const aStart = a.start || '0000-01-01';
+  const aEnd = a.end || '9999-12-31';
+  const bStart = b.start || '0000-01-01';
+  const bEnd = b.end || '9999-12-31';
+  return aStart <= bEnd && bStart <= aEnd;
+}
+
+function dateRangeLabel(range: { start: string; end: string }): string {
+  if (!range.start && !range.end) return 'all dates';
+  if (range.start && range.end) return `${range.start} to ${range.end}`;
+  if (range.start) return `from ${range.start}`;
+  return `until ${range.end}`;
+}
+
+interface PlaylistScheduleWindow {
+  index: number;
+  day: AppWeekday;
+  range: [number, number];
+  dateRange: { start: string; end: string };
+}
+
+function buildPlaylistScheduleWindows(item: PlaylistItem, index: number): PlaylistScheduleWindow[] {
+  const schedule = normalizePlaylistItemSchedule(item.display_schedule);
+  if (!schedule.time_restricted) return [];
+
+  const dateRange = getScheduleDateRange(schedule);
+  const windows: PlaylistScheduleWindow[] = [];
+
+  APP_WEEKDAYS.forEach((day) => {
+    const daySchedule = schedule.day_times?.[day];
+    if (!daySchedule?.enabled) return;
+
+    const ranges = expandDayWindow(daySchedule.start, daySchedule.end);
+    ranges.forEach((range, rangeIndex) => {
+      windows.push({
+        index,
+        day: rangeIndex === 1 ? nextWeekday(day) : day,
+        range,
+        dateRange,
+      });
+    });
+  });
+
+  return windows;
+}
+
 function validatePlaylistOverlaps(items: PlaylistItem[]): string | null {
-  const windowsByDay = new Map<AppWeekday, Array<{ index: number; range: [number, number] }>>();
+  const windowsByDay = new Map<AppWeekday, PlaylistScheduleWindow[]>();
   items.forEach((item, index) => {
-    const schedule = normalizePlaylistItemSchedule(item.display_schedule);
-    if (!schedule.time_restricted) return;
-    APP_WEEKDAYS.forEach((day) => {
-      const daySchedule = schedule.day_times?.[day];
-      if (!daySchedule?.enabled) return;
-      const ranges = expandDayWindow(daySchedule.start, daySchedule.end);
-      const existing = windowsByDay.get(day) ?? [];
-      for (const range of ranges) {
-        for (const previous of existing) {
-          if (range[0] < previous.range[1] && previous.range[0] < range[1]) {
-            return;
-          }
-        }
-        existing.push({ index, range });
-      }
-      windowsByDay.set(day, existing);
+    buildPlaylistScheduleWindows(item, index).forEach((window) => {
+      const existing = windowsByDay.get(window.day) ?? [];
+      windowsByDay.set(window.day, [...existing, window]);
     });
   });
 
   for (const [day, windows] of windowsByDay.entries()) {
     for (let a = 0; a < windows.length; a++) {
       for (let b = a + 1; b < windows.length; b++) {
-        if (windows[a].range[0] < windows[b].range[1] && windows[b].range[0] < windows[a].range[1]) {
-          return `Schedule overlap on ${ITEM_SCHEDULE_DAY_LABELS[day]} between item #${windows[a].index + 1} and item #${windows[b].index + 1}.`;
+        const sameTime = windows[a].range[0] < windows[b].range[1] && windows[b].range[0] < windows[a].range[1];
+        if (sameTime && dateRangesOverlap(windows[a].dateRange, windows[b].dateRange)) {
+          return `Schedule overlap on ${ITEM_SCHEDULE_DAY_LABELS[day]} ${formatTimeRange(windows[a].range)} between item #${windows[a].index + 1} and item #${windows[b].index + 1} (${dateRangeLabel(windows[a].dateRange)} / ${dateRangeLabel(windows[b].dateRange)}).`;
         }
       }
     }
@@ -114,7 +173,7 @@ export default function ScreensPage() {
   const [formName, setFormName] = useState('');
 
   // Gate store configuration hooks
-  const { gates, assignments, addGate, removeGate, assignScreen, unassignScreen, getAllAssignedScreenIds, unassignScreenFromAll, getAssignedGateForScreen } = useGateStore();
+  const { gates, assignments, addGate, removeGate, assignScreen, unassignScreen, getAllAssignedScreenIds, unassignScreenFromAll, getAssignedGateForScreen, updateGateLoadingDuration } = useGateStore();
   const authUser = useAuthStore((s) => s.user);
   const { hasPermission, isSuperAdmin } = usePermissions();
   const [showAddGate, setShowAddGate] = useState(false);
@@ -398,15 +457,19 @@ export default function ScreensPage() {
       showToast(validationError, 'error');
       return;
     }
+
+    const nextItems = localPlaylistItems.map((item, index) => (
+      index === editingItemIndex
+        ? { ...item, display_schedule: nextSchedule }
+        : item
+    ));
+    const overlapError = validatePlaylistOverlaps(nextItems);
+    if (overlapError) {
+      showToast(overlapError, 'error');
+      return;
+    }
     
-    setLocalPlaylistItems(prev => {
-      const copy = [...prev];
-      copy[editingItemIndex] = {
-        ...copy[editingItemIndex],
-        display_schedule: nextSchedule
-      };
-      return copy;
-    });
+    setLocalPlaylistItems(nextItems);
     
     setHasUnsavedChanges(true);
     setEditingItemIndex(null);
@@ -1406,6 +1469,7 @@ export default function ScreensPage() {
                 <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium">Gate</th>
+                    <th className="px-4 py-3 text-left font-medium">Load Time</th>
                     <th className="px-4 py-3 text-left font-medium">Assigned Screens</th>
                     <th className="px-4 py-3 text-right font-medium">Actions</th>
                   </tr>
@@ -1417,6 +1481,20 @@ export default function ScreensPage() {
                     return (
                       <tr key={gate.id} className="hover:bg-muted/30 transition-colors">
                         <td className="px-4 py-3 font-medium">Gate {gate.number.toUpperCase()}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              min={1}
+                              max={1440}
+                              value={gate.loadingDurationMins ?? 30}
+                              disabled={!canManageGates}
+                              onChange={(event) => updateGateLoadingDuration(gate.number, Number(event.target.value))}
+                              className="h-8 w-24"
+                            />
+                            <span className="text-xs text-muted-foreground">min / 2 trucks</span>
+                          </div>
+                        </td>
                         <td className="px-4 py-3">
                           {gateScreens.length === 0 ? (
                             <span className="text-muted-foreground text-sm">No screens assigned</span>

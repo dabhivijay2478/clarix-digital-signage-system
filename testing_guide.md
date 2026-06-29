@@ -2,6 +2,8 @@
 
 SignalOS uses one **Controller** per site and one or more **Players**. Packaged Mac and Windows players connect outward to the controller, pull authenticated revisions, verify downloaded media, and keep playing the last valid revision when the controller is unavailable.
 
+For offline router setup, TP-Link Archer C20 examples, DHCP/firewall checks, and Samsung QB55C URL Launcher guidance, see [docs/offline-router-setup.md](./docs/offline-router-setup.md).
+
 ## Important Development Note
 
 `ws://<computer>:3000/_next/webpack-hmr` is Next.js development hot reload. It is not the SignalOS player connection and is not present in packaged builds.

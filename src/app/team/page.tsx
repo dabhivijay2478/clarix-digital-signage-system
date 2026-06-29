@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { ShieldCheck, Users, UserPlus, Trash2, Pencil, Key, RefreshCw, Copy, Check, Eye, EyeOff } from 'lucide-react'
+import { ShieldCheck, Users, UserPlus, Trash2, Pencil, Key, RefreshCw, Copy, Check, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { showToast } from '@/components/Toast'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -455,10 +455,10 @@ export default function TeamPage() {
 
       {/* Edit Member Dialog */}
       <Dialog open={!!editingMember} onOpenChange={() => setEditingMember(null)}>
-        <DialogContent>
+        <DialogContent aria-describedby="edit-member-role-description">
           <DialogHeader>
             <DialogTitle>Edit Member Role</DialogTitle>
-            <DialogDescription>Update role for {editingMember?.name}</DialogDescription>
+            <DialogDescription id="edit-member-role-description">Update role for {editingMember?.name}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -492,10 +492,10 @@ export default function TeamPage() {
 
       {/* Reset Password Dialog - Developer Only */}
       <Dialog open={!!resettingMember} onOpenChange={() => setResettingMember(null)}>
-        <DialogContent>
+        <DialogContent aria-describedby="reset-member-password-description">
           <DialogHeader>
             <DialogTitle>Reset Password</DialogTitle>
-            <DialogDescription>Set new password for {resettingMember?.name}</DialogDescription>
+            <DialogDescription id="reset-member-password-description">Set new password for {resettingMember?.name}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">

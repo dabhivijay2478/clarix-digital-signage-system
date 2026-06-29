@@ -10,6 +10,8 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { useBrandingStore } from '../../store/ui';
 import { Maximize, Minimize, RefreshCw, LogOut, XCircle } from 'lucide-react';
 import { useGateStore } from '@/store/gateStore';
+import TruckTokenDisplay from '@/components/TruckTokenDisplay';
+import { useTruckStore } from '@/store/truckStore';
 
 function playlistPlaybackSignature(playlist: Playlist): string {
   return JSON.stringify({
@@ -28,6 +30,7 @@ function playlistPlaybackSignature(playlist: Playlist): string {
 export default function PlayerPage() {
   const router = useRouter();
   const branding = useBrandingStore();
+  const trucks = useTruckStore((state) => state.trucks);
   const appName = branding.appName;
   const appLogo = branding.appIcon;
   const [screenId, setScreenId] = useState<string | null>(null);
@@ -270,7 +273,27 @@ export default function PlayerPage() {
     try {
       // 1. Fetch data
       const screens = await screensApi.getAll();
+      setScreensList(screens);
       const currentScreen = screens.find((s) => s.id === screenId) || null;
+
+      if (!currentScreen) {
+        setActiveScreen(null);
+        setActivePlaylist(null);
+        setIsPlaying(false);
+
+        if (screens.length === 1) {
+          localStorage.setItem('clarix_player_screen_id', screens[0].id);
+          setScreenId(screens[0].id);
+          setLoading(false);
+          return;
+        }
+
+        localStorage.removeItem('clarix_player_screen_id');
+        setScreenId(null);
+        setLoading(false);
+        return;
+      }
+
       setActiveScreen(currentScreen);
 
       const playlists = await playlistsApi.getAll();
@@ -638,119 +661,17 @@ export default function PlayerPage() {
     );
   };
 
-  const getStatusColor = (status: string | null | undefined) => {
-    switch (status) {
-      case 'Loading Out.':
-        return 'from-emerald-500 to-teal-600 text-white shadow-emerald-500/20'
-      case 'Loading in.':
-        return 'from-cyan-500 to-blue-600 text-white shadow-cyan-500/20'
-      case 'Waiting':
-        return 'from-amber-500 to-orange-600 text-white shadow-amber-500/20'
-      default:
-        return 'from-zinc-700 to-zinc-800 text-zinc-300'
-    }
-  };
-
   const renderTruckAlertOverlay = () => {
     if (!truckAlert) return null;
 
-    // Filter alert to match the screen's gate location (individual display routing)
-    if (activeScreen) {
-      const screenLoc = (activeScreen.location || '').toLowerCase();
-      const alertGate = (truckAlert.gate || '').toLowerCase();
-      if (screenLoc.includes('d4') && alertGate !== 'd4') return null;
-      if (screenLoc.includes('d5') && alertGate !== 'd5') return null;
-    }
-
-    const activeTruckNum = truckAlert.active_truck_number;
-    const activeTruckStatus = truckAlert.active_truck_status;
-    const nextTruckNum = truckAlert.next_truck_number;
-    const nextTruckStatus = truckAlert.next_truck_status;
-    const gateLabel = truckAlert.gate ? truckAlert.gate.toUpperCase() : 'UNKNOWN';
-
     return (
-      <div 
-        className="fixed inset-0 z-100 grid grid-rows-2 gap-6 bg-black text-white p-6 select-none font-sans"
-        style={{
-          backgroundImage: 'radial-gradient(circle at center, #0B0F19 0%, #030406 100%)',
-        }}
-      >
-        {/* Active Truck Row */}
-        <div 
-          className="flex flex-col justify-between p-8 md:p-10 rounded-4xl border border-white/5 bg-zinc-950/20 backdrop-blur-3xl relative overflow-hidden"
-          style={{
-            boxShadow: activeTruckNum ? '0 20px 80px rgba(6, 182, 212, 0.08)' : 'none',
-          }}
-        >
-          {activeTruckNum && (
-            <div className="absolute top-0 right-0 h-40 w-40 rounded-full bg-cyan-500/5 blur-[50px] pointer-events-none" />
-          )}
-          <div>
-            <span className="text-sm font-bold tracking-[0.3em] uppercase text-white/30 block mb-3">
-              CURRENT TRUCK (LOADING)
-            </span>
-            {activeTruckNum ? (
-              <h2 className="text-7xl md:text-9xl font-black font-mono tracking-tight text-white leading-none break-all">
-                {activeTruckNum.toUpperCase()}
-              </h2>
-            ) : (
-              <h2 className="text-4xl md:text-6xl font-black tracking-tight text-zinc-700 leading-none">
-                NO ACTIVE VEHICLE
-              </h2>
-            )}
-          </div>
-
-          <div className="mt-4">
-            {activeTruckNum ? (
-              <span className={`inline-flex items-center justify-center px-8 py-3 rounded-full text-2xl font-black uppercase tracking-wider bg-linear-to-r shadow-lg ${getStatusColor(activeTruckStatus)}`}>
-                {activeTruckStatus}
-              </span>
-            ) : (
-              <span className="inline-flex items-center justify-center px-8 py-3 rounded-full text-xl font-bold uppercase tracking-wider bg-zinc-900 border border-white/5 text-zinc-500">
-                Awaiting Loading In
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Next Truck Row */}
-        <div 
-          className="flex flex-col justify-between p-8 md:p-10 rounded-4xl border border-white/5 bg-zinc-950/20 backdrop-blur-3xl relative overflow-hidden"
-          style={{
-            boxShadow: nextTruckNum ? '0 20px 80px rgba(245, 158, 11, 0.05)' : 'none',
-          }}
-        >
-          {nextTruckNum && (
-            <div className="absolute top-0 right-0 h-40 w-40 rounded-full bg-amber-500/5 blur-[50px] pointer-events-none" />
-          )}
-          <div>
-            <span className="text-sm font-bold tracking-[0.3em] uppercase text-white/30 block mb-3">
-              NEXT VEHICLE (WAITING)
-            </span>
-            {nextTruckNum ? (
-              <h2 className="text-7xl md:text-9xl font-black font-mono tracking-tight text-white/90 leading-none break-all">
-                {nextTruckNum.toUpperCase()}
-              </h2>
-            ) : (
-              <h2 className="text-4xl md:text-6xl font-black tracking-tight text-zinc-700 leading-none">
-                NO VEHICLE WAITING
-              </h2>
-            )}
-          </div>
-
-          <div className="mt-4">
-            {nextTruckNum ? (
-              <span className={`inline-flex items-center justify-center px-8 py-3 rounded-full text-2xl font-black uppercase tracking-wider bg-linear-to-r shadow-lg ${getStatusColor(nextTruckStatus)}`}>
-                {nextTruckStatus}
-              </span>
-            ) : (
-              <span className="inline-flex items-center justify-center px-8 py-3 rounded-full text-xl font-bold uppercase tracking-wider bg-zinc-900 border border-white/5 text-zinc-500">
-                Queue Empty
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
+      <TruckTokenDisplay
+        trucks={truckAlert.queue_trucks ?? trucks}
+        gateSettings={truckAlert.queue_gates}
+        title="Truck Token Alert"
+        className="z-100"
+        showHeader={false}
+      />
     );
   };
 
@@ -860,7 +781,7 @@ export default function PlayerPage() {
   // ── RENDER DEFAULT WAIT SCREEN ──────────────────────────────────────────
   const playableItems = getPlayableItems();
   if (!activePlaylist || playableItems.length === 0) {
-    const currentScreen = screensList.find((s) => s.id === screenId);
+    const currentScreen = activeScreen ?? screensList.find((s) => s.id === screenId);
     const screenName = currentScreen?.name || 'Local Screen';
     const screenLoc = currentScreen?.location || '';
 

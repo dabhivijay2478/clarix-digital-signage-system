@@ -3,33 +3,34 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
+  AlertCircle,
+  CheckCircle2,
   Megaphone,
   MonitorPlay,
+  Network,
   Radio,
+  Router,
   Server,
   Settings2,
   ShieldCheck,
-  LayoutGrid,
-  Bell,
-  PanelLeftClose,
   Database,
-  Info,
-  Cpu,
   Folder,
   HardDrive,
   RefreshCw,
   Loader2,
+  Wifi,
 } from 'lucide-react'
-import { SettingsRow, SettingsSection } from '@/components/SettingsSection'
 import { showToast } from '@/components/Toast'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { APP_VERSION } from '@/lib/constants'
 import { appConfigApi, contentLibraryApi, localNetworkApi, networkApi, screensApi } from '@/lib/tauri'
-import type { ContentStorageInfo, DeviceIdentity, MarqueeSettings, PairingRequest, PeerScreen, Screen } from '@/lib/types'
+import type { ConnectionDiagnostic, ContentStorageInfo, DeviceIdentity, MarqueeSettings, PairingRequest, PeerScreen, Screen } from '@/lib/types'
 import { useBrandingStore } from '@/store/ui'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
@@ -42,6 +43,54 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(i > 0 ? 1 : 0)} ${units[i]}`
 }
 
+const OFFLINE_NETWORK_CHECKLIST = [
+  {
+    id: 'router-reset',
+    title: 'Router reset and setup',
+    detail: 'Use any standard router. For TP-Link Archer C20 / AC750, run Quick Setup and create the site Wi-Fi name.',
+  },
+  {
+    id: 'isolation-off',
+    title: 'AP or client isolation disabled',
+    detail: 'Turn off AP Isolation, Client Isolation, Wireless Isolation, and guest-network isolation so devices can talk locally.',
+  },
+  {
+    id: 'dhcp-on',
+    title: 'DHCP enabled',
+    detail: 'Keep the router DHCP server enabled so the controller and displays receive LAN IP addresses automatically.',
+  },
+  {
+    id: 'same-subnet',
+    title: 'Same-subnet IP verified',
+    detail: 'Controller and player IPs should usually share the first three numbers, for example 192.168.0.x.',
+  },
+  {
+    id: 'device-test',
+    title: 'Device-to-device test passed',
+    detail: 'From a player or display browser, test the controller health URL before pairing or launching signage.',
+  },
+  {
+    id: 'firewall-7420',
+    title: 'Firewall allows TCP 7420',
+    detail: 'Allow inbound TCP port 7420 on the controller computer for Private/local networks.',
+  },
+  {
+    id: 'controller-url',
+    title: 'Controller URL opens',
+    detail: 'Open the player URL from a device on the same router and confirm the Clarix player loads.',
+  },
+  {
+    id: 'static-ip',
+    title: 'Static IP or DHCP reservation set',
+    detail: 'Reserve the controller IP in the router so display URLs do not break after reboot.',
+  },
+  {
+    id: 'samsung-qb55c',
+    title: 'Samsung QB55C URL Launcher configured',
+    detail: 'Set Custom Home / URL Launcher to the controller player URL and confirm the display stays on the same LAN.',
+  },
+] as const
+
 export default function SettingsPage() {
   const router = useRouter()
   const [port, setPort] = useState(7420)
@@ -52,6 +101,8 @@ export default function SettingsPage() {
   const [pairingRequests, setPairingRequests] = useState<PairingRequest[]>([])
   const [screens, setScreens] = useState<Screen[]>([])
   const [controllerUrl, setControllerUrl] = useState('')
+  const [networkDiagnostics, setNetworkDiagnostics] = useState<ConnectionDiagnostic | null>(null)
+  const [offlineChecklist, setOfflineChecklist] = useState<Record<string, boolean>>({})
   const [activePairing, setActivePairing] = useState<PairingRequest | null>(null)
   const [pairingSelections, setPairingSelections] = useState<Record<string, string>>({})
   const [discoveredControllers, setDiscoveredControllers] = useState<PeerScreen[]>([])
@@ -61,13 +112,17 @@ export default function SettingsPage() {
 
   const loadNetworkState = useCallback(async () => {
     try {
-      const [nextIdentity, nextScreens, peers] = await Promise.all([
+      const [nextIdentity, nextScreens, peers, diagnostics, serverPort] = await Promise.all([
         networkApi.getIdentity(),
         screensApi.getAll(),
         localNetworkApi.getPeers(),
+        networkApi.getDiagnostics(),
+        localNetworkApi.getServerPort(),
       ])
       setIdentity(nextIdentity)
       setScreens(nextScreens)
+      setPort(serverPort)
+      setNetworkDiagnostics(diagnostics)
       setControllerUrl(nextIdentity.controller_url ?? '')
       setDiscoveredControllers(peers.filter((peer) => peer.is_controller))
       if (nextIdentity.role === 'Controller') {
@@ -152,6 +207,16 @@ export default function SettingsPage() {
   }
 
   const pendingPairings = pairingRequests.filter((r) => r.status === 'pending')
+  const activePort = networkDiagnostics?.service_port ?? identity?.service_port ?? port
+  const detectedControllerIp = identity?.role === 'Controller' ? networkDiagnostics?.local_ip : null
+  const playerUrl = `http://${detectedControllerIp ?? '<controller-ip>'}:${activePort}/player`
+  const healthUrl = `http://${detectedControllerIp ?? '<controller-ip>'}:${activePort}/v1/health`
+  const completedChecklistItems = OFFLINE_NETWORK_CHECKLIST.filter((item) => offlineChecklist[item.id]).length
+  const checklistComplete = completedChecklistItems === OFFLINE_NETWORK_CHECKLIST.length
+
+  const toggleChecklistItem = (id: string, checked: boolean) => {
+    setOfflineChecklist((current) => ({ ...current, [id]: checked }))
+  }
 
   return (
     <div className="space-y-6 lg:space-y-8 animate-fadeIn">
@@ -303,6 +368,112 @@ export default function SettingsPage() {
             )}
           </Card>
         )}
+      </section>
+
+      {/* ── Offline Network Checklist ─────────────────────────────────────── */}
+      <section className="space-y-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Offline Network Checklist</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Manual router and display checks for same-LAN Clarix playback.
+            </p>
+          </div>
+          <Badge variant={checklistComplete ? 'default' : 'secondary'} className="w-fit">
+            {completedChecklistItems}/{OFFLINE_NETWORK_CHECKLIST.length} complete
+          </Badge>
+        </div>
+
+        <Card className="border-border/60 overflow-hidden">
+          <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="divide-y divide-border/50">
+              {OFFLINE_NETWORK_CHECKLIST.map((item) => (
+                <label
+                  key={item.id}
+                  className="flex cursor-pointer items-start gap-3 px-4 py-3.5 transition-colors hover:bg-muted/20"
+                >
+                  <Checkbox
+                    checked={offlineChecklist[item.id] ?? false}
+                    onCheckedChange={(checked) => toggleChecklistItem(item.id, checked === true)}
+                    className="mt-0.5"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-foreground">{item.title}</span>
+                    <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{item.detail}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            <div className="border-t border-border/60 bg-muted/10 p-4 lg:border-l lg:border-t-0">
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Router className="size-5" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold">Router requirements</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      Use a normal router LAN, not guest Wi-Fi. TP-Link Archer C20 / AC750 labels may say AP Isolation,
+                      Wireless Isolation, DHCP, and Address Reservation.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid gap-2 text-xs">
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/50 px-3 py-2">
+                    <span className="flex items-center gap-2 text-muted-foreground">
+                      <Network className="size-3.5" /> Controller IP
+                    </span>
+                    <span className="max-w-[150px] truncate font-mono text-foreground">
+                      {detectedControllerIp ?? 'Check diagnostics'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/50 px-3 py-2">
+                    <span className="flex items-center gap-2 text-muted-foreground">
+                      <Wifi className="size-3.5" /> TCP port
+                    </span>
+                    <span className="font-mono text-foreground">{activePort}</span>
+                  </div>
+                  <div className="rounded-lg border border-border/60 bg-background/50 px-3 py-2">
+                    <p className="mb-1 text-muted-foreground">Player URL</p>
+                    <p className="break-all font-mono text-foreground">{playerUrl}</p>
+                  </div>
+                  <div className="rounded-lg border border-border/60 bg-background/50 px-3 py-2">
+                    <p className="mb-1 text-muted-foreground">Health test</p>
+                    <p className="break-all font-mono text-foreground">{healthUrl}</p>
+                  </div>
+                </div>
+
+                <Alert className="border-primary/20 bg-primary/5">
+                  {checklistComplete ? (
+                    <CheckCircle2 className="text-primary" />
+                  ) : (
+                    <AlertCircle className="text-primary" />
+                  )}
+                  <AlertTitle className="text-sm">
+                    {checklistComplete ? 'Ready for display validation' : 'Samsung QB55C setup'}
+                  </AlertTitle>
+                  <AlertDescription className="text-xs leading-5">
+                    Set Custom Home or URL Launcher to <span className="font-mono text-foreground">{playerUrl}</span>,
+                    then confirm the display stays connected to the same router.
+                  </AlertDescription>
+                </Alert>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-full text-xs"
+                  onClick={() => setOfflineChecklist({})}
+                >
+                  <RefreshCw className="mr-1.5 size-3.5" />
+                  Reset Checklist
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Card>
       </section>
 
       {/* ── Pending Pairings (Controller only) ──────────────────────────────── */}
