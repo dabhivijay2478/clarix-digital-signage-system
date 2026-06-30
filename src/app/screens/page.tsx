@@ -599,22 +599,17 @@ export default function ScreensPage() {
   const handleSaveEdit = async () => {
     if (!editingScreen || !editFormName.trim()) return;
     try {
-      // 1. Update gate assignment + auto-bind dashboard if the gate has one
-      let nextPurpose: ScreenPurpose = editingScreen.purpose;
-      let nextDashboardId: string | null = editingScreen.production_dashboard_id;
+      // 1. Update gate assignment in client store
       if (editFormGate) {
-        const gate = assignScreen(editFormGate, editingScreen.id);
-        if (gate?.productionDashboardId) {
-          nextPurpose = 'production_dashboard';
-          nextDashboardId = gate.productionDashboardId;
-        } else {
-          nextPurpose = 'playlist';
-          nextDashboardId = null;
-        }
+        assignScreen(editFormGate, editingScreen.id);
       } else {
         unassignScreenFromAll(editingScreen.id);
-        nextPurpose = 'playlist';
-        nextDashboardId = null;
+      }
+
+      // Determine next dashboard ID based on purpose
+      let nextDashboardId: string | null = null;
+      if (editFormPurpose === 'production_dashboard') {
+        nextDashboardId = editFormProductionDashboardId || null;
       }
 
       // 2. Persist the change to backend
@@ -627,10 +622,10 @@ export default function ScreensPage() {
         parseInt(editFormWidth) || 1920,
         parseInt(editFormHeight) || 1080,
         editingScreen.playlist_id ?? undefined,
-        nextPurpose,
+        editFormPurpose,
         editFormGate || null,
         nextDashboardId,
-        editingScreen.default_content_id
+        editFormDefaultContentId || null
       );
 
       showToast(`Screen "${editFormName}" updated`, 'success');

@@ -309,7 +309,12 @@ export default function PlayerPage() {
       const assignedGateNumber = gateStore.getAssignedGateForScreen(screenId)
       const assignedGate = assignedGateNumber ? gateStore.gates.find((g) => g.number === assignedGateNumber) : null
 
-      if (assignedGate) {
+      if (currentScreen && currentScreen.purpose !== 'playlist') {
+        activePurpose = currentScreen.purpose
+        activeGateNumber = currentScreen.gate
+        activeProductionDashboardId = currentScreen.production_dashboard_id
+        activePlaylistId = currentScreen.playlist_id
+      } else if (assignedGate) {
         activePurpose = assignedGate.purpose
         activeGateNumber = assignedGate.number
         activeProductionDashboardId = assignedGate.productionDashboardId

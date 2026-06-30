@@ -13,6 +13,7 @@ import { getTruckStatusInfo } from '@/lib/truck-alerts'
 import {
   formatQueueDuration,
   getEstimatedWaitMinsForTruck,
+  getGateLoadingDurationMins,
 } from '@/lib/truck-queue'
 import { truckAlertsApi } from '@/lib/tauri'
 import type { GateQueueSettings, Truck, TruckDispatchSummary } from '@/lib/types'
@@ -77,6 +78,23 @@ function formatElapsed(from: string | null): string {
   return remaining ? `${hours}h ${remaining}m` : `${hours}h`
 }
 
+function formatTimeOfDay(dateStr: string | null): string {
+  if (!dateStr) return '-'
+  try {
+    const d = new Date(dateStr)
+    if (Number.isNaN(d.getTime())) return '-'
+    let hours = d.getHours()
+    const minutes = d.getMinutes()
+    const ampm = hours >= 12 ? 'PM' : 'AM'
+    hours = hours % 12
+    hours = hours ? hours : 12
+    const minStr = minutes.toString().padStart(2, '0')
+    return `${hours}:${minStr} ${ampm}`
+  } catch {
+    return '-'
+  }
+}
+
 function statusClass(statusLabel: string): string {
   switch (statusLabel) {
     case 'Loading Out.':
@@ -117,6 +135,15 @@ function useRotatingQueueMode(hasLoading: boolean, hasWaiting: boolean): QueueMo
 export default function TruckTokenDisplay({ trucks, className, title = 'Truck Token Alert', showHeader = true, gateSettings }: TruckTokenDisplayProps) {
   const gates = useGateStore((state) => state.gates)
   const [dispatchSummary, setDispatchSummary] = useState<TruckDispatchSummary | null>(null)
+  const [currentTime, setCurrentTime] = useState<Date | null>(null)
+
+  useEffect(() => {
+    setCurrentTime(new Date())
+    const timer = setInterval(() => {
+      setCurrentTime(new Date())
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     truckAlertsApi.getDispatchSummary()
@@ -194,13 +221,43 @@ export default function TruckTokenDisplay({ trucks, className, title = 'Truck To
           <DisplayStatCard icon={CalendarDays} value={dispatchSummary?.this_month ?? 0} label="This Month" sublabel="Month total" color="rose" />
         </div>
 
+        {currentTime && (
+          <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-zinc-950/20 px-6 py-3 text-white/80 shadow-inner">
+            <div className="flex items-center gap-3">
+              <span className="relative flex size-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500"></span>
+              </span>
+              <span className="text-xs font-bold uppercase tracking-[0.2em] text-white/45">Live Monitoring Active</span>
+            </div>
+            <div className="flex items-center gap-6">
+              <span className="font-mono text-sm font-bold tracking-widest text-white/45 uppercase">
+                {currentTime.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+              </span>
+              <span className="h-4 w-px bg-white/10" />
+              <span className="font-mono text-2xl font-black tracking-widest text-emerald-400">
+                {currentTime.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+              </span>
+            </div>
+          </div>
+        )}
+
         <div className="min-h-0 flex-1 overflow-hidden rounded-3xl border border-white/10 bg-zinc-950/40 shadow-2xl shadow-black/20">
-          <div className="grid grid-cols-[110px_minmax(220px,1fr)_170px_150px_170px] border-b border-white/10 bg-white/[0.03] px-6 py-4 text-xs font-black uppercase tracking-[0.24em] text-white/35">
+          <div className={cn(
+            "grid border-b border-white/10 bg-white/[0.03] px-6 py-4 text-xs font-black uppercase tracking-[0.24em] text-white/35",
+            mode === 'loading'
+              ? 'grid-cols-[110px_minmax(220px,1fr)_170px]'
+              : 'grid-cols-[110px_minmax(220px,1fr)_170px_150px_170px]'
+          )}>
             <span>Gate</span>
             <span>Truck Number</span>
             <span>Status</span>
-            <span>Waited</span>
-            <span>Est. Wait</span>
+            {mode === 'waiting' && (
+              <>
+                <span>Waited</span>
+                <span>Est. Wait</span>
+              </>
+            )}
           </div>
 
           {rows.length === 0 ? (
@@ -217,7 +274,12 @@ export default function TruckTokenDisplay({ trucks, className, title = 'Truck To
                 return (
                   <div
                     key={`${mode}-${truck.id}`}
-                    className="grid grid-cols-[110px_minmax(220px,1fr)_170px_150px_170px] items-center px-6 py-6"
+                    className={cn(
+                      "grid items-center px-6 py-6",
+                      mode === 'loading'
+                        ? 'grid-cols-[110px_minmax(220px,1fr)_170px]'
+                        : 'grid-cols-[110px_minmax(220px,1fr)_170px_150px_170px]'
+                    )}
                   >
                     <span className="inline-flex w-fit rounded-full border border-emerald-400/25 bg-emerald-400/10 px-4 py-1.5 text-lg font-black uppercase text-emerald-200">
                       {(truck.gate_no || '-').toUpperCase()}
@@ -233,14 +295,25 @@ export default function TruckTokenDisplay({ trucks, className, title = 'Truck To
                     <span className={cn('w-fit rounded-full border px-4 py-2 text-sm font-black uppercase tracking-wider', statusClass(statusLabel))}>
                       {statusLabel}
                     </span>
-                    <span className="font-mono text-2xl font-black text-white/70">
-                      {formatElapsed(truck.waiting_at)}
-                    </span>
-                    <span className="font-mono text-2xl font-black text-white/70">
-                      {mode === 'loading'
-                        ? 'Now'
-                        : formatQueueDuration(getEstimatedWaitMinsForTruck(trucks, truck, resolvedGateSettings))}
-                    </span>
+                    {mode === 'waiting' && (
+                      <>
+                        <span className="font-mono text-2xl font-black text-white/70">
+                          {formatTimeOfDay(truck.waiting_at)}
+                        </span>
+                        <span className="font-mono text-2xl font-black text-white/70">
+                          {(() => {
+                            if (!truck.waiting_at) return '-'
+                            const baseTime = new Date(truck.waiting_at)
+                            if (Number.isNaN(baseTime.getTime())) return '-'
+                            const cyclesWaitMins = getEstimatedWaitMinsForTruck(trucks, truck, resolvedGateSettings)
+                            const defaultMins = getGateLoadingDurationMins(truck.gate_no, resolvedGateSettings)
+                            const totalWaitMins = cyclesWaitMins + defaultMins
+                            const expectedTime = new Date(baseTime.getTime() + totalWaitMins * 60000)
+                            return formatTimeOfDay(expectedTime.toISOString())
+                          })()}
+                        </span>
+                      </>
+                    )}
                   </div>
                 )
               })}
