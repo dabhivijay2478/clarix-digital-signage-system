@@ -151,7 +151,7 @@ export default function TruckTokenDisplay({ trucks, className, title = 'Truck To
       .catch((error) => console.warn('Failed to load truck dispatch summary:', error))
   }, [])
 
-  const activeTrucks = useMemo(() => trucks.filter((truck) => !truck.is_out), [trucks])
+  const activeTrucks = useMemo(() => (trucks ?? []).filter((truck) => !truck.is_out), [trucks])
   const loadingTrucks = useMemo(
     () => activeTrucks.filter((truck) => truck.is_loading || truck.is_in),
     [activeTrucks]
@@ -162,17 +162,17 @@ export default function TruckTokenDisplay({ trucks, className, title = 'Truck To
   )
 
   const gateNumbers = useMemo(() => {
-    const configured = (gateSettings ?? gates).map((gate) => gate.number)
-    const discovered = trucks
-      .map((truck) => (truck.gate_no ?? '').toLowerCase())
+    const configured = (gateSettings ?? gates ?? []).map((gate) => gate?.number).filter(Boolean)
+    const discovered = (trucks ?? [])
+      .map((truck) => (truck?.gate_no ?? '').toLowerCase())
       .filter(Boolean)
     return [...new Set([...configured, ...discovered])]
   }, [gateSettings, gates, trucks])
 
   const resolvedGateSettings = useMemo<GateQueueSettings[]>(
-    () => gateSettings ?? gates.map((gate) => ({
-      number: gate.number,
-      loadingDurationMins: gate.loadingDurationMins,
+    () => gateSettings ?? (gates ?? []).map((gate) => ({
+      number: gate?.number || '',
+      loadingDurationMins: gate?.loadingDurationMins ?? 30,
     })),
     [gateSettings, gates]
   )

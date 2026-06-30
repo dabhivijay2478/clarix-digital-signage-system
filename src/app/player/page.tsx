@@ -494,10 +494,10 @@ export default function PlayerPage() {
 
   // Derived helper for active items matching schedule
   const getPlayableItems = useCallback((): PlaylistItem[] => {
-    if (!activePlaylist) return [];
-
-    const scheduled = activePlaylist.items.filter((item) => isPlaylistItemScheduleActive(item.display_schedule));
-    if (scheduled.length > 0) return scheduled;
+    if (activePlaylist) {
+      const scheduled = activePlaylist.items.filter((item) => isPlaylistItemScheduleActive(item.display_schedule));
+      if (scheduled.length > 0) return scheduled;
+    }
     if (activeScreenDefaultContentId) {
       return [{ content_id: activeScreenDefaultContentId, order: 0, override_duration: null, display_schedule: null }];
     }
@@ -589,7 +589,6 @@ export default function PlayerPage() {
 
   // Render content item
   const renderContentItem = () => {
-    if (!activePlaylist) return null;
     const playableItems = getPlayableItems();
     const playlistItem = playableItems[currentItemIndex % playableItems.length];
     if (!playlistItem) return null;
@@ -598,7 +597,7 @@ export default function PlayerPage() {
     if (!contentItem) return null;
 
     const src = getMediaUrl(contentItem);
-    const transitionEffect = playlistItem.display_schedule?.transition || activePlaylist.transition || 'Fade';
+    const transitionEffect = playlistItem.display_schedule?.transition || (activePlaylist ? activePlaylist.transition : 'Fade');
     const transitionClass = transitionEffect ? `transition-${transitionEffect.toLowerCase()}` : '';
 
     if (contentItem.content_type === 'Video') {
@@ -785,7 +784,7 @@ export default function PlayerPage() {
 
   // ── RENDER DEFAULT WAIT SCREEN ──────────────────────────────────────────
   const playableItems = getPlayableItems();
-  if (!activePlaylist || playableItems.length === 0) {
+  if (playableItems.length === 0) {
     const currentScreen = activeScreen ?? screensList.find((s) => s.id === screenId);
     const screenName = currentScreen?.name || 'Local Screen';
     const screenLoc = currentScreen?.location || '';
