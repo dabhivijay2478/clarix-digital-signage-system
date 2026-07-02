@@ -11,11 +11,10 @@ import {
 
 import { getTruckStatusInfo } from '@/lib/truck-alerts'
 import {
-  formatQueueDuration,
   getEstimatedWaitMinsForTruck,
   getGateLoadingDurationMins,
 } from '@/lib/truck-queue'
-import { truckAlertsApi } from '@/lib/tauri'
+import { truckAlertsApi, trucksApi } from '@/lib/tauri'
 import type { GateQueueSettings, Truck, TruckDispatchSummary } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useGateStore } from '@/store/gateStore'
@@ -28,6 +27,8 @@ interface TruckTokenDisplayProps {
   title?: string
   showHeader?: boolean
   gateSettings?: GateQueueSettings[]
+  gateFilter?: string | null
+  loadRemoteSnapshot?: boolean
 }
 
 function DisplayStatCard({
@@ -64,18 +65,6 @@ function DisplayStatCard({
       <Icon className="size-7 shrink-0 text-white/25" />
     </div>
   )
-}
-
-function formatElapsed(from: string | null): string {
-  if (!from) return '-'
-  const ms = Date.now() - new Date(from).getTime()
-  if (!Number.isFinite(ms) || ms < 0) return '-'
-  const minutes = Math.floor(ms / 60000)
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  const remaining = minutes % 60
-  return remaining ? `${hours}h ${remaining}m` : `${hours}h`
 }
 
 function formatTimeOfDay(dateStr: string | null): string {
@@ -132,10 +121,14 @@ function useRotatingQueueMode(hasLoading: boolean, hasWaiting: boolean): QueueMo
   return mode
 }
 
-export default function TruckTokenDisplay({ trucks, className, title = 'Truck Token Alert', showHeader = true, gateSettings }: TruckTokenDisplayProps) {
+export default function TruckTokenDisplay({ trucks, className, title = 'Truck Token Alert', showHeader = false, gateSettings, gateFilter, loadRemoteSnapshot = true }: TruckTokenDisplayProps) {
   const gates = useGateStore((state) => state.gates)
+  const [remoteTrucks, setRemoteTrucks] = useState<Truck[]>([])
+  const [hasLoadedRemoteTrucks, setHasLoadedRemoteTrucks] = useState(false)
   const [dispatchSummary, setDispatchSummary] = useState<TruckDispatchSummary | null>(null)
   const [currentTime, setCurrentTime] = useState<Date | null>(null)
+  const normalizedGateFilter = gateFilter?.trim().toLowerCase() || null
+  const sourceTrucks = loadRemoteSnapshot && hasLoadedRemoteTrucks ? remoteTrucks : trucks
 
   useEffect(() => {
     setCurrentTime(new Date())
@@ -151,7 +144,39 @@ export default function TruckTokenDisplay({ trucks, className, title = 'Truck To
       .catch((error) => console.warn('Failed to load truck dispatch summary:', error))
   }, [])
 
-  const activeTrucks = useMemo(() => (trucks ?? []).filter((truck) => !truck.is_out), [trucks])
+  useEffect(() => {
+    if (!loadRemoteSnapshot) return
+    let disposed = false
+    const loadActiveTrucks = async () => {
+      try {
+        const activeTrucks = await trucksApi.getActive()
+        if (!disposed) {
+          setRemoteTrucks(activeTrucks)
+          setHasLoadedRemoteTrucks(true)
+        }
+      } catch (error) {
+        console.warn('Failed to load active trucks:', error)
+      }
+    }
+
+    void loadActiveTrucks()
+    const interval = setInterval(() => {
+      void loadActiveTrucks()
+    }, 3000)
+
+    return () => {
+      disposed = true
+      clearInterval(interval)
+    }
+  }, [loadRemoteSnapshot])
+
+  const displayTrucks = useMemo(
+    () => normalizedGateFilter
+      ? sourceTrucks.filter((truck) => (truck.gate_no ?? '').toLowerCase() === normalizedGateFilter)
+      : sourceTrucks,
+    [sourceTrucks, normalizedGateFilter]
+  )
+  const activeTrucks = useMemo(() => displayTrucks.filter((truck) => !truck.is_out), [displayTrucks])
   const loadingTrucks = useMemo(
     () => activeTrucks.filter((truck) => truck.is_loading || truck.is_in),
     [activeTrucks]
@@ -163,11 +188,12 @@ export default function TruckTokenDisplay({ trucks, className, title = 'Truck To
 
   const gateNumbers = useMemo(() => {
     const configured = (gateSettings ?? gates ?? []).map((gate) => gate?.number).filter(Boolean)
-    const discovered = (trucks ?? [])
+    const discovered = displayTrucks
       .map((truck) => (truck?.gate_no ?? '').toLowerCase())
       .filter(Boolean)
-    return [...new Set([...configured, ...discovered])]
-  }, [gateSettings, gates, trucks])
+    const allGates = [...new Set([...configured, ...discovered])]
+    return normalizedGateFilter ? [normalizedGateFilter] : allGates
+  }, [gateSettings, gates, displayTrucks, normalizedGateFilter])
 
   const resolvedGateSettings = useMemo<GateQueueSettings[]>(
     () => gateSettings ?? (gates ?? []).map((gate) => ({
@@ -269,13 +295,13 @@ export default function TruckTokenDisplay({ trucks, className, title = 'Truck To
             </div>
           ) : (
             <div className="divide-y divide-white/10">
-              {rows.map((truck, index) => {
+              {rows.map((truck) => {
                 const statusLabel = getTruckStatusInfo(truck).status_label
                 return (
                   <div
                     key={`${mode}-${truck.id}`}
                     className={cn(
-                      "grid items-center px-6 py-6",
+                      "grid items-center px-6 py-5",
                       mode === 'loading'
                         ? 'grid-cols-[110px_minmax(220px,1fr)_170px]'
                         : 'grid-cols-[110px_minmax(220px,1fr)_170px_150px_170px]'
@@ -285,11 +311,8 @@ export default function TruckTokenDisplay({ trucks, className, title = 'Truck To
                       {(truck.gate_no || '-').toUpperCase()}
                     </span>
                     <div className="min-w-0">
-                      <p className="truncate font-mono text-4xl font-black tracking-tight text-white">
+                      <p className="truncate font-mono text-3xl font-black tracking-tight text-white">
                         {truck.registration_number.toUpperCase()}
-                      </p>
-                      <p className="mt-1 text-sm font-bold uppercase tracking-[0.2em] text-white/30">
-                        #{index + 1} of visible {mode}
                       </p>
                     </div>
                     <span className={cn('w-fit rounded-full border px-4 py-2 text-sm font-black uppercase tracking-wider', statusClass(statusLabel))}>
@@ -305,7 +328,7 @@ export default function TruckTokenDisplay({ trucks, className, title = 'Truck To
                             if (!truck.waiting_at) return '-'
                             const baseTime = new Date(truck.waiting_at)
                             if (Number.isNaN(baseTime.getTime())) return '-'
-                            const cyclesWaitMins = getEstimatedWaitMinsForTruck(trucks, truck, resolvedGateSettings)
+                            const cyclesWaitMins = getEstimatedWaitMinsForTruck(displayTrucks, truck, resolvedGateSettings)
                             const defaultMins = getGateLoadingDurationMins(truck.gate_no, resolvedGateSettings)
                             const totalWaitMins = cyclesWaitMins + defaultMins
                             const expectedTime = new Date(baseTime.getTime() + totalWaitMins * 60000)

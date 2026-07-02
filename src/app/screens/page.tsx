@@ -509,6 +509,18 @@ export default function ScreensPage() {
     return true;
   });
 
+  const gateOptions = useMemo(() => {
+    const values = new Set<string>();
+    gates.forEach((gate) => {
+      if (gate.number) values.add(gate.number.toLowerCase());
+    });
+    ['d4', 'd5', editingScreen?.gate, editFormGate].forEach((gate) => {
+      const normalized = gate?.trim().toLowerCase();
+      if (normalized) values.add(normalized);
+    });
+    return [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [gates, editingScreen?.gate, editFormGate]);
+
   const handleAdd = async () => {
     if (!formName.trim()) return;
     try {
@@ -590,7 +602,7 @@ export default function ScreensPage() {
     setEditFormWidth(String(screen.resolution?.width ?? 1920));
     setEditFormHeight(String(screen.resolution?.height ?? 1080));
     setEditFormPurpose(screen.purpose ?? 'playlist');
-    const gateNum = getAssignedGateForScreen(screen.id) || '';
+    const gateNum = getAssignedGateForScreen(screen.id) || screen.gate || '';
     setEditFormGate(gateNum);
     setEditFormProductionDashboardId(screen.production_dashboard_id ?? '');
     setEditFormDefaultContentId(screen.default_content_id ?? '');
@@ -598,10 +610,20 @@ export default function ScreensPage() {
 
   const handleSaveEdit = async () => {
     if (!editingScreen || !editFormName.trim()) return;
+    const normalizedEditGate = editFormGate.trim().toLowerCase();
+    if (editFormPurpose === 'truck_gate' && !normalizedEditGate) {
+      showToast('Please select a gate for the truck token display', 'error');
+      return;
+    }
+    if (normalizedEditGate && !isValidGateNumber(normalizedEditGate)) {
+      showToast('Gate must use a letter and number, for example D4', 'error');
+      return;
+    }
+
     try {
       // 1. Update gate assignment in client store
-      if (editFormGate) {
-        assignScreen(editFormGate, editingScreen.id);
+      if (normalizedEditGate) {
+        assignScreen(normalizedEditGate, editingScreen.id);
       } else {
         unassignScreenFromAll(editingScreen.id);
       }
@@ -611,6 +633,9 @@ export default function ScreensPage() {
       if (editFormPurpose === 'production_dashboard') {
         nextDashboardId = editFormProductionDashboardId || null;
       }
+      const nextDefaultContentId = editFormPurpose === 'truck_gate'
+        ? null
+        : editFormDefaultContentId || null;
 
       // 2. Persist the change to backend
       await editScreen(
@@ -623,9 +648,9 @@ export default function ScreensPage() {
         parseInt(editFormHeight) || 1080,
         editingScreen.playlist_id ?? undefined,
         editFormPurpose,
-        editFormGate || null,
+        normalizedEditGate || null,
         nextDashboardId,
-        editFormDefaultContentId || null
+        nextDefaultContentId
       );
 
       showToast(`Screen "${editFormName}" updated`, 'success');
@@ -722,9 +747,6 @@ export default function ScreensPage() {
             <Button variant="outline" size="sm" onClick={() => handleEditClick(selectedScreen)}>
               <Settings className="size-3.5 mr-1.5" /> Settings
             </Button>
-            <Button variant="outline" size="sm" onClick={() => handleEditClick(selectedScreen)}>
-              Default Content
-            </Button>
             <Button
               size="sm"
               disabled={isSyncing}
@@ -743,7 +765,7 @@ export default function ScreensPage() {
               <div>
                 <span className="text-sm font-semibold text-amber-800 dark:text-amber-300">Unsaved Playlist Changes</span>
                 <p className="text-xs text-amber-700/80 dark:text-amber-400/80 mt-0.5">
-                  You have modified this screen's playlist. Remember to save to apply updates.
+                  You have modified this screen&apos;s playlist. Remember to save to apply updates.
                 </p>
               </div>
             </div>
@@ -1181,7 +1203,18 @@ export default function ScreensPage() {
             </div>
             <div>
               <label className="input-label">Screen preset</label>
-              <select className="input" value={editFormPurpose} onChange={(event) => setEditFormPurpose(event.target.value as ScreenPurpose)}>
+              <select
+                className="input"
+                value={editFormPurpose}
+                onChange={(event) => {
+                  const purpose = event.target.value as ScreenPurpose;
+                  setEditFormPurpose(purpose);
+                  if (purpose === 'truck_gate') {
+                    setEditFormDefaultContentId('');
+                    setEditFormProductionDashboardId('');
+                  }
+                }}
+              >
                 <option value="playlist">General Playlist</option>
                 <option value="truck_gate">Truck Gate Display</option>
                 <option value="production_dashboard">Production Dashboard</option>
@@ -1190,10 +1223,11 @@ export default function ScreensPage() {
             {editFormPurpose === 'truck_gate' && (
               <div>
                 <label className="input-label">Gate</label>
-                <select className="input" value={editFormGate} onChange={(event) => setEditFormGate(event.target.value as 'd4' | 'd5')}>
+                <select className="input" value={editFormGate} onChange={(event) => setEditFormGate(event.target.value)}>
                   <option value="">Select gate</option>
-                  <option value="d4">D4</option>
-                  <option value="d5">D5</option>
+                  {gateOptions.map((gate) => (
+                    <option key={gate} value={gate}>{gate.toUpperCase()}</option>
+                  ))}
                 </select>
               </div>
             )}
@@ -1208,16 +1242,18 @@ export default function ScreensPage() {
                 </select>
               </div>
             )}
-            <div>
-              <label className="input-label">Default content</label>
-              <select className="input" value={editFormDefaultContentId} onChange={(event) => setEditFormDefaultContentId(event.target.value)}>
-                <option value="">None</option>
-                {contentItems.map((item) => (
-                  <option key={item.id} value={item.id}>{item.name}</option>
-                ))}
-              </select>
-              <p className="mt-1 text-xs text-muted-foreground">Shown when no scheduled playlist item is active.</p>
-            </div>
+            {editFormPurpose !== 'truck_gate' && (
+              <div>
+                <label className="input-label">Default content</label>
+                <select className="input" value={editFormDefaultContentId} onChange={(event) => setEditFormDefaultContentId(event.target.value)}>
+                  <option value="">None</option>
+                  {contentItems.map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-muted-foreground">Shown when no scheduled playlist item is active.</p>
+              </div>
+            )}
           </div>
         </Modal>
 

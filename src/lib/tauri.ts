@@ -100,6 +100,20 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
       case 'get_marquee_settings':
         url = `${baseUrl}/api/marquee`;
         break;
+      case 'get_active_trucks':
+        url = `${baseUrl}/api/trucks`;
+        break;
+      case 'save_active_trucks': {
+        const response = await fetch(`${baseUrl}/api/trucks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(args?.trucks ?? []),
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return undefined as T;
+      }
       case 'get_lan_server_port':
         return port as unknown as T;
       case 'record_analytics_event':
@@ -170,7 +184,7 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
       case 'check_screen_online':
         return false as T;
       case 'get_db_tables':
-        return ['screens', 'content_items', 'playlists', 'playlist_items', 'schedule_slots', 'analytics_events', 'device_settings', 'pairing_requests', 'player_heartbeats', 'asset_checksums', 'production_datasets', 'production_dashboards', 'dispatched_trucks'] as unknown as T;
+        return ['screens', 'content_items', 'playlists', 'playlist_items', 'schedule_slots', 'analytics_events', 'device_settings', 'pairing_requests', 'player_heartbeats', 'asset_checksums', 'production_datasets', 'production_dashboards', 'dispatched_trucks', 'active_trucks'] as unknown as T;
       case 'get_db_table_data':
         return { columns: ['id', 'name', 'location'], rows: [{ id: '1', name: 'Main Lobby', location: 'Floor 1' }] } as unknown as T;
       case 'export_db_table_to_csv':
@@ -444,6 +458,12 @@ export const truckAlertsApi = {
     tauriInvoke<void>('save_dispatched_truck', { truck }),
   getDispatchSummary: () =>
     tauriInvoke<TruckDispatchSummary>('get_truck_dispatch_summary'),
+};
+
+export const trucksApi = {
+  getActive: () => tauriInvoke<Truck[]>('get_active_trucks'),
+  saveActiveSnapshot: (trucks: Truck[]) =>
+    tauriInvoke<void>('save_active_trucks', { trucks }),
 };
 
 // ── Local Admin Auth API ───────────────────────────────────────────────────

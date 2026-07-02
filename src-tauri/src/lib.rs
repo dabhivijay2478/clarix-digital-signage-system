@@ -225,6 +225,8 @@ pub fn run() {
             // Truck screen alerts
             commands::trucks::publish_truck_alert,
             commands::trucks::save_dispatched_truck,
+            commands::trucks::get_active_trucks,
+            commands::trucks::save_active_trucks,
             commands::trucks::get_truck_dispatch_summary,
             // Database viewer & backups
             commands::database::get_db_tables,

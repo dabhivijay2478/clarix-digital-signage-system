@@ -10,12 +10,19 @@ import {
 import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 
-const Toaster = ({ ...props }: ToasterProps) => {
+const Toaster = ({
+  position = "bottom-right",
+  richColors = true,
+  style,
+  ...props
+}: ToasterProps) => {
   const { theme = "system" } = useTheme()
 
   return (
     <Sonner
       theme={theme as ToasterProps["theme"]}
+      position={position}
+      richColors={richColors}
       className="toaster group"
       icons={{
         success: <CircleCheckIcon className="size-4" />,
@@ -30,18 +37,19 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--normal-text": "var(--popover-foreground)",
           "--normal-border": "var(--border)",
           "--border-radius": "var(--radius)",
-          "--toast-error-bg": "var(--destructive)",
-          "--toast-error-text": "var(--destructive-foreground)",
-          "--toast-error-border": "color-mix(in srgb, var(--destructive) 60%, transparent)",
-          "--toast-success-bg": "color-mix(in srgb, var(--primary) 15%, transparent)",
-          "--toast-success-text": "var(--primary)",
-          "--toast-success-border": "color-mix(in srgb, var(--primary) 30%, transparent)",
-          "--toast-info-bg": "color-mix(in srgb, hsl(200 100% 50%) 15%, transparent)",
-          "--toast-info-text": "hsl(200 100% 50%)",
-          "--toast-info-border": "color-mix(in srgb, hsl(200 100% 50%) 30%, transparent)",
-          "--toast-warning-bg": "color-mix(in srgb, hsl(40 100% 50%) 15%, transparent)",
-          "--toast-warning-text": "hsl(40 100% 50%)",
-          "--toast-warning-border": "color-mix(in srgb, hsl(40 100% 50%) 30%, transparent)",
+          "--success-bg": "hsl(151 72% 38%)",
+          "--success-text": "hsl(0 0% 100%)",
+          "--success-border": "hsl(151 72% 30%)",
+          "--error-bg": "var(--destructive)",
+          "--error-text": "var(--destructive-foreground)",
+          "--error-border": "color-mix(in srgb, var(--destructive) 78%, black)",
+          "--info-bg": "hsl(200 95% 42%)",
+          "--info-text": "hsl(0 0% 100%)",
+          "--info-border": "hsl(200 95% 32%)",
+          "--warning-bg": "hsl(40 95% 43%)",
+          "--warning-text": "hsl(0 0% 100%)",
+          "--warning-border": "hsl(40 95% 33%)",
+          ...style,
         } as React.CSSProperties
       }
       {...props}

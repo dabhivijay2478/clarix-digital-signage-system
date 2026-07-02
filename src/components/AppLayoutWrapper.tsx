@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { Sun, Moon, Loader2 } from 'lucide-react'
 import { useTheme } from 'next-themes'
@@ -11,8 +11,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { useAuthStore } from '@/store/authStore'
+import { useTruckStore } from '@/store/truckStore'
 import { usePermissions } from '@/hooks/usePermissions'
 import { showToast } from '@/components/Toast'
+import { trucksApi } from '@/lib/tauri'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 export default function AppLayoutWrapper({ children }: { children: React.ReactNode }) {
@@ -21,6 +23,8 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
     || pathname?.startsWith('/player/')
     || pathname === '/production-data/view'
     || pathname?.startsWith('/production-data/view/')
+    || pathname === '/trucks/display'
+    || pathname?.startsWith('/trucks/display/')
   
   const { isCollapsed, toggle } = useSidebarStore()
   const { appName, customFavicon } = useBrandingStore()
@@ -34,6 +38,8 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
   const [inviteCode, setInviteCode] = useState('')
   const [inviteName, setInviteName] = useState('')
   const [loggingIn, setLoggingIn] = useState(false)
+  const trucks = useTruckStore((state) => state.trucks)
+  const didSyncActiveSnapshot = useRef(false)
 
   useEffect(() => {
     setMounted(true)
@@ -52,6 +58,14 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
       link.href = customFavicon
     }
   }, [appName, customFavicon])
+
+  useEffect(() => {
+    if (isPresentation || didSyncActiveSnapshot.current || trucks.length === 0) return
+    didSyncActiveSnapshot.current = true
+    void trucksApi.saveActiveSnapshot(trucks).catch((error) => {
+      console.warn('Failed to sync active truck snapshot:', error)
+    })
+  }, [isPresentation, trucks])
 
   if (isPresentation) {
     return <div className="h-screen w-screen select-none overflow-hidden bg-black">{children}</div>
@@ -189,7 +203,7 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
             <CardHeader>
               <CardTitle>Settings Locked</CardTitle>
               <CardDescription>
-                You don't have permission to access system settings.
+                You don&apos;t have permission to access system settings.
               </CardDescription>
             </CardHeader>
             <CardContent>

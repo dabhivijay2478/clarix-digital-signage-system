@@ -19,7 +19,7 @@ use tower_http::{cors::CorsLayer, services::{ServeDir, ServeFile}};
 use crate::{
     db::{self, DbPool},
     models::{
-        AppWeekday, ContentItem, ContentType, DeviceIdentity, DeviceRole, Orientation, PairingRequest,
+        ActiveTruck, AppWeekday, ContentItem, ContentType, DeviceIdentity, DeviceRole, Orientation, PairingRequest,
         Playlist, PlaylistItem, Screen, ScreenResolution, SyncAck, SyncAsset, SyncManifest,
         TransitionEffect, TruckScreenAlert,
         MarqueeSettings,
@@ -109,6 +109,7 @@ pub async fn start_controller_server(
         .route("/api/content", get(read_content))
         .route("/api/schedule", get(read_schedule))
         .route("/api/marquee", get(read_marquee))
+        .route("/api/trucks", get(read_active_trucks).post(write_active_trucks))
         .route("/api/production/dashboards", get(read_production_dashboards))
         .route("/api/production/dashboards/{id}", get(read_production_dashboard))
         .route("/api/production/datasets/{id}", get(read_production_dataset))
@@ -133,6 +134,8 @@ pub async fn start_controller_server(
         .route_service("/player/", ServeFile::new(browser_assets_dir.join("player.html")))
         .route_service("/production-data/view", ServeFile::new(browser_assets_dir.join("production-data/view.html")))
         .route_service("/production-data/view/", ServeFile::new(browser_assets_dir.join("production-data/view.html")))
+        .route_service("/trucks/display", ServeFile::new(browser_assets_dir.join("trucks/display.html")))
+        .route_service("/trucks/display/", ServeFile::new(browser_assets_dir.join("trucks/display.html")))
         .fallback_service(ServeDir::new(browser_assets_dir))
         .with_state(state);
 
@@ -371,6 +374,18 @@ async fn read_schedule(State(state): State<AppState>) -> Result<Json<Vec<crate::
 
 async fn read_marquee(State(state): State<AppState>) -> Result<Json<MarqueeSettings>, (StatusCode, String)> {
     query_marquee(&state.pool).map(Json).map_err(internal_error)
+}
+
+async fn read_active_trucks(State(state): State<AppState>) -> Result<Json<Vec<ActiveTruck>>, (StatusCode, String)> {
+    query_active_trucks(&state.pool).map(Json).map_err(internal_error)
+}
+
+async fn write_active_trucks(
+    State(state): State<AppState>,
+    Json(trucks): Json<Vec<ActiveTruck>>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    save_active_truck_snapshot(&state.pool, trucks).map_err(internal_error)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn read_production_dashboards(
@@ -897,6 +912,76 @@ fn query_marquee(pool: &DbPool) -> anyhow::Result<MarqueeSettings> {
         },
     )
     .map_err(Into::into)
+}
+
+fn query_active_trucks(pool: &DbPool) -> anyhow::Result<Vec<ActiveTruck>> {
+    let conn = pool.get()?;
+    let mut stmt = conn.prepare(
+        "SELECT id, registration_number, gate_no,
+                is_waiting, is_loading, is_in, is_out,
+                waiting_at, loading_at, in_at, out_at, created_at
+         FROM active_trucks
+         ORDER BY order_index ASC, created_at ASC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(ActiveTruck {
+            id: row.get(0)?,
+            registration_number: row.get(1)?,
+            gate_no: row.get(2)?,
+            is_waiting: row.get(3)?,
+            is_loading: row.get(4)?,
+            is_in: row.get(5)?,
+            is_out: row.get(6)?,
+            waiting_at: row.get(7)?,
+            loading_at: row.get(8)?,
+            in_at: row.get(9)?,
+            out_at: row.get(10)?,
+            created_at: row.get(11)?,
+        })
+    })?;
+
+    let mut trucks = Vec::new();
+    for truck in rows {
+        trucks.push(truck?);
+    }
+    Ok(trucks)
+}
+
+fn save_active_truck_snapshot(pool: &DbPool, trucks: Vec<ActiveTruck>) -> anyhow::Result<()> {
+    let mut conn = pool.get()?;
+    let tx = conn.transaction()?;
+    tx.execute("DELETE FROM active_trucks", [])?;
+
+    {
+        let mut stmt = tx.prepare(
+            "INSERT INTO active_trucks (
+                id, registration_number, gate_no,
+                is_waiting, is_loading, is_in, is_out,
+                waiting_at, loading_at, in_at, out_at, created_at, order_index
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        )?;
+
+        for (index, truck) in trucks.into_iter().enumerate() {
+            stmt.execute(params![
+                truck.id,
+                truck.registration_number,
+                truck.gate_no,
+                truck.is_waiting,
+                truck.is_loading,
+                truck.is_in,
+                truck.is_out,
+                truck.waiting_at,
+                truck.loading_at,
+                truck.in_at,
+                truck.out_at,
+                truck.created_at,
+                index as i64,
+            ])?;
+        }
+    }
+
+    tx.commit()?;
+    Ok(())
 }
 
 fn parse_date(value: String) -> DateTime<Utc> {

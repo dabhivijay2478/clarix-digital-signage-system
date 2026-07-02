@@ -148,9 +148,9 @@ export function useScreens() {
                   },
                   playlist_id: playlistId ?? s.playlist_id,
                   purpose: purpose ?? s.purpose,
-                  gate: gate ?? s.gate,
-                  production_dashboard_id: productionDashboardId ?? s.production_dashboard_id,
-                  default_content_id: defaultContentId ?? s.default_content_id,
+                  gate: typeof gate === 'undefined' ? s.gate : gate,
+                  production_dashboard_id: typeof productionDashboardId === 'undefined' ? s.production_dashboard_id : productionDashboardId,
+                  default_content_id: typeof defaultContentId === 'undefined' ? s.default_content_id : defaultContentId,
                 }
               : s
           )

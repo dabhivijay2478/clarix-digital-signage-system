@@ -2,6 +2,7 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { trucksApi } from '@/lib/tauri'
 import type { Truck } from '@/lib/types'
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -39,6 +40,25 @@ function defaultTruckToWaiting(truck: Truck): Truck {
   }
 }
 
+let syncTimer: ReturnType<typeof setTimeout> | null = null
+
+function shouldSyncActiveTruckSnapshot(): boolean {
+  if (typeof window === 'undefined') return false
+  const pathname = window.location.pathname
+  return !pathname.startsWith('/player') && !pathname.startsWith('/trucks/display')
+}
+
+function scheduleActiveTruckSnapshot(trucks: Truck[]): void {
+  if (!shouldSyncActiveTruckSnapshot()) return
+  if (syncTimer) clearTimeout(syncTimer)
+  const snapshot = trucks.map((truck) => ({ ...truck }))
+  syncTimer = setTimeout(() => {
+    void trucksApi.saveActiveSnapshot(snapshot).catch((error) => {
+      console.warn('Failed to save active truck snapshot:', error)
+    })
+  }, 150)
+}
+
 // ── Store Interface ─────────────────────────────────────────────────────────
 
 interface TruckStore {
@@ -57,7 +77,7 @@ interface TruckStore {
 
 export const useTruckStore = create<TruckStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       trucks: [],
 
       addTruck: (data) => {
@@ -77,18 +97,23 @@ export const useTruckStore = create<TruckStore>()(
           out_at: data.is_out ? now() : null,
         }
         set((s) => ({ trucks: [...s.trucks, truck] }))
+        scheduleActiveTruckSnapshot(get().trucks)
         return truck
       },
 
-      editTruck: (id, data) =>
+      editTruck: (id, data) => {
         set((s) => ({
           trucks: s.trucks.map((t) => (t.id === id ? { ...t, ...data } : t)),
-        })),
+        }))
+        scheduleActiveTruckSnapshot(get().trucks)
+      },
 
-      deleteTruck: (id) =>
+      deleteTruck: (id) => {
         set((s) => ({
           trucks: s.trucks.filter((t) => t.id !== id),
-        })),
+        }))
+        scheduleActiveTruckSnapshot(get().trucks)
+      },
 
       updateTruckChecks: (id, field, value) => {
         set((s) => ({
@@ -143,6 +168,7 @@ export const useTruckStore = create<TruckStore>()(
             return updated
           }),
         }))
+        scheduleActiveTruckSnapshot(get().trucks)
       },
 
       importTrucks: (data) => {
@@ -161,10 +187,11 @@ export const useTruckStore = create<TruckStore>()(
           out_at: d.is_out ? now() : null,
         }))
         set((s) => ({ trucks: [...s.trucks, ...newTrucks] }))
+        scheduleActiveTruckSnapshot(get().trucks)
         return newTrucks.length
       },
 
-      moveTruck: (id, direction) =>
+      moveTruck: (id, direction) => {
         set((s) => {
           const index = s.trucks.findIndex((t) => t.id === id)
           if (index === -1) return {}
@@ -200,7 +227,9 @@ export const useTruckStore = create<TruckStore>()(
             }
           }
           return { trucks: newTrucks }
-        }),
+        })
+        scheduleActiveTruckSnapshot(get().trucks)
+      },
     }),
     {
       name: 'clarix-truck-management',

@@ -1,29 +1,12 @@
 use tauri::State;
 use chrono::{Datelike, Duration, TimeZone, Utc};
-use serde::Deserialize;
 use crate::db::DbPool;
 
-use crate::{lan::server::TruckAlertBus, models::{TruckDispatchSummary, TruckScreenAlert}};
-
-#[derive(Debug, Deserialize)]
-pub struct DispatchedTruck {
-    pub id: String,
-    pub registration_number: String,
-    pub gate_no: Option<String>,
-    pub is_waiting: bool,
-    pub is_loading: bool,
-    pub is_in: bool,
-    pub is_out: bool,
-    pub waiting_at: Option<String>,
-    pub loading_at: Option<String>,
-    pub in_at: Option<String>,
-    pub out_at: Option<String>,
-    pub created_at: String,
-}
+use crate::{lan::server::TruckAlertBus, models::{ActiveTruck, TruckDispatchSummary, TruckScreenAlert}};
 
 #[tauri::command]
 pub async fn save_dispatched_truck(
-    truck: DispatchedTruck,
+    truck: ActiveTruck,
     pool: State<'_, DbPool>,
 ) -> Result<(), String> {
     let pool = pool.inner().clone();
@@ -51,6 +34,99 @@ pub async fn save_dispatched_truck(
             ],
         )
         .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn get_active_trucks(pool: State<'_, DbPool>) -> Result<Vec<ActiveTruck>, String> {
+    let pool = pool.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, registration_number, gate_no,
+                        is_waiting, is_loading, is_in, is_out,
+                        waiting_at, loading_at, in_at, out_at, created_at
+                 FROM active_trucks
+                 ORDER BY order_index ASC, created_at ASC"
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(ActiveTruck {
+                    id: row.get(0)?,
+                    registration_number: row.get(1)?,
+                    gate_no: row.get(2)?,
+                    is_waiting: row.get(3)?,
+                    is_loading: row.get(4)?,
+                    is_in: row.get(5)?,
+                    is_out: row.get(6)?,
+                    waiting_at: row.get(7)?,
+                    loading_at: row.get(8)?,
+                    in_at: row.get(9)?,
+                    out_at: row.get(10)?,
+                    created_at: row.get(11)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+
+        let mut trucks = Vec::new();
+        for truck in rows {
+            trucks.push(truck.map_err(|e| e.to_string())?);
+        }
+        Ok(trucks)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn save_active_trucks(
+    trucks: Vec<ActiveTruck>,
+    pool: State<'_, DbPool>,
+) -> Result<(), String> {
+    let pool = pool.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM active_trucks", [])
+            .map_err(|e| e.to_string())?;
+
+        {
+            let mut stmt = tx
+                .prepare(
+                    "INSERT INTO active_trucks (
+                        id, registration_number, gate_no,
+                        is_waiting, is_loading, is_in, is_out,
+                        waiting_at, loading_at, in_at, out_at, created_at, order_index
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"
+                )
+                .map_err(|e| e.to_string())?;
+
+            for (index, truck) in trucks.into_iter().enumerate() {
+                stmt.execute(rusqlite::params![
+                    truck.id,
+                    truck.registration_number,
+                    truck.gate_no,
+                    truck.is_waiting,
+                    truck.is_loading,
+                    truck.is_in,
+                    truck.is_out,
+                    truck.waiting_at,
+                    truck.loading_at,
+                    truck.in_at,
+                    truck.out_at,
+                    truck.created_at,
+                    index as i64,
+                ])
+                .map_err(|e| e.to_string())?;
+            }
+        }
+
+        tx.commit().map_err(|e| e.to_string())?;
         Ok(())
     })
     .await

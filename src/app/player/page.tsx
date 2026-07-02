@@ -110,6 +110,7 @@ export default function PlayerPage() {
   const [contentItems, setContentItems] = useState<ContentItem[]>([]);
   const [currentItemIndex, setCurrentItemIndex] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [activeTruckGate, setActiveTruckGate] = useState<string | null>(null);
 
   // Active Screen context for orientation and operating hours
   const [activeScreen, setActiveScreen] = useState<Screen | null>(null);
@@ -279,6 +280,7 @@ export default function PlayerPage() {
       if (!currentScreen) {
         setActiveScreen(null);
         setActivePlaylist(null);
+        setActiveTruckGate(null);
         setIsPlaying(false);
 
         if (screens.length === 1) {
@@ -332,28 +334,17 @@ export default function PlayerPage() {
       }
 
       if (activePurpose === 'truck_gate' && activeGateNumber) {
-        const url = `/trucks/display?gate=${activeGateNumber}`;
-        const item = resolvedItems.find((content) => content.url === url) ?? {
-          id: `virtual-truck-${activeGateNumber}`,
-          name: `${activeGateNumber.toUpperCase()} Truck Display`,
-          content_type: 'WebApp' as const,
-          file_path: null,
-          url,
-          duration_secs: 30,
-          tags: ['truck', activeGateNumber],
-          metadata_json: { kind: 'truck_gate', gate: activeGateNumber },
-          created_at: new Date().toISOString(),
-        };
-        if (!resolvedItems.some((content) => content.id === item.id)) resolvedItems.push(item);
-        playlistToPlay = {
-          id: `virtual-truck-playlist-${activeGateNumber}`,
-          name: `${activeGateNumber.toUpperCase()} Truck Display`,
-          items: [{ content_id: item.id, order: 0, override_duration: null, display_schedule: null }],
-          loop_enabled: true,
-          transition: 'None',
-          created_at: new Date().toISOString(),
-        };
-      } else if (activePurpose === 'production_dashboard' && activeProductionDashboardId) {
+        setActiveTruckGate(activeGateNumber.toLowerCase());
+        setContentItems(resolvedItems);
+        setActivePlaylist(null);
+        setCurrentItemIndex(0);
+        setIsPlaying(false);
+        return;
+      }
+
+      setActiveTruckGate(null);
+
+      if (activePurpose === 'production_dashboard' && activeProductionDashboardId) {
         const url = `/production-data/view?id=${activeProductionDashboardId}`;
         const item = resolvedItems.find((content) => content.url === url) ?? {
           id: `virtual-production-${activeProductionDashboardId}`,
@@ -465,6 +456,10 @@ export default function PlayerPage() {
 
   // Transient truck status alerts are pushed by the controller and overlay playback.
   useEffect(() => {
+    if (activeTruckGate) {
+      setTruckAlert(null);
+      return;
+    }
     if (typeof window === 'undefined' || !window.location.protocol.startsWith('http')) return;
     const events = new EventSource(`${getBrowserControllerOrigin()}/v1/browser/truck-alerts`);
     events.addEventListener('truck-alert', (event) => {
@@ -488,9 +483,11 @@ export default function PlayerPage() {
         truckAlertTimeoutRef.current = null;
       }
     };
-  }, []);
+  }, [activeTruckGate]);
 
-  const activeScreenDefaultContentId = activeScreen?.default_content_id ?? null;
+  const activeScreenDefaultContentId = activeScreen?.purpose === 'truck_gate'
+    ? null
+    : activeScreen?.default_content_id ?? null;
 
   // Derived helper for active items matching schedule
   const getPlayableItems = useCallback((): PlaylistItem[] => {
@@ -675,6 +672,8 @@ export default function PlayerPage() {
         title="Truck Token Alert"
         className="z-100"
         showHeader={false}
+        gateFilter={truckAlert.gate}
+        loadRemoteSnapshot={false}
       />
     );
   };
@@ -774,6 +773,17 @@ export default function PlayerPage() {
             </button>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (screenId && activeTruckGate) {
+    return (
+      <div className="relative h-screen w-screen overflow-hidden bg-black select-none">
+        <TruckTokenDisplay
+          trucks={trucks}
+        />
+        {renderMarquee()}
       </div>
     );
   }

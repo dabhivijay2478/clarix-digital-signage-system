@@ -22,7 +22,7 @@ import { useTrucks } from '@/hooks/useTrucks'
 import { useScreens } from '@/hooks/useScreens'
 import { showToast } from '@/components/Toast'
 import Modal from '@/components/Modal'
-import { customConfirm, productionApi, truckAlertsApi } from '@/lib/tauri'
+import { customConfirm, productionApi, truckAlertsApi, trucksApi } from '@/lib/tauri'
 import { formatDateTime } from '@/lib/utils'
 import {
   createTruckScreenAlert,
@@ -260,6 +260,7 @@ export default function TrucksPage() {
     registration_number: string
     gate_no: string
   }>>([])
+  const didSyncActiveSnapshot = useRef(false)
 
   const [fRegNo, setFRegNo] = useState('')
   const [fGateNo, setFGateNo] = useState('')
@@ -275,6 +276,14 @@ export default function TrucksPage() {
   useEffect(() => {
     refreshDispatchSummary()
   }, [refreshDispatchSummary])
+
+  useEffect(() => {
+    if (didSyncActiveSnapshot.current || trucks.length === 0) return
+    didSyncActiveSnapshot.current = true
+    void trucksApi.saveActiveSnapshot(trucks).catch((error) => {
+      console.warn('Failed to sync active truck snapshot:', error)
+    })
+  }, [trucks])
 
   const resetTruckForm = () => {
     setFRegNo('')

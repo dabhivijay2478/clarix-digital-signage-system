@@ -8,7 +8,7 @@ import { useTruckStore } from '@/store/truckStore'
 function GateDisplayContent() {
   const trucks = useTruckStore((state) => state.trucks)
 
-  return <TruckTokenDisplay trucks={trucks} title="Truck Token Display" />
+  return <TruckTokenDisplay trucks={trucks} />
 }
 
 export default function GateDisplayPage() {

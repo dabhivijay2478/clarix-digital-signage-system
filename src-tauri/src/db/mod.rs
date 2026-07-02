@@ -129,6 +129,22 @@ const SCHEMA: &str = r#"
         created_at          TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS active_trucks (
+        id                  TEXT PRIMARY KEY,
+        registration_number TEXT NOT NULL,
+        gate_no             TEXT,
+        is_waiting          BOOLEAN NOT NULL DEFAULT 0,
+        is_loading          BOOLEAN NOT NULL DEFAULT 0,
+        is_in               BOOLEAN NOT NULL DEFAULT 0,
+        is_out              BOOLEAN NOT NULL DEFAULT 0,
+        waiting_at          TEXT,
+        loading_at          TEXT,
+        in_at               TEXT,
+        out_at              TEXT,
+        created_at          TEXT NOT NULL,
+        order_index         INTEGER NOT NULL DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS content_items (
         id            TEXT PRIMARY KEY,
         name          TEXT NOT NULL,

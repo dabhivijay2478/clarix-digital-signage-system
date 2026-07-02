@@ -214,7 +214,7 @@ export default function TeamPage() {
           <CardContent className="p-8">
             <ShieldCheck className="mx-auto mb-4 size-10 text-muted-foreground" />
             <h1 className="text-2xl font-bold">Team access restricted</h1>
-            <p className="mt-2 text-sm text-muted-foreground">You don't have permission to manage team members.</p>
+            <p className="mt-2 text-sm text-muted-foreground">You don&apos;t have permission to manage team members.</p>
           </CardContent>
         </Card>
       </div>

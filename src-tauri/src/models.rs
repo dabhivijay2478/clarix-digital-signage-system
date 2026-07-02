@@ -461,6 +461,22 @@ pub struct AnalyticsSummary {
 // ── Truck Screen Alerts ────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ActiveTruck {
+    pub id: String,
+    pub registration_number: String,
+    pub gate_no: Option<String>,
+    pub is_waiting: bool,
+    pub is_loading: bool,
+    pub is_in: bool,
+    pub is_out: bool,
+    pub waiting_at: Option<String>,
+    pub loading_at: Option<String>,
+    pub in_at: Option<String>,
+    pub out_at: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TruckScreenAlert {
     pub id: String,
     pub truck_id: String,

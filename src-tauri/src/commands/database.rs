@@ -39,6 +39,7 @@ pub async fn get_db_table_data(table_name: String, pool: State<'_, DbPool>) -> R
         "production_datasets",
         "production_dashboards",
         "dispatched_trucks",
+        "active_trucks",
     ];
     if !allowed.contains(&table_name.as_str()) {
         return Err("Table not allowed".to_string());
