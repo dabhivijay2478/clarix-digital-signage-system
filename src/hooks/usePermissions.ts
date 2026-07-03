@@ -3,12 +3,12 @@
 import { useMemo } from 'react'
 import { useAuthStore } from '@/store/authStore'
 
-export type AppPermission = 'all' | 'screens' | 'content' | 'production' | 'trucks' | 'team' | 'view' | 'settings'
+export type AppPermission = 'all' | 'screens' | 'content' | 'trucks' | 'team' | 'view' | 'settings'
 
 const rolePerms: Record<string, AppPermission[]> = {
-  SuperAdmin: ['screens', 'content', 'production', 'trucks', 'team', 'settings'],
-  SiteSuperAdmin: ['screens', 'content', 'production', 'trucks', 'team', 'settings'],
-  Manager: ['screens', 'content', 'production', 'trucks'],
+  SuperAdmin: ['screens', 'content', 'trucks', 'team', 'settings'],
+  SiteSuperAdmin: ['screens', 'content', 'trucks', 'team', 'settings'],
+  Manager: ['screens', 'content', 'trucks'],
   User: ['view'],
 }
 

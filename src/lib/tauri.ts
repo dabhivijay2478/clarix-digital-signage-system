@@ -13,10 +13,6 @@ import type {
   DeviceIdentity,
   PairingRequest,
   ConnectionDiagnostic,
-  ProductionDashboard,
-  ProductionDashboardBundle,
-  ProductionDataset,
-  ProductionDatasetSummary,
   ProductionImportResult,
   ProductionRow,
   TruckScreenAlert,
@@ -88,15 +84,7 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
       case 'get_schedule':
         url = `${baseUrl}/api/schedule`;
         break;
-      case 'get_production_dashboards':
-        url = `${baseUrl}/api/production/dashboards`;
-        break;
-      case 'get_production_dashboard':
-        url = `${baseUrl}/api/production/dashboards/${args?.id}`;
-        break;
-      case 'get_production_dataset':
-        url = `${baseUrl}/api/production/datasets/${args?.id}`;
-        break;
+
       case 'get_marquee_settings':
         url = `${baseUrl}/api/marquee`;
         break;
@@ -412,41 +400,6 @@ export const contentLibraryApi = {
 export const productionApi = {
   importFile: (filename: string, bytes: Uint8Array) =>
     tauriInvoke<ProductionImportResult>('import_production_file', { filename, bytes: Array.from(bytes) }),
-
-  saveImport: (name: string, importResult: ProductionImportResult) =>
-    tauriInvoke<ProductionDashboardBundle>('save_production_import', { name, importResult }),
-
-  getDatasets: () => tauriInvoke<ProductionDatasetSummary[]>('get_production_datasets'),
-
-  getDataset: (id: string) => tauriInvoke<ProductionDataset>('get_production_dataset', { id }),
-
-  getDashboards: () => tauriInvoke<ProductionDashboard[]>('get_production_dashboards'),
-
-  getDashboard: (id: string) => tauriInvoke<ProductionDashboardBundle>('get_production_dashboard', { id }),
-
-  updateRows: (datasetId: string, tableId: string, rows: ProductionRow[]) =>
-    tauriInvoke<ProductionDataset>('update_production_table_rows', { datasetId, tableId, rows }),
-
-  refreshFromFile: (datasetId: string, filename: string, bytes: Uint8Array) =>
-    tauriInvoke<ProductionDataset>('refresh_production_dataset_from_file', { datasetId, filename, bytes: Array.from(bytes) }),
-
-  updateDataset: (dataset: ProductionDataset) =>
-    tauriInvoke<ProductionDataset>('update_production_dataset', { dataset }),
-
-  updateDashboard: (dashboard: ProductionDashboard) =>
-    tauriInvoke<ProductionDashboard>('update_production_dashboard', { dashboard }),
-
-  deleteDashboard: (id: string) =>
-    tauriInvoke<void>('delete_production_dashboard', { id }),
-
-  deleteDataset: (id: string) =>
-    tauriInvoke<void>('delete_production_dataset', { id }),
-
-  addToContent: (dashboardId: string, durationSecs: number = 300) =>
-    tauriInvoke<ContentItem>('add_production_dashboard_to_content', { dashboardId, durationSecs }),
-
-  clearAll: () =>
-    tauriInvoke<void>('clear_all_production_data'),
 };
 
 // ── Truck Alert API ────────────────────────────────────────────────────────

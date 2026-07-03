@@ -20,9 +20,6 @@ export async function assignScreenToGate(
   const assignedGate = useGateStore.getState().assignScreen(gateNumber, screen.id)
   if (!assignedGate) return null
 
-  const dashboardId = assignedGate.productionDashboardId ?? null
-  const purpose: ScreenPurpose = dashboardId ? 'production_dashboard' : 'playlist'
-
   await screensApi.edit(
     screen.id,
     screen.name,
@@ -32,9 +29,9 @@ export async function assignScreenToGate(
     screen.resolution.width,
     screen.resolution.height,
     screen.playlist_id ?? undefined,
-    purpose,
+    'playlist',
     assignedGate.number,
-    dashboardId,
+    null,
     screen.default_content_id ?? null,
   )
 

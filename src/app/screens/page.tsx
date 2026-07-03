@@ -7,8 +7,8 @@ import { useContent } from '../../hooks/useContent';
 import ScreenCard from '../../components/ScreenCard';
 import Modal from '../../components/Modal';
 import { showToast } from '../../components/Toast';
-import type { AppWeekday, ContentItem, PlaylistItem, PlaylistItemDaySchedule, PlaylistItemSchedule, ProductionDashboard, Screen, ScreenPurpose, TransitionEffect } from '../../lib/types';
-import { customConfirm, getBrowserControllerOrigin, productionApi } from '../../lib/tauri';
+import type { AppWeekday, ContentItem, PlaylistItem, PlaylistItemDaySchedule, PlaylistItemSchedule, Screen, ScreenPurpose, TransitionEffect } from '../../lib/types';
+import { customConfirm, getBrowserControllerOrigin } from '../../lib/tauri';
 import {
   APP_WEEKDAYS,
   defaultPlaylistItemDayTimes,
@@ -205,9 +205,7 @@ export default function ScreensPage() {
   const [editFormHeight, setEditFormHeight] = useState('1080');
   const [editFormPurpose, setEditFormPurpose] = useState<ScreenPurpose>('playlist');
   const [editFormGate, setEditFormGate] = useState<string>('');
-  const [editFormProductionDashboardId, setEditFormProductionDashboardId] = useState('');
   const [editFormDefaultContentId, setEditFormDefaultContentId] = useState('');
-  const [productionDashboards, setProductionDashboards] = useState<ProductionDashboard[]>([]);
 
   // Screen Operating Hours Modal state
   const [hoursScreen, setHoursScreen] = useState<Screen | null>(null);
@@ -255,12 +253,6 @@ export default function ScreensPage() {
     [playlists, selectedScreen]
   );
   const autoCreatingPlaylistFor = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    productionApi.getDashboards()
-      .then(setProductionDashboards)
-      .catch((error) => console.warn('Failed to load production dashboards for screen editor:', error));
-  }, []);
 
   useEffect(() => {
     if (!selectedScreenId) {
@@ -604,7 +596,6 @@ export default function ScreensPage() {
     setEditFormPurpose(screen.purpose ?? 'playlist');
     const gateNum = getAssignedGateForScreen(screen.id) || screen.gate || '';
     setEditFormGate(gateNum);
-    setEditFormProductionDashboardId(screen.production_dashboard_id ?? '');
     setEditFormDefaultContentId(screen.default_content_id ?? '');
   };
 
@@ -628,11 +619,6 @@ export default function ScreensPage() {
         unassignScreenFromAll(editingScreen.id);
       }
 
-      // Determine next dashboard ID based on purpose
-      let nextDashboardId: string | null = null;
-      if (editFormPurpose === 'production_dashboard') {
-        nextDashboardId = editFormProductionDashboardId || null;
-      }
       const nextDefaultContentId = editFormPurpose === 'truck_gate'
         ? null
         : editFormDefaultContentId || null;
@@ -649,7 +635,7 @@ export default function ScreensPage() {
         editingScreen.playlist_id ?? undefined,
         editFormPurpose,
         normalizedEditGate || null,
-        nextDashboardId,
+        null,
         nextDefaultContentId
       );
 
@@ -1211,13 +1197,11 @@ export default function ScreensPage() {
                   setEditFormPurpose(purpose);
                   if (purpose === 'truck_gate') {
                     setEditFormDefaultContentId('');
-                    setEditFormProductionDashboardId('');
                   }
                 }}
               >
                 <option value="playlist">General Playlist</option>
                 <option value="truck_gate">Truck Gate Display</option>
-                <option value="production_dashboard">Production Dashboard</option>
               </select>
             </div>
             {editFormPurpose === 'truck_gate' && (
@@ -1227,17 +1211,6 @@ export default function ScreensPage() {
                   <option value="">Select gate</option>
                   {gateOptions.map((gate) => (
                     <option key={gate} value={gate}>{gate.toUpperCase()}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {editFormPurpose === 'production_dashboard' && (
-              <div>
-                <label className="input-label">Production dashboard</label>
-                <select className="input" value={editFormProductionDashboardId} onChange={(event) => setEditFormProductionDashboardId(event.target.value)}>
-                  <option value="">Select dashboard</option>
-                  {productionDashboards.map((dashboard) => (
-                    <option key={dashboard.id} value={dashboard.id}>{dashboard.name}</option>
                   ))}
                 </select>
               </div>
@@ -1950,10 +1923,7 @@ export default function ScreensPage() {
                     )
                     if (!newScreen) throw new Error('Screen creation failed')
                     const gate = await assignScreenToGate(newScreen, assignPickerGate)
-                    const dashboardNote = gate?.productionDashboardId
-                      ? ' · auto-linked gate dashboard'
-                      : ''
-                    showToast(`Screen "${newScreen.name}" created and assigned to gate ${assignPickerGate.toUpperCase()}${dashboardNote}`, 'success')
+                    showToast(`Screen "${newScreen.name}" created and assigned to gate ${assignPickerGate.toUpperCase()}`, 'success')
                     setPickerNewName('')
                     setPickerNewLocation('')
                     setPickerNewIp('')
@@ -1993,10 +1963,7 @@ export default function ScreensPage() {
                     onClick={async () => {
                       if (!assignPickerGate) return
                       const gate = await assignScreenToGate(screen, assignPickerGate)
-                      const dashboardNote = gate?.productionDashboardId
-                        ? ' · auto-linked gate dashboard'
-                        : ''
-                      showToast(`Screen "${screen.name}" assigned to gate ${assignPickerGate.toUpperCase()}${dashboardNote}`, 'success')
+                      showToast(`Screen "${screen.name}" assigned to gate ${assignPickerGate.toUpperCase()}`, 'success')
                       setAssignPickerGate(null)
                     }}
                   >

@@ -304,7 +304,6 @@ export default function PlayerPage() {
 
       let activePurpose: ScreenPurpose = 'playlist'
       let activeGateNumber: string | null = null
-      let activeProductionDashboardId: string | null = null
       let activePlaylistId: string | null = null
 
       const gateStore = useGateStore.getState()
@@ -314,17 +313,14 @@ export default function PlayerPage() {
       if (currentScreen && currentScreen.purpose !== 'playlist') {
         activePurpose = currentScreen.purpose
         activeGateNumber = currentScreen.gate
-        activeProductionDashboardId = currentScreen.production_dashboard_id
         activePlaylistId = currentScreen.playlist_id
       } else if (assignedGate) {
         activePurpose = assignedGate.purpose
         activeGateNumber = assignedGate.number
-        activeProductionDashboardId = assignedGate.productionDashboardId
         activePlaylistId = assignedGate.playlistId
       } else if (currentScreen) {
         activePurpose = currentScreen.purpose
         activeGateNumber = currentScreen.gate
-        activeProductionDashboardId = currentScreen.production_dashboard_id
         activePlaylistId = currentScreen.playlist_id
       }
 
@@ -343,30 +339,6 @@ export default function PlayerPage() {
       }
 
       setActiveTruckGate(null);
-
-      if (activePurpose === 'production_dashboard' && activeProductionDashboardId) {
-        const url = `/production-data/view?id=${activeProductionDashboardId}`;
-        const item = resolvedItems.find((content) => content.url === url) ?? {
-          id: `virtual-production-${activeProductionDashboardId}`,
-          name: 'Production Dashboard',
-          content_type: 'WebApp' as const,
-          file_path: null,
-          url,
-          duration_secs: 300,
-          tags: ['production-data', 'dashboard'],
-          metadata_json: { kind: 'production_dashboard', dashboard_id: activeProductionDashboardId },
-          created_at: new Date().toISOString(),
-        };
-        if (!resolvedItems.some((content) => content.id === item.id)) resolvedItems.push(item);
-        playlistToPlay = {
-          id: `virtual-production-playlist-${activeProductionDashboardId}`,
-          name: 'Production Dashboard',
-          items: [{ content_id: item.id, order: 0, override_duration: null, display_schedule: null }],
-          loop_enabled: true,
-          transition: 'None',
-          created_at: new Date().toISOString(),
-        };
-      }
       setContentItems(resolvedItems);
 
       if (playlistToPlay && playlistToPlay.items.length > 0) {

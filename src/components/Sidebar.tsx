@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  FileSpreadsheet,
   LayoutDashboard,
   Menu,
   Monitor,
@@ -42,7 +41,6 @@ const navItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/screens', label: 'Screens', icon: Monitor, permission: 'screens' },
   { href: '/content', label: 'Content', icon: PlaySquare, permission: 'content' },
-  { href: '/production-data', label: 'Production Data', icon: FileSpreadsheet, permission: 'production' },
   { href: '/trucks', label: 'Truck Token', icon: Truck, permission: 'trucks' },
   { href: '/team', label: 'Team', icon: Users, permission: 'team' },
   { href: '/settings', label: 'Settings', icon: Settings, permission: 'settings' },

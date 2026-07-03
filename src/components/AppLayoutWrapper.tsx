@@ -21,8 +21,6 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
   const pathname = usePathname()
   const isPresentation = pathname === '/player'
     || pathname?.startsWith('/player/')
-    || pathname === '/production-data/view'
-    || pathname?.startsWith('/production-data/view/')
     || pathname === '/trucks/display'
     || pathname?.startsWith('/trucks/display/')
   
