@@ -203,7 +203,7 @@ export default function ScreensPage() {
   const [editFormOrientation, setEditFormOrientation] = useState('Landscape');
   const [editFormWidth, setEditFormWidth] = useState('1920');
   const [editFormHeight, setEditFormHeight] = useState('1080');
-  const [editFormPurpose, setEditFormPurpose] = useState<ScreenPurpose>('playlist');
+  const [editFormPurpose, setEditFormPurpose] = useState<ScreenPurpose>('truck_gate');
   const [editFormGate, setEditFormGate] = useState<string>('');
   const [editFormDefaultContentId, setEditFormDefaultContentId] = useState('');
 
@@ -524,7 +524,7 @@ export default function ScreensPage() {
         parseInt(formWidth) || 1920,
         parseInt(formHeight) || 1080,
         undefined,
-        undefined,
+        'truck_gate',
         formGate || null
       );
       if (formGate) {
@@ -593,7 +593,7 @@ export default function ScreensPage() {
     setEditFormOrientation(screen.orientation || 'Landscape');
     setEditFormWidth(String(screen.resolution?.width ?? 1920));
     setEditFormHeight(String(screen.resolution?.height ?? 1080));
-    setEditFormPurpose(screen.purpose ?? 'playlist');
+    setEditFormPurpose(screen.purpose === 'playlist' ? 'truck_gate' : (screen.purpose ?? 'truck_gate'));
     const gateNum = getAssignedGateForScreen(screen.id) || screen.gate || '';
     setEditFormGate(gateNum);
     setEditFormDefaultContentId(screen.default_content_id ?? '');
@@ -1200,8 +1200,7 @@ export default function ScreensPage() {
                   }
                 }}
               >
-                <option value="playlist">General Playlist</option>
-                <option value="truck_gate">Truck Gate Display</option>
+                <option value="truck_gate">Truck Token Display</option>
               </select>
             </div>
             {editFormPurpose === 'truck_gate' && (
@@ -1920,6 +1919,8 @@ export default function ScreensPage() {
                       'Landscape',
                       1920,
                       1080,
+                      undefined,
+                      'truck_gate',
                     )
                     if (!newScreen) throw new Error('Screen creation failed')
                     const gate = await assignScreenToGate(newScreen, assignPickerGate)

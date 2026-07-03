@@ -110,6 +110,7 @@ pub async fn start_controller_server(
         .route("/api/schedule", get(read_schedule))
         .route("/api/marquee", get(read_marquee))
         .route("/api/trucks", get(read_active_trucks).post(write_active_trucks))
+        .route("/api/trucks/dispatch-summary", get(read_truck_dispatch_summary))
         .route("/api/production/dashboards", get(read_production_dashboards))
         .route("/api/production/dashboards/{id}", get(read_production_dashboard))
         .route("/api/production/datasets/{id}", get(read_production_dataset))
@@ -386,6 +387,19 @@ async fn write_active_trucks(
 ) -> Result<StatusCode, (StatusCode, String)> {
     save_active_truck_snapshot(&state.pool, trucks).map_err(internal_error)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn read_truck_dispatch_summary(
+    State(state): State<AppState>,
+) -> Result<Json<crate::models::TruckDispatchSummary>, (StatusCode, String)> {
+    let pool = state.pool.clone();
+    let summary = tokio::task::spawn_blocking(move || {
+        crate::commands::trucks::query_truck_dispatch_summary(&pool)
+    })
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(summary))
 }
 
 async fn read_production_dashboards(

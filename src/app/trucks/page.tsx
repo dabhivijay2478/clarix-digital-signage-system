@@ -98,6 +98,32 @@ type TruckImportRow = {
   gate_no: string
 }
 
+function getGateColorClass(gateNo: string | null | undefined): string {
+  if (!gateNo) {
+    return 'bg-zinc-500/10 text-zinc-400 border-zinc-500/15'
+  }
+  const cleanGate = gateNo.trim().toUpperCase()
+  
+  let hash = 0
+  for (let i = 0; i < cleanGate.length; i++) {
+    hash = cleanGate.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  
+  const colors = [
+    'bg-emerald-500/10 text-emerald-400 border-emerald-500/15',
+    'bg-cyan-500/10 text-cyan-400 border-cyan-500/15',
+    'bg-indigo-500/10 text-indigo-400 border-indigo-500/15',
+    'bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/15',
+    'bg-amber-500/10 text-amber-400 border-amber-500/15',
+    'bg-rose-500/10 text-rose-400 border-rose-500/15',
+    'bg-sky-500/10 text-sky-400 border-sky-500/15',
+    'bg-orange-500/10 text-orange-400 border-orange-500/15',
+  ]
+  
+  const index = Math.abs(hash) % colors.length
+  return colors[index]
+}
+
 function makeGateNormalizer(configuredGates: string[]) {
   return function normalizeGateNo(value: string | null | undefined): string {
     const raw = (value ?? '').trim().toLowerCase()
@@ -739,7 +765,7 @@ export default function TrucksPage() {
                         </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           {truck.gate_no ? (
-                            <Badge variant="secondary" className="bg-primary/8 text-primary border-primary/15 text-[11px] font-semibold uppercase">
+                            <Badge variant="outline" className={cn("text-[11px] font-bold uppercase", getGateColorClass(truck.gate_no))}>
                               {truck.gate_no}
                             </Badge>
                           ) : (

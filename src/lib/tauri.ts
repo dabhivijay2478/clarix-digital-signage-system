@@ -91,6 +91,9 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
       case 'get_active_trucks':
         url = `${baseUrl}/api/trucks`;
         break;
+      case 'get_truck_dispatch_summary':
+        url = `${baseUrl}/api/trucks/dispatch-summary`;
+        break;
       case 'save_active_trucks': {
         const response = await fetch(`${baseUrl}/api/trucks`, {
           method: 'POST',
@@ -162,8 +165,7 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
         return [] as T;
       case 'get_role_permissions':
         return ['all'] as T;
-      case 'get_truck_dispatch_summary':
-        return { today: 0, last_24h: 0, this_month: 0, avg_loading_secs: null } as T;
+
       case 'get_analytics_summary':
         return { impressions: 0, plays: 0, completions: 0, skips: 0, avg_dwell_secs: 0, uptime_pct: 100 } as T;
       case 'get_analytics_timeline':

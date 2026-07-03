@@ -97,6 +97,32 @@ function statusClass(statusLabel: string): string {
   }
 }
 
+function getGateColorClass(gateNo: string | null | undefined): string {
+  if (!gateNo) {
+    return 'border-zinc-400/25 bg-zinc-400/10 text-zinc-300'
+  }
+  const cleanGate = gateNo.trim().toUpperCase()
+  
+  let hash = 0
+  for (let i = 0; i < cleanGate.length; i++) {
+    hash = cleanGate.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  
+  const colors = [
+    'border-emerald-400/25 bg-emerald-400/10 text-emerald-200',
+    'border-cyan-400/25 bg-cyan-400/10 text-cyan-200',
+    'border-indigo-400/25 bg-indigo-400/10 text-indigo-200',
+    'border-fuchsia-400/25 bg-fuchsia-400/10 text-fuchsia-200',
+    'border-amber-400/25 bg-amber-400/10 text-amber-200',
+    'border-rose-400/25 bg-rose-400/10 text-rose-200',
+    'border-sky-400/25 bg-sky-400/10 text-sky-200',
+    'border-orange-400/25 bg-orange-400/10 text-orange-200',
+  ]
+  
+  const index = Math.abs(hash) % colors.length
+  return colors[index]
+}
+
 function useRotatingQueueMode(hasLoading: boolean, hasWaiting: boolean): QueueMode {
   const [mode, setMode] = useState<QueueMode>('loading')
 
@@ -139,29 +165,32 @@ export default function TruckTokenDisplay({ trucks, className, title = 'Truck To
   }, [])
 
   useEffect(() => {
-    truckAlertsApi.getDispatchSummary()
-      .then(setDispatchSummary)
-      .catch((error) => console.warn('Failed to load truck dispatch summary:', error))
-  }, [])
-
-  useEffect(() => {
-    if (!loadRemoteSnapshot) return
     let disposed = false
-    const loadActiveTrucks = async () => {
+
+    const refreshData = async () => {
       try {
-        const activeTrucks = await trucksApi.getActive()
+        const [activeTrucks, summary] = await Promise.all([
+          loadRemoteSnapshot ? trucksApi.getActive() : Promise.resolve(null),
+          truckAlertsApi.getDispatchSummary()
+        ])
+
         if (!disposed) {
-          setRemoteTrucks(activeTrucks)
-          setHasLoadedRemoteTrucks(true)
+          if (summary) {
+            setDispatchSummary(summary)
+          }
+          if (loadRemoteSnapshot && activeTrucks) {
+            setRemoteTrucks(activeTrucks)
+            setHasLoadedRemoteTrucks(true)
+          }
         }
       } catch (error) {
-        console.warn('Failed to load active trucks:', error)
+        console.warn('Failed to refresh live truck data:', error)
       }
     }
 
-    void loadActiveTrucks()
+    void refreshData()
     const interval = setInterval(() => {
-      void loadActiveTrucks()
+      void refreshData()
     }, 3000)
 
     return () => {
@@ -307,7 +336,7 @@ export default function TruckTokenDisplay({ trucks, className, title = 'Truck To
                         : 'grid-cols-[110px_minmax(220px,1fr)_170px_150px_170px]'
                     )}
                   >
-                    <span className="inline-flex w-fit rounded-full border border-emerald-400/25 bg-emerald-400/10 px-4 py-1.5 text-lg font-black uppercase text-emerald-200">
+                    <span className={cn("inline-flex w-fit rounded-full border px-4 py-1.5 text-lg font-black uppercase", getGateColorClass(truck.gate_no))}>
                       {(truck.gate_no || '-').toUpperCase()}
                     </span>
                     <div className="min-w-0">

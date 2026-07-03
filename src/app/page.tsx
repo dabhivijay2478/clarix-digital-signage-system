@@ -74,21 +74,7 @@ export default function DashboardPage() {
     loadDashboardData()
   }, [])
 
-  const handleEmergencyStop = async () => {
-    try {
-      const screens = await screensApi.getAll()
-      if (!screens.length) {
-        showToast('No registered screens to stop', 'info')
-        return
-      }
-      showToast('Shutting down all screens...', 'warning')
-      await Promise.all(screens.map((screen) => screensApi.setPower(screen.id, false)))
-      showToast('All screens powered off successfully', 'success')
-      setScreensCount(screens.length)
-    } catch (error) {
-      showToast(`Emergency shutdown failed: ${error}`, 'error')
-    }
-  }
+
 
   const quickActions = [
     {
@@ -117,15 +103,6 @@ export default function DashboardPage() {
       iconBg: 'bg-violet-500/10',
       iconText: 'text-violet-600 dark:text-violet-400',
       danger: false,
-    },
-    {
-      icon: CircleStop,
-      label: 'Emergency Stop',
-      description: 'Power off all screens',
-      onClick: handleEmergencyStop,
-      iconBg: 'bg-red-500/10',
-      iconText: 'text-red-500',
-      danger: true,
     },
   ]
 
@@ -176,7 +153,7 @@ export default function DashboardPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-3">
                 {quickActions.map((action) => (
                   <button
                     key={action.label}
@@ -187,7 +164,7 @@ export default function DashboardPage() {
                       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                       action.danger && 'hover:border-red-500/30 hover:bg-red-500/5'
                     )}
-                    onClick={action.onClick || (() => router.push(action.href!))}
+                    onClick={() => router.push(action.href)}
                   >
                     <span className={cn(
                       'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',

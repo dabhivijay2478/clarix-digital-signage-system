@@ -332,9 +332,21 @@ export default function PlayerPage() {
       if (activePurpose === 'truck_gate' && activeGateNumber) {
         setActiveTruckGate(activeGateNumber.toLowerCase());
         setContentItems(resolvedItems);
-        setActivePlaylist(null);
+        // Still load the playlist if one is assigned — the player needs it to
+        // detect whether a scheduled content window is currently active, so it
+        // can temporarily override the default TruckTokenDisplay with the playlist.
+        if (playlistToPlay && playlistToPlay.items.length > 0) {
+          const sortedPlaylist: Playlist = {
+            ...playlistToPlay,
+            items: [...playlistToPlay.items].sort((a, b) => a.order - b.order),
+          };
+          setActivePlaylist(sortedPlaylist);
+          setIsPlaying(true);
+        } else {
+          setActivePlaylist(null);
+          setIsPlaying(false);
+        }
         setCurrentItemIndex(0);
-        setIsPlaying(false);
         return;
       }
 
@@ -749,7 +761,9 @@ export default function PlayerPage() {
     );
   }
 
-  if (screenId && activeTruckGate) {
+  const hasScheduledContent = getPlayableItems().length > 0;
+
+  if (screenId && activeTruckGate && !hasScheduledContent) {
     return (
       <div className="relative h-screen w-screen overflow-hidden bg-black select-none">
         <TruckTokenDisplay
