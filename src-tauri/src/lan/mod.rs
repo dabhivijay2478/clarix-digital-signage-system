@@ -10,16 +10,12 @@ pub mod server;
 const SERVICE_TYPE: &str = "_mgenterprise._tcp.local.";
 
 /// Resolve the local private IP address.
-/// Instead of using local_ip_address::local_ip() which can connect to 8.8.8.8 and return public WAN/NAT IPs
-/// (like 152.59.5.8), this function iterates through all network interfaces and selects a private IPv4 address
-/// (10.x.x.x, 192.168.x.x, 172.16.x.x) on the main network interface (Wi-Fi, Ethernet).
+/// This only inspects local network interfaces; it does not ask the OS for an
+/// internet/default-route address, because offline routers can make that call
+/// slow or unavailable during app startup.
 pub fn resolve_local_network_interface() -> anyhow::Result<(String, String)> {
     use std::net::IpAddr;
 
-    let default_route_ip = local_ip_address::local_ip().ok().and_then(|ip| match ip {
-        IpAddr::V4(ipv4) => Some(ipv4.to_string()),
-        IpAddr::V6(_) => None,
-    });
     let interfaces = local_ip_address::list_afinet_netifas()
         .map_err(|e| anyhow::anyhow!("Failed to list net interfaces: {}", e))?;
 
@@ -33,13 +29,7 @@ pub fn resolve_local_network_interface() -> anyhow::Result<(String, String)> {
         }
     }
 
-    if let Some(default_ip) = default_route_ip {
-        if let Some(candidate) = candidates.iter().find(|(_, ip)| ip == &default_ip) {
-            return Ok(candidate.clone());
-        }
-    }
-
-    // If the default route is not eligible, prefer a normal Wi-Fi or Ethernet interface.
+    // Prefer a normal Wi-Fi or Ethernet interface.
     candidates.sort_by(|a, b| {
         let a_is_priority = a.0.starts_with("en") 
             || a.0.starts_with("eth") 
