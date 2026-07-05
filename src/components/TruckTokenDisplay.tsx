@@ -54,15 +54,15 @@ function DisplayStatCard({
   }
 
   return (
-    <div className="flex min-w-0 items-center gap-4 rounded-xl border border-white/10 bg-zinc-950/60 px-5 py-4 shadow-2xl shadow-black/20">
-      <span className={cn('flex size-14 shrink-0 items-center justify-center rounded-xl text-2xl font-black', colorMap[color])}>
+    <div className="flex min-w-0 items-center gap-3 rounded-xl border border-white/10 bg-zinc-950/60 px-4 py-3 shadow-2xl shadow-black/20">
+      <span className={cn('flex size-12 shrink-0 items-center justify-center rounded-lg text-xl font-black', colorMap[color])}>
         {value}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-xl font-black leading-tight text-white">{label}</p>
-        <p className="truncate text-sm font-medium text-white/45">{sublabel}</p>
+        <p className="truncate text-lg font-black leading-tight text-white">{label}</p>
+        <p className="truncate text-xs font-medium text-white/45">{sublabel}</p>
       </div>
-      <Icon className="size-7 shrink-0 text-white/25" />
+      <Icon className="size-5 shrink-0 text-white/25" />
     </div>
   )
 }
@@ -250,25 +250,76 @@ export default function TruckTokenDisplay({ trucks, className, title = 'Truck To
 
   return (
     <div
-      className={cn('fixed inset-0 overflow-hidden bg-black p-6 text-white select-none', className)}
+      className={cn('fixed inset-0 overflow-hidden bg-black p-4 text-white select-none', className)}
       style={{
         backgroundImage: 'radial-gradient(circle at center, #0B0F19 0%, #030406 100%)',
       }}
     >
-      <div className="flex h-full min-h-0 flex-col gap-6">
-        {showHeader && (
-          <div className="flex items-end justify-between gap-6">
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        {/* Top bar: header + live clock */}
+        <div className="flex items-center justify-between gap-4">
+          {showHeader && (
             <div>
-              <p className="text-sm font-bold uppercase tracking-[0.3em] text-emerald-300/70">{title}</p>
-              <h1 className="mt-2 text-4xl font-black tracking-tight text-white">Live Gate Queue</h1>
+              <p className="text-xs font-bold uppercase tracking-[0.3em] text-emerald-300/70">{title}</p>
+              <h1 className="text-2xl font-black tracking-tight text-white">Live Gate Queue</h1>
             </div>
-            <div className="rounded-full border border-white/10 bg-white/5 px-5 py-2 text-sm font-bold uppercase tracking-[0.2em] text-white/60">
-              {mode === 'loading' ? 'Loading Now' : 'Waiting Queue'}
-            </div>
-          </div>
-        )}
+          )}
 
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+          {/* LOADING / WAITING CTA badge */}
+          <div
+            className={cn(
+              'flex items-center gap-3 rounded-2xl border-2 px-8 py-3 shadow-lg transition-all duration-500',
+              mode === 'loading'
+                ? 'border-blue-400/60 bg-blue-500/20 shadow-blue-500/20'
+                : 'border-amber-400/60 bg-amber-500/20 shadow-amber-500/20'
+            )}
+          >
+            <span
+              className={cn(
+                'relative flex size-3',
+              )}
+            >
+              <span
+                className={cn(
+                  'absolute inline-flex h-full w-full animate-ping rounded-full opacity-75',
+                  mode === 'loading' ? 'bg-blue-400' : 'bg-amber-400'
+                )}
+              />
+              <span
+                className={cn(
+                  'relative inline-flex size-3 rounded-full',
+                  mode === 'loading' ? 'bg-blue-400' : 'bg-amber-400'
+                )}
+              />
+            </span>
+            <span
+              className={cn(
+                'text-2xl font-black uppercase tracking-[0.3em]',
+                mode === 'loading' ? 'text-blue-200' : 'text-amber-200'
+              )}
+            >
+              {mode === 'loading' ? 'LOADING' : 'WAITING'}
+            </span>
+          </div>
+
+          {currentTime && (
+            <div className="flex items-center gap-4">
+              <span className="font-mono text-sm font-bold tracking-widest text-white/40 uppercase">
+                {currentTime.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+              </span>
+              <span className="h-5 w-px bg-white/10" />
+              <span className="font-mono text-2xl font-black tracking-widest text-emerald-400">
+                {currentTime.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+              </span>
+              <span className="relative flex size-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex size-2 rounded-full bg-emerald-500"></span>
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <DisplayStatCard icon={TruckIcon} value={activeTrucks.length} label="Total" sublabel="Active trucks" color="primary" />
           <DisplayStatCard icon={Timer} value={waitingTrucks.length} label="Waiting" sublabel="In queue" color="amber" />
           <DisplayStatCard icon={Activity} value={loadingTrucks.length} label="Loading" sublabel="In progress" color="blue" />
@@ -276,36 +327,15 @@ export default function TruckTokenDisplay({ trucks, className, title = 'Truck To
           <DisplayStatCard icon={CalendarDays} value={dispatchSummary?.this_month ?? 0} label="This Month" sublabel="Month total" color="rose" />
         </div>
 
-        {currentTime && (
-          <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-zinc-950/20 px-6 py-3 text-white/80 shadow-inner">
-            <div className="flex items-center gap-3">
-              <span className="relative flex size-2.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500"></span>
-              </span>
-              <span className="text-xs font-bold uppercase tracking-[0.2em] text-white/45">Live Monitoring Active</span>
-            </div>
-            <div className="flex items-center gap-6">
-              <span className="font-mono text-sm font-bold tracking-widest text-white/45 uppercase">
-                {currentTime.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
-              </span>
-              <span className="h-4 w-px bg-white/10" />
-              <span className="font-mono text-2xl font-black tracking-widest text-emerald-400">
-                {currentTime.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
-              </span>
-            </div>
-          </div>
-        )}
-
-        <div className="min-h-0 flex-1 overflow-hidden rounded-3xl border border-white/10 bg-zinc-950/40 shadow-2xl shadow-black/20">
+        <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/40 shadow-2xl shadow-black/20">
           <div className={cn(
-            "grid border-b border-white/10 bg-white/[0.03] px-6 py-4 text-xs font-black uppercase tracking-[0.24em] text-white/35",
+            "grid border-b border-white/10 bg-white/[0.03] px-6 py-3 text-xs font-black uppercase tracking-[0.24em] text-white/35",
             mode === 'loading'
-              ? 'grid-cols-[110px_minmax(220px,1fr)_170px]'
-              : 'grid-cols-[110px_minmax(220px,1fr)_170px_150px_170px]'
+              ? 'grid-cols-[120px_minmax(260px,1fr)_180px]'
+              : 'grid-cols-[120px_minmax(260px,1fr)_180px_160px_180px]'
           )}>
             <span>Gate</span>
-            <span>Truck Number</span>
+            <span>Truck Number / License Plate</span>
             <span>Status</span>
             {mode === 'waiting' && (
               <>
@@ -316,37 +346,46 @@ export default function TruckTokenDisplay({ trucks, className, title = 'Truck To
           </div>
 
           {rows.length === 0 ? (
-            <div className="flex h-full min-h-[360px] flex-col items-center justify-center px-6 text-center">
-              <p className="text-4xl font-black text-white/20">
+            <div className="flex h-full min-h-[180px] flex-col items-center justify-center px-6 text-center">
+              <p className="text-3xl font-black text-white/20">
                 {mode === 'loading' ? 'No loading trucks' : 'No waiting trucks'}
               </p>
-              <p className="mt-3 text-lg font-medium text-white/35">Queue updates will appear here automatically.</p>
+              <p className="mt-2 text-base font-medium text-white/35">Queue updates will appear here automatically.</p>
             </div>
           ) : (
-            <div className="divide-y divide-white/10">
+            <div className="divide-y divide-white/[0.07]">
               {rows.map((truck) => {
                 const statusLabel = getTruckStatusInfo(truck).status_label
                 return (
                   <div
                     key={`${mode}-${truck.id}`}
                     className={cn(
-                      "grid items-center px-6 py-5",
+                      "grid items-center px-6 py-4",
                       mode === 'loading'
-                        ? 'grid-cols-[110px_minmax(220px,1fr)_170px]'
-                        : 'grid-cols-[110px_minmax(220px,1fr)_170px_150px_170px]'
+                        ? 'grid-cols-[120px_minmax(260px,1fr)_180px]'
+                        : 'grid-cols-[120px_minmax(260px,1fr)_180px_160px_180px]'
                     )}
                   >
-                    <span className={cn("inline-flex w-fit rounded-full border px-4 py-1.5 text-lg font-black uppercase", getGateColorClass(truck.gate_no))}>
+                    {/* Gate badge */}
+                    <span className={cn("inline-flex w-fit rounded-full border-2 px-5 py-2 text-2xl font-black uppercase tracking-wider", getGateColorClass(truck.gate_no))}>
                       {(truck.gate_no || '-').toUpperCase()}
                     </span>
+
+                    {/* License plate — primary focus element */}
                     <div className="min-w-0">
-                      <p className="truncate font-mono text-3xl font-black tracking-tight text-white">
+                      <p
+                        className="truncate font-mono font-black tracking-tight text-white"
+                        style={{ fontSize: 'clamp(2.5rem, 5vw, 6rem)', lineHeight: 1.05, letterSpacing: '-0.01em' }}
+                      >
                         {truck.registration_number.toUpperCase()}
                       </p>
                     </div>
-                    <span className={cn('w-fit rounded-full border px-4 py-2 text-sm font-black uppercase tracking-wider', statusClass(statusLabel))}>
+
+                    {/* Status pill */}
+                    <span className={cn('w-fit rounded-full border-2 px-5 py-2.5 text-base font-black uppercase tracking-wider', statusClass(statusLabel))}>
                       {statusLabel}
                     </span>
+
                     {mode === 'waiting' && (
                       <>
                         <span className="font-mono text-2xl font-black text-white/70">
