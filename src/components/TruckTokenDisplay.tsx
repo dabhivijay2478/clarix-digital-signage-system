@@ -229,11 +229,9 @@ export default function TruckTokenDisplay({
   )
 
   const queueRows = useMemo(() => {
-    const buildRows = (source: Truck[]) => gateNumbers.flatMap((gate) =>
-      source
-        .filter((truck) => (truck.gate_no ?? '').toLowerCase() === gate)
-        .slice(0, 2),
-    )
+    const buildRows = (source: Truck[]) => gateNumbers
+      .flatMap((gate) => source.filter((truck) => (truck.gate_no ?? '').toLowerCase() === gate))
+      .slice(0, 4)
 
     return {
       loading: buildRows(loadingTrucks),
@@ -258,7 +256,9 @@ export default function TruckTokenDisplay({
         overflow: 'hidden',
         background: '#f4f6f8',
         color: '#111827',
-        padding: 28,
+        padding: 12,
+        paddingLeft: 20,
+        paddingRight: 20,
       }}
     >
       <style dangerouslySetInnerHTML={{ __html: TRUCK_DISPLAY_CRITICAL_CSS }} />
@@ -267,25 +267,24 @@ export default function TruckTokenDisplay({
         className="mg-truck-layout"
         style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
       >
-        <div className="mg-truck-topbar">
-          {showHeader && (
-            <div>
-              <p className="mg-truck-title-sub">{title}</p>
-              <h1 className="mg-truck-title-main">Live Gate Queue</h1>
-            </div>
-          )}
+        {showHeader && (
+          <div className="mg-truck-header-block">
+            <p className="mg-truck-title-sub">{title}</p>
+            <h1 className="mg-truck-title-main">Live Gate Queue</h1>
+          </div>
+        )}
+
+        <div className="mg-truck-top-row">
+          <div className="mg-truck-stats">
+            <DisplayStatCard value={activeTrucks.length} label="Total" color="primary" />
+            <DisplayStatCard value={waitingTrucks.length} label="Waiting" color="amber" />
+            <DisplayStatCard value={loadingTrucks.length} label="Loading" color="blue" />
+            <DisplayStatCard value={dispatchSummary?.today ?? 0} label="Dispatched" color="green" />
+            <DisplayStatCard value={dispatchSummary?.this_month ?? 0} label="This Month" color="rose" />
+          </div>
 
           {currentTime && (
-            <div className="mg-truck-clock-wrap" style={{ marginLeft: 'auto' }}>
-              <span className="mg-truck-clock-date">
-                {currentTime.toLocaleDateString(undefined, {
-                  weekday: 'short',
-                  day: 'numeric',
-                  month: 'short',
-                  year: 'numeric',
-                })}
-              </span>
-              <span className="mg-truck-clock-divider" />
+            <div className="mg-truck-clock-wrap">
               <span className="mg-truck-clock-time">
                 {currentTime.toLocaleTimeString(undefined, {
                   hour: '2-digit',
@@ -296,14 +295,6 @@ export default function TruckTokenDisplay({
               </span>
             </div>
           )}
-        </div>
-
-        <div className="mg-truck-stats">
-          <DisplayStatCard value={activeTrucks.length} label="Total" color="primary" />
-          <DisplayStatCard value={waitingTrucks.length} label="Waiting" color="amber" />
-          <DisplayStatCard value={loadingTrucks.length} label="Loading" color="blue" />
-          <DisplayStatCard value={dispatchSummary?.today ?? 0} label="Dispatched" color="green" />
-          <DisplayStatCard value={dispatchSummary?.this_month ?? 0} label="This Month" color="rose" />
         </div>
 
         <div className="mg-truck-panel">
@@ -341,7 +332,7 @@ export default function TruckTokenDisplay({
                             {(truck.gate_no || '-').toUpperCase()}
                           </span>
                         </td>
-                        <td className="col-plate text-8xl">
+                        <td className="col-plate">
                           <p className="mg-truck-plate">
                             {truck.registration_number.toUpperCase()}
                           </p>
