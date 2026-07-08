@@ -21,6 +21,7 @@ interface TruckTokenDisplayProps {
   showHeader?: boolean
   gateSettings?: GateQueueSettings[]
   gateFilter?: string | null
+  gateFilters?: string[] | null
   loadRemoteSnapshot?: boolean
 }
 
@@ -67,7 +68,7 @@ function useFitColumnText<T extends HTMLElement>(text: string, maxRem: number, m
 }
 
 function DisplayPlate({ text, maxRem }: { text: string; maxRem: number }) {
-  const ref = useFitColumnText<HTMLParagraphElement>(text, maxRem, 2.25)
+  const ref = useFitColumnText<HTMLParagraphElement>(text, maxRem, 2.75)
   return (
     <p
       ref={ref}
@@ -88,7 +89,7 @@ function DisplayStatus({
   maxRem: number
   color: string
 }) {
-  const ref = useFitColumnText<HTMLSpanElement>(text, maxRem, 1.75)
+  const ref = useFitColumnText<HTMLSpanElement>(text, maxRem, 2)
   return (
     <span
       ref={ref}
@@ -101,7 +102,7 @@ function DisplayStatus({
 }
 
 function DisplayTime({ text }: { text: string }) {
-  const ref = useFitColumnText<HTMLSpanElement>(text, 2.75, 1.5)
+  const ref = useFitColumnText<HTMLSpanElement>(text, 3.25, 1.75)
   return (
     <span
       ref={ref}
@@ -114,19 +115,32 @@ function DisplayTime({ text }: { text: string }) {
 }
 
 function DisplayStatCard({
+  line1,
+  line2Prefix,
   value,
-  label,
   color,
 }: {
+  line1: string
+  line2Prefix: string
   value: number | string
-  label: string
   color: StatColor
 }) {
   return (
-    <div className="mg-truck-stat">
-      <p className="mg-truck-stat-line">
-        <span className="mg-truck-stat-label">{label}:</span>
-        <span className="mg-truck-stat-num" style={{ color: STAT_VALUE_COLORS[color] }}>{value}</span>
+    <div
+      className="mg-truck-stat"
+      style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', overflow: 'visible' }}
+    >
+      <p className="mg-truck-stat-title" style={{ margin: 0, lineHeight: 1.1, fontSize: '1.75rem' }}>
+        {line1}
+      </p>
+      <p
+        className="mg-truck-stat-value-line"
+        style={{ margin: '6px 0 0', display: 'flex', alignItems: 'baseline', lineHeight: 1, overflow: 'visible' }}
+      >
+        <span className="mg-truck-stat-suffix" style={{ fontSize: '1.5rem' }}>{line2Prefix}:</span>
+        <span className="mg-truck-stat-num" style={{ color: STAT_VALUE_COLORS[color], fontSize: '2.75rem' }}>
+          {value}
+        </span>
       </p>
     </div>
   )
@@ -219,6 +233,7 @@ export default function TruckTokenDisplay({
   showHeader = false,
   gateSettings,
   gateFilter,
+  gateFilters,
   loadRemoteSnapshot = true,
 }: TruckTokenDisplayProps) {
   const gates = useGateStore((state) => state.gates)
@@ -226,7 +241,14 @@ export default function TruckTokenDisplay({
   const [hasLoadedRemoteTrucks, setHasLoadedRemoteTrucks] = useState(false)
   const [dispatchSummary, setDispatchSummary] = useState<TruckDispatchSummary | null>(null)
   const [currentTime, setCurrentTime] = useState<Date | null>(null)
-  const normalizedGateFilter = gateFilter?.trim().toLowerCase() || null
+  const normalizedGateFilters = useMemo(() => {
+    const fromList = (gateFilters ?? [])
+      .map((gate) => gate.trim().toLowerCase())
+      .filter(Boolean)
+    if (fromList.length > 0) return [...new Set(fromList)]
+    const single = gateFilter?.trim().toLowerCase()
+    return single ? [single] : null
+  }, [gateFilter, gateFilters])
   const sourceTrucks = loadRemoteSnapshot && hasLoadedRemoteTrucks ? remoteTrucks : trucks
 
   useEffect(() => {
@@ -273,10 +295,10 @@ export default function TruckTokenDisplay({
   }, [loadRemoteSnapshot])
 
   const displayTrucks = useMemo(
-    () => normalizedGateFilter
-      ? sourceTrucks.filter((truck) => (truck.gate_no ?? '').toLowerCase() === normalizedGateFilter)
+    () => normalizedGateFilters
+      ? sourceTrucks.filter((truck) => normalizedGateFilters.includes((truck.gate_no ?? '').toLowerCase()))
       : sourceTrucks,
-    [sourceTrucks, normalizedGateFilter],
+    [sourceTrucks, normalizedGateFilters],
   )
   const activeTrucks = useMemo(() => displayTrucks.filter((truck) => !truck.is_out), [displayTrucks])
   const loadingTrucks = useMemo(
@@ -289,13 +311,15 @@ export default function TruckTokenDisplay({
   )
 
   const gateNumbers = useMemo(() => {
+    if (normalizedGateFilters?.length) {
+      return normalizedGateFilters
+    }
     const configured = (gateSettings ?? gates ?? []).map((gate) => gate?.number).filter(Boolean)
     const discovered = displayTrucks
       .map((truck) => (truck?.gate_no ?? '').toLowerCase())
       .filter(Boolean)
-    const allGates = [...new Set([...configured, ...discovered])]
-    return normalizedGateFilter ? [normalizedGateFilter] : allGates
-  }, [gateSettings, gates, displayTrucks, normalizedGateFilter])
+    return [...new Set([...configured, ...discovered])]
+  }, [gateSettings, gates, displayTrucks, normalizedGateFilters])
 
   const resolvedGateSettings = useMemo<GateQueueSettings[]>(
     () => gateSettings ?? (gates ?? []).map((gate) => ({
@@ -319,12 +343,12 @@ export default function TruckTokenDisplay({
   const mode = useRotatingQueueMode(queueRows.loading.length > 0, queueRows.waiting.length > 0)
   const rows = queueRows[mode]
 
-  const statItems: Array<{ value: number | string; label: string; color: StatColor }> = [
-    { value: activeTrucks.length, label: 'Total', color: 'primary' },
-    { value: waitingTrucks.length, label: 'Waiting', color: 'amber' },
-    { value: loadingTrucks.length, label: 'Loading', color: 'blue' },
-    { value: dispatchSummary?.today ?? 0, label: 'Dispatched', color: 'green' },
-    { value: dispatchSummary?.this_month ?? 0, label: 'This Month', color: 'rose' },
+  const statItems: Array<{ line1: string; line2Prefix: string; value: number | string; color: StatColor }> = [
+    { line1: 'Total in', line2Prefix: 'trucks', value: activeTrucks.length, color: 'primary' },
+    { line1: 'Waiting', line2Prefix: 'trucks', value: waitingTrucks.length, color: 'amber' },
+    { line1: 'Loading', line2Prefix: 'trucks', value: loadingTrucks.length, color: 'blue' },
+    { line1: 'Dispatched', line2Prefix: 'trucks', value: dispatchSummary?.today ?? 0, color: 'green' },
+    { line1: 'This Month', line2Prefix: 'trucks', value: dispatchSummary?.this_month ?? 0, color: 'rose' },
   ]
 
   return (
@@ -351,20 +375,15 @@ export default function TruckTokenDisplay({
         className="mg-truck-layout"
         style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
       >
-        {showHeader && (
-          <div className="mg-truck-header-block">
-            <p className="mg-truck-title-sub">{title}</p>
-            <h1 className="mg-truck-title-main">Live Gate Queue</h1>
-          </div>
-        )}
-
+      
         <div
           className="mg-truck-top-row"
           style={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1fr) auto',
-            gap: '16px 24px',
-            alignItems: 'baseline',
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'flex-start',
+            margin: '0 0 20px 0',
             overflow: 'visible',
             width: '100%',
           }}
@@ -374,34 +393,42 @@ export default function TruckTokenDisplay({
             style={{
               display: 'flex',
               flexWrap: 'wrap',
+              flex: '0 1 auto',
               minWidth: 0,
               overflow: 'visible',
-              alignItems: 'baseline',
+              alignItems: 'center',
             }}
           >
             {statItems.map((item, index) => (
-              <Fragment key={item.label}>
+              <Fragment key={item.line1}>
                 {index > 0 && <span className="mg-truck-stat-divider" aria-hidden="true" />}
-                <DisplayStatCard value={item.value} label={item.label} color={item.color} />
+                <DisplayStatCard
+                  line1={item.line1}
+                  line2Prefix={item.line2Prefix}
+                  value={item.value}
+                  color={item.color}
+                />
               </Fragment>
             ))}
-          </div>
 
-          {currentTime && (
-            <div
-              className="mg-truck-clock-wrap"
-              style={{ whiteSpace: 'nowrap', flexShrink: 0, justifySelf: 'end' }}
-            >
-              <span className="mg-truck-clock-time">
-                {currentTime.toLocaleTimeString(undefined, {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  second: '2-digit',
-                  hour12: true,
-                })}
-              </span>
-            </div>
-          )}
+            {currentTime && (
+              <>
+                <span className="mg-truck-clock-divider" aria-hidden="true" />
+                <div
+                  className="mg-truck-clock-wrap"
+                  style={{ whiteSpace: 'nowrap', flexShrink: 0, overflow: 'visible', display: 'flex', alignItems: 'center' }}
+                >
+                  <span className="mg-truck-clock-time" style={{ fontSize: '2.75rem' }}>
+                    {currentTime.toLocaleTimeString(undefined, {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: true,
+                    })}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="mg-truck-panel">
@@ -410,16 +437,16 @@ export default function TruckTokenDisplay({
               className={`mg-truck-grid${mode === 'waiting' ? ' mg-truck-grid--waiting' : ''}`}
               style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'visible' }}
             >
-              <div className="mg-truck-grid-head" style={{ display: 'flex', overflow: 'visible' }}>
-                <div className="mg-truck-col-gate mg-truck-col-label">Gate</div>
-                <div className="mg-truck-col-plate mg-truck-col-label">Truck Number / License Plate</div>
-                <div className="mg-truck-col-status mg-truck-col-label">Status</div>
+              <div className="mg-truck-grid-head" style={{ display: 'flex', overflow: 'visible', margin: '0 0 12px 0', padding: 0, gap: 32, border: 'none' }}>
+                <div className="mg-truck-col-gate mg-truck-col-label" style={{ marginRight: 32 }}>Gate</div>
+                <div className="mg-truck-col-plate mg-truck-col-label" style={{ marginRight: 32 }}>Truck Number / License Plate</div>
+                <div className="mg-truck-col-status mg-truck-col-label" style={{ marginRight: mode === 'waiting' ? 32 : 0 }}>Status</div>
                 {mode === 'waiting' && (
                   <div className="mg-truck-col-est mg-truck-col-label">Est. Wait</div>
                 )}
               </div>
 
-              <div className="mg-truck-grid-body" style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'visible' }}>
+              <div className="mg-truck-grid-body" style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'visible', margin: 0, padding: 0, gap: 0 }}>
                 {rows.length === 0 ? (
                   <div className="mg-truck-empty">
                     <p className="mg-truck-empty-title">
@@ -434,37 +461,39 @@ export default function TruckTokenDisplay({
                       <div
                         key={`${mode}-${truck.id}`}
                         className="mg-truck-grid-row"
-                        style={{ display: 'flex', alignItems: 'center', overflow: 'visible' }}
+                        style={{ display: 'flex', alignItems: 'center', overflow: 'visible', margin: 0, padding: 0, gap: 32, border: 'none' }}
                       >
-                        <div className="mg-truck-col-gate" style={{ overflow: 'visible' }}>
+                        <div className="mg-truck-col-gate" style={{ overflow: 'visible', margin: 0, marginRight: 32, padding: 0, flex: '0 0 auto' }}>
                           <span
                             className="mg-truck-gate"
                             style={{
                               color: getGateStyle(truck.gate_no).color,
-                              fontSize: '3.5rem',
+                              fontSize: '4.5rem',
                               overflow: 'visible',
                               textOverflow: 'clip',
                               maxWidth: 'none',
+                              margin: 0,
+                              padding: 0,
                             }}
                           >
                             {(truck.gate_no || '-').toUpperCase()}
                           </span>
                         </div>
-                        <div className="mg-truck-col-plate" style={{ overflow: 'visible' }}>
+                        <div className="mg-truck-col-plate" style={{ overflow: 'visible', margin: 0, marginRight: 32, padding: 0 }}>
                           <DisplayPlate
                             text={truck.registration_number.toUpperCase()}
-                            maxRem={mode === 'waiting' ? 3.75 : 4.5}
+                            maxRem={mode === 'waiting' ? 4.75 : 5.5}
                           />
                         </div>
-                        <div className="mg-truck-col-status" style={{ overflow: 'visible' }}>
+                        <div className="mg-truck-col-status" style={{ overflow: 'visible', margin: 0, marginRight: mode === 'waiting' ? 32 : 0, padding: 0 }}>
                           <DisplayStatus
                             text={statusLabel}
-                            maxRem={mode === 'waiting' ? 2.75 : 3}
+                            maxRem={mode === 'waiting' ? 3.25 : 3.75}
                             color={getStatusStyle(statusLabel).color ?? '#4b5563'}
                           />
                         </div>
                         {mode === 'waiting' && (
-                          <div className="mg-truck-col-est" style={{ overflow: 'visible' }}>
+                          <div className="mg-truck-col-est" style={{ overflow: 'visible', margin: 0, padding: 0 }}>
                             <DisplayTime
                               text={(() => {
                                 if (!truck.waiting_at) return '-'

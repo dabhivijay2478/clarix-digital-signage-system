@@ -11,6 +11,7 @@ import { useBrandingStore } from '../../store/ui';
 import { Maximize, Minimize, RefreshCw, LogOut, XCircle } from 'lucide-react';
 import { useGateStore } from '@/store/gateStore';
 import TruckTokenDisplay from '@/components/TruckTokenDisplay';
+import { parseScreenGates } from '@/lib/screen-gates';
 import { useTruckStore } from '@/store/truckStore';
 
 function playlistPlaybackSignature(playlist: Playlist): string {
@@ -110,7 +111,7 @@ export default function PlayerPage() {
   const [contentItems, setContentItems] = useState<ContentItem[]>([]);
   const [currentItemIndex, setCurrentItemIndex] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [activeTruckGate, setActiveTruckGate] = useState<string | null>(null);
+  const [activeTruckGates, setActiveTruckGates] = useState<string[]>([]);
 
   // Active Screen context for orientation and operating hours
   const [activeScreen, setActiveScreen] = useState<Screen | null>(null);
@@ -280,7 +281,7 @@ export default function PlayerPage() {
       if (!currentScreen) {
         setActiveScreen(null);
         setActivePlaylist(null);
-        setActiveTruckGate(null);
+        setActiveTruckGates([]);
         setIsPlaying(false);
 
         if (screens.length === 1) {
@@ -303,24 +304,28 @@ export default function PlayerPage() {
       const resolvedItems = [...items];
 
       let activePurpose: ScreenPurpose = 'playlist'
-      let activeGateNumber: string | null = null
+      let activeGateNumbers: string[] = []
       let activePlaylistId: string | null = null
 
       const gateStore = useGateStore.getState()
-      const assignedGateNumber = gateStore.getAssignedGateForScreen(screenId)
-      const assignedGate = assignedGateNumber ? gateStore.gates.find((g) => g.number === assignedGateNumber) : null
+      const assignedGateNumbers = gateStore.getAssignedGatesForScreen(screenId)
+      const assignedGate = assignedGateNumbers[0]
+        ? gateStore.gates.find((g) => g.number === assignedGateNumbers[0])
+        : null
 
       if (currentScreen && currentScreen.purpose !== 'playlist') {
         activePurpose = currentScreen.purpose
-        activeGateNumber = currentScreen.gate
+        activeGateNumbers = assignedGateNumbers.length > 0
+          ? assignedGateNumbers
+          : parseScreenGates(currentScreen.gate)
         activePlaylistId = currentScreen.playlist_id
       } else if (assignedGate) {
         activePurpose = assignedGate.purpose
-        activeGateNumber = assignedGate.number
+        activeGateNumbers = assignedGateNumbers
         activePlaylistId = assignedGate.playlistId
       } else if (currentScreen) {
         activePurpose = currentScreen.purpose
-        activeGateNumber = currentScreen.gate
+        activeGateNumbers = parseScreenGates(currentScreen.gate)
         activePlaylistId = currentScreen.playlist_id
       }
 
@@ -329,8 +334,8 @@ export default function PlayerPage() {
         playlistToPlay = playlists.find((p) => p.id === activePlaylistId) || null;
       }
 
-      if (activePurpose === 'truck_gate' && activeGateNumber) {
-        setActiveTruckGate(activeGateNumber.toLowerCase());
+      if (activePurpose === 'truck_gate' && activeGateNumbers.length > 0) {
+        setActiveTruckGates(activeGateNumbers.map((gate) => gate.toLowerCase()));
         setContentItems(resolvedItems);
         // Still load the playlist if one is assigned — the player needs it to
         // detect whether a scheduled content window is currently active, so it
@@ -350,7 +355,7 @@ export default function PlayerPage() {
         return;
       }
 
-      setActiveTruckGate(null);
+      setActiveTruckGates([]);
       setContentItems(resolvedItems);
 
       if (playlistToPlay && playlistToPlay.items.length > 0) {
@@ -440,7 +445,7 @@ export default function PlayerPage() {
 
   // Transient truck status alerts are pushed by the controller and overlay playback.
   useEffect(() => {
-    if (activeTruckGate) {
+    if (activeTruckGates.length > 0) {
       setTruckAlert(null);
       return;
     }
@@ -467,7 +472,7 @@ export default function PlayerPage() {
         truckAlertTimeoutRef.current = null;
       }
     };
-  }, [activeTruckGate]);
+  }, [activeTruckGates]);
 
   const activeScreenDefaultContentId = activeScreen?.purpose === 'truck_gate'
     ? null
@@ -784,7 +789,7 @@ export default function PlayerPage() {
 
   const hasScheduledContent = getPlayableItems().length > 0;
 
-  if (screenId && activeTruckGate && !hasScheduledContent) {
+  if (screenId && activeTruckGates.length > 0 && !hasScheduledContent) {
     return (
       <div
         className="mg-player-stage"
@@ -792,6 +797,7 @@ export default function PlayerPage() {
       >
         <TruckTokenDisplay
           trucks={trucks}
+          gateFilters={activeTruckGates}
         />
         {renderMarquee()}
       </div>

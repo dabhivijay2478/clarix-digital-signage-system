@@ -1,58 +1,49 @@
 'use client'
 
 import { screensApi } from './tauri'
-import type { Screen, ScreenPurpose } from './types'
+import type { Screen } from './types'
+import { serializeScreenGates } from './screen-gates'
 import { useGateStore, type Gate } from '@/store/gateStore'
 
 /**
- * Assign a screen to a gate, and when the gate has a production dashboard
- * linked, automatically bind the screen's purpose + dashboard so the player
- * starts showing the dashboard data right away.
- *
- * Returns the gate that the screen was assigned to (or null if the gate
- * doesn't exist). The caller is responsible for refreshing any local screen
- * lists afterwards.
+ * Assign a screen to one or more gates and persist the gate list on the screen record.
+ */
+export async function assignScreenToGates(
+  screen: Screen,
+  gateNumbers: string[],
+): Promise<void> {
+  const serializedGate = serializeScreenGates(gateNumbers)
+  useGateStore.getState().assignScreenToGates(screen.id, gateNumbers)
+
+  await screensApi.edit(
+    screen.id,
+    screen.name,
+    screen.location,
+    screen.ip_address ?? undefined,
+    screen.orientation,
+    screen.resolution.width,
+    screen.resolution.height,
+    screen.playlist_id ?? undefined,
+    gateNumbers.length > 0 ? 'truck_gate' : 'playlist',
+    serializedGate,
+    null,
+    screen.default_content_id ?? null,
+  )
+}
+
+/**
+ * Assign a screen to a single gate.
  */
 export async function assignScreenToGate(
   screen: Screen,
   gateNumber: string,
 ): Promise<Gate | null> {
-  const assignedGate = useGateStore.getState().assignScreen(gateNumber, screen.id)
-  if (!assignedGate) return null
-
-  await screensApi.edit(
-    screen.id,
-    screen.name,
-    screen.location,
-    screen.ip_address ?? undefined,
-    screen.orientation,
-    screen.resolution.width,
-    screen.resolution.height,
-    screen.playlist_id ?? undefined,
-    'playlist',
-    assignedGate.number,
-    null,
-    screen.default_content_id ?? null,
-  )
-
-  return assignedGate
+  await assignScreenToGates(screen, [gateNumber])
+  const normalized = gateNumber.trim().toLowerCase()
+  return useGateStore.getState().gates.find((gate) => gate.number === normalized) ?? null
 }
 
-/** Remove a screen from its gate and reset purpose back to playlist. */
+/** Remove a screen from all gates and reset purpose back to playlist. */
 export async function unassignScreenFromGate(screen: Screen): Promise<void> {
-  useGateStore.getState().unassignScreenFromAll(screen.id)
-  await screensApi.edit(
-    screen.id,
-    screen.name,
-    screen.location,
-    screen.ip_address ?? undefined,
-    screen.orientation,
-    screen.resolution.width,
-    screen.resolution.height,
-    screen.playlist_id ?? undefined,
-    'playlist',
-    null,
-    null,
-    screen.default_content_id ?? null,
-  )
+  await assignScreenToGates(screen, [])
 }
