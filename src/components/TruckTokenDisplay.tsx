@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 
 import { getTruckStatusInfo } from '@/lib/truck-alerts'
 import {
@@ -33,6 +33,84 @@ const STAT_VALUE_COLORS: Record<StatColor, string> = {
   green: '#16a34a',
   amber: '#d97706',
   rose: '#e11d48',
+}
+
+function useFitColumnText<T extends HTMLElement>(text: string, maxRem: number, minRem = 2) {
+  const ref = useRef<T>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+
+    const fit = () => {
+      const container = el.parentElement
+      if (!container) return
+
+      let size = maxRem
+      el.style.fontSize = `${size}rem`
+      el.style.overflow = 'visible'
+      el.style.textOverflow = 'clip'
+      el.style.maxWidth = 'none'
+
+      while (el.scrollWidth > container.clientWidth && size > minRem) {
+        size -= 0.125
+        el.style.fontSize = `${size}rem`
+      }
+    }
+
+    fit()
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  }, [text, maxRem, minRem])
+
+  return ref
+}
+
+function DisplayPlate({ text, maxRem }: { text: string; maxRem: number }) {
+  const ref = useFitColumnText<HTMLParagraphElement>(text, maxRem, 2.25)
+  return (
+    <p
+      ref={ref}
+      className="mg-truck-plate"
+      style={{ overflow: 'visible', textOverflow: 'clip', maxWidth: 'none' }}
+    >
+      {text}
+    </p>
+  )
+}
+
+function DisplayStatus({
+  text,
+  maxRem,
+  color,
+}: {
+  text: string
+  maxRem: number
+  color: string
+}) {
+  const ref = useFitColumnText<HTMLSpanElement>(text, maxRem, 1.75)
+  return (
+    <span
+      ref={ref}
+      className="mg-truck-status"
+      style={{ color, overflow: 'visible', textOverflow: 'clip', maxWidth: 'none' }}
+    >
+      {text}
+    </span>
+  )
+}
+
+function DisplayTime({ text }: { text: string }) {
+  const ref = useFitColumnText<HTMLSpanElement>(text, 2.75, 1.5)
+  return (
+    <span
+      ref={ref}
+      className="mg-truck-time"
+      style={{ overflow: 'visible', textOverflow: 'clip', maxWidth: 'none' }}
+    >
+      {text}
+    </span>
+  )
 }
 
 function DisplayStatCard({
@@ -328,53 +406,67 @@ export default function TruckTokenDisplay({
 
         <div className="mg-truck-panel">
           <div className="mg-truck-table-wrap">
-            <table className="mg-truck-table">
-              <thead>
-                <tr>
-                  <th className="col-gate">Gate</th>
-                  <th className="col-plate">Truck Number / License Plate</th>
-                  <th className="col-status">Status</th>
-                  {mode === 'waiting' && (
-                    <th className="col-est">Est. Wait</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
+            <div
+              className={`mg-truck-grid${mode === 'waiting' ? ' mg-truck-grid--waiting' : ''}`}
+              style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'visible' }}
+            >
+              <div className="mg-truck-grid-head" style={{ display: 'flex', overflow: 'visible' }}>
+                <div className="mg-truck-col-gate mg-truck-col-label">Gate</div>
+                <div className="mg-truck-col-plate mg-truck-col-label">Truck Number / License Plate</div>
+                <div className="mg-truck-col-status mg-truck-col-label">Status</div>
+                {mode === 'waiting' && (
+                  <div className="mg-truck-col-est mg-truck-col-label">Est. Wait</div>
+                )}
+              </div>
+
+              <div className="mg-truck-grid-body" style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'visible' }}>
                 {rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={mode === 'waiting' ? 4 : 3}>
-                      <div className="mg-truck-empty">
-                        <p className="mg-truck-empty-title">
-                          {mode === 'loading' ? 'No loading trucks' : 'No waiting trucks'}
-                        </p>
-                        <p className="mg-truck-empty-sub">Queue updates will appear here automatically.</p>
-                      </div>
-                    </td>
-                  </tr>
+                  <div className="mg-truck-empty">
+                    <p className="mg-truck-empty-title">
+                      {mode === 'loading' ? 'No loading trucks' : 'No waiting trucks'}
+                    </p>
+                    <p className="mg-truck-empty-sub">Queue updates will appear here automatically.</p>
+                  </div>
                 ) : (
                   rows.map((truck) => {
                     const statusLabel = getTruckStatusInfo(truck).status_label
                     return (
-                      <tr key={`${mode}-${truck.id}`}>
-                        <td className="col-gate">
-                          <span className="mg-truck-gate" style={{ color: getGateStyle(truck.gate_no).color }}>
+                      <div
+                        key={`${mode}-${truck.id}`}
+                        className="mg-truck-grid-row"
+                        style={{ display: 'flex', alignItems: 'center', overflow: 'visible' }}
+                      >
+                        <div className="mg-truck-col-gate" style={{ overflow: 'visible' }}>
+                          <span
+                            className="mg-truck-gate"
+                            style={{
+                              color: getGateStyle(truck.gate_no).color,
+                              fontSize: '3.5rem',
+                              overflow: 'visible',
+                              textOverflow: 'clip',
+                              maxWidth: 'none',
+                            }}
+                          >
                             {(truck.gate_no || '-').toUpperCase()}
                           </span>
-                        </td>
-                        <td className="col-plate">
-                          <p className="mg-truck-plate">
-                            {truck.registration_number.toUpperCase()}
-                          </p>
-                        </td>
-                        <td className="col-status">
-                          <span className="mg-truck-status" style={{ color: getStatusStyle(statusLabel).color }}>
-                            {statusLabel}
-                          </span>
-                        </td>
+                        </div>
+                        <div className="mg-truck-col-plate" style={{ overflow: 'visible' }}>
+                          <DisplayPlate
+                            text={truck.registration_number.toUpperCase()}
+                            maxRem={mode === 'waiting' ? 3.75 : 4.5}
+                          />
+                        </div>
+                        <div className="mg-truck-col-status" style={{ overflow: 'visible' }}>
+                          <DisplayStatus
+                            text={statusLabel}
+                            maxRem={mode === 'waiting' ? 2.75 : 3}
+                            color={getStatusStyle(statusLabel).color ?? '#4b5563'}
+                          />
+                        </div>
                         {mode === 'waiting' && (
-                          <td className="col-est">
-                            <span className="mg-truck-time">
-                              {(() => {
+                          <div className="mg-truck-col-est" style={{ overflow: 'visible' }}>
+                            <DisplayTime
+                              text={(() => {
                                 if (!truck.waiting_at) return '-'
                                 const baseTime = new Date(truck.waiting_at)
                                 if (Number.isNaN(baseTime.getTime())) return '-'
@@ -384,15 +476,15 @@ export default function TruckTokenDisplay({
                                 const expectedTime = new Date(baseTime.getTime() + totalWaitMins * 60000)
                                 return formatTimeOfDay(expectedTime.toISOString())
                               })()}
-                            </span>
-                          </td>
+                            />
+                          </div>
                         )}
-                      </tr>
+                      </div>
                     )
                   })
                 )}
-              </tbody>
-            </table>
+              </div>
+            </div>
           </div>
         </div>
       </div>

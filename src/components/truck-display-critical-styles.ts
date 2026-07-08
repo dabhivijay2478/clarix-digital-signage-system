@@ -14,23 +14,25 @@ export const TRUCK_DISPLAY_CRITICAL_CSS = `
 .mg-truck-stat-line{margin:0;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-align:baseline;-webkit-align-items:baseline;align-items:baseline;line-height:1;white-space:nowrap}
 .mg-truck-stat-label{font-size:clamp(1.25rem,2.1vw,2.625rem);font-weight:800;color:#111827;line-height:1;white-space:nowrap}
 .mg-truck-stat-num{font-size:clamp(2rem,3.4vw,4.25rem);font-weight:900;line-height:1;margin-left:clamp(6px,0.6vw,10px)}
-.mg-truck-panel{-webkit-box-flex:1;-webkit-flex:1 1 auto;flex:1 1 auto;min-height:0;width:100%;max-width:100%;overflow:hidden;border:none;border-radius:0;background:transparent;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-orient:vertical;-webkit-box-direction:normal;-webkit-flex-direction:column;flex-direction:column}
-.mg-truck-table-wrap{-webkit-box-flex:1;-webkit-flex:1 1 auto;flex:1 1 auto;min-height:0;width:100%;max-width:100%;overflow:hidden;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-orient:vertical;-webkit-box-direction:normal;-webkit-flex-direction:column;flex-direction:column}
-.mg-truck-table{width:100%;max-width:100%;height:100%;border-collapse:collapse;table-layout:fixed}
-.mg-truck-table thead th{padding:8px 12px;border-bottom:2px solid #d1d5db;background:transparent;font-size:20px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#4b5563;text-align:left;white-space:nowrap;height:40px}
-.mg-truck-table thead th.col-gate{padding-left:12px}
-.mg-truck-table tbody{height:calc(100% - 40px)}
-.mg-truck-table tbody tr{height:25%}
-.mg-truck-table tbody td{padding:8px 12px;border-bottom:1px solid #e5e7eb;vertical-align:middle}
-.mg-truck-table tbody td.col-gate{padding-left:12px;overflow:visible}
-.mg-truck-table .col-gate{width:14%}
-.mg-truck-table .col-plate{width:48%}
-.mg-truck-table .col-status{width:20%}
-.mg-truck-table .col-est{width:18%}
-.mg-truck-gate{display:inline-block;font-size:clamp(2.25rem,5vh,4rem);font-weight:800;letter-spacing:0.02em;text-transform:uppercase;white-space:nowrap;line-height:1}
-.mg-truck-plate{margin:0;font-family:monospace;font-weight:800;color:#111827;letter-spacing:0.02em;line-height:1;font-size:clamp(3rem,7vh,6rem);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.mg-truck-status{display:inline-block;font-size:clamp(2rem,4.2vh,3.75rem);font-weight:800;letter-spacing:0.02em;text-transform:uppercase;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;line-height:1}
-.mg-truck-time{font-family:monospace;font-size:clamp(2rem,4.2vh,3.75rem);font-weight:800;color:#1f2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:100%;line-height:1}
+.mg-truck-panel{-webkit-box-flex:1;-webkit-flex:1 1 auto;flex:1 1 auto;min-height:0;width:100%;max-width:100%;overflow:visible;border:none;border-radius:0;background:transparent;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-orient:vertical;-webkit-box-direction:normal;-webkit-flex-direction:column;flex-direction:column}
+.mg-truck-table-wrap{-webkit-box-flex:1;-webkit-flex:1 1 auto;flex:1 1 auto;min-height:0;width:100%;max-width:100%;overflow:visible;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-orient:vertical;-webkit-box-direction:normal;-webkit-flex-direction:column;flex-direction:column}
+.mg-truck-grid{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-orient:vertical;-webkit-box-direction:normal;-webkit-flex-direction:column;flex-direction:column;height:100%;width:100%;overflow:visible}
+.mg-truck-grid-head{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-flex:0 0 56px;flex:0 0 56px;-webkit-box-align:end;-webkit-align-items:flex-end;align-items:flex-end;border-bottom:2px solid #d1d5db;width:100%;overflow:visible}
+.mg-truck-grid-head .mg-truck-col-label{font-size:1.75rem;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#4b5563;white-space:nowrap;line-height:1;overflow:visible;text-overflow:clip;max-width:none}
+.mg-truck-grid-body{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-orient:vertical;-webkit-box-direction:normal;-webkit-flex-direction:column;flex-direction:column;-webkit-box-flex:1;-webkit-flex:1 1 auto;flex:1 1 auto;min-height:0;width:100%;overflow:visible}
+.mg-truck-grid-row{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-flex:1;-webkit-flex:1 1 0;flex:1 1 0;-webkit-box-align:center;-webkit-align-items:center;align-items:center;border-bottom:1px solid #e5e7eb;width:100%;overflow:visible}
+.mg-truck-col-gate{-webkit-flex:0 0 7%;flex:0 0 7%;overflow:visible;text-overflow:clip;max-width:none}
+.mg-truck-col-plate{-webkit-box-flex:1;-webkit-flex:1 1 auto;flex:1 1 auto;overflow:visible;text-overflow:clip;max-width:none}
+.mg-truck-col-status{-webkit-flex:0 0 28%;flex:0 0 28%;overflow:visible;text-overflow:clip;max-width:none}
+.mg-truck-col-est{-webkit-flex:0 0 17%;flex:0 0 17%;overflow:visible;text-overflow:clip;max-width:none}
+.mg-truck-grid--waiting .mg-truck-col-status{-webkit-flex:0 0 20%;flex:0 0 20%}
+.mg-truck-grid--waiting .mg-truck-col-est{-webkit-flex:0 0 16%;flex:0 0 16%}
+.mg-truck-gate{display:block;font-size:3.5rem;font-weight:800;letter-spacing:0.02em;text-transform:uppercase;white-space:nowrap;line-height:1;overflow:visible;text-overflow:clip;max-width:none}
+.mg-truck-plate{margin:0;font-family:monospace;font-weight:800;color:#111827;letter-spacing:0;line-height:1;font-size:4.5rem;white-space:nowrap;overflow:visible;text-overflow:clip;max-width:none}
+.mg-truck-grid--waiting .mg-truck-plate{font-size:3.75rem}
+.mg-truck-status{display:block;font-size:3rem;font-weight:800;letter-spacing:0.02em;text-transform:uppercase;white-space:nowrap;overflow:visible;text-overflow:clip;max-width:none;line-height:1}
+.mg-truck-grid--waiting .mg-truck-status{font-size:2.75rem}
+.mg-truck-time{font-family:monospace;font-size:2.75rem;font-weight:800;color:#1f2937;white-space:nowrap;overflow:visible;text-overflow:clip;display:block;max-width:none;line-height:1}
 .mg-truck-empty{height:100%;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-orient:vertical;-webkit-box-direction:normal;-webkit-flex-direction:column;flex-direction:column;-webkit-box-align:center;-webkit-align-items:center;align-items:center;-webkit-box-pack:center;-webkit-justify-content:center;justify-content:center;padding:24px;text-align:center}
 .mg-truck-empty-title{margin:0;font-size:44px;font-weight:800;color:#9ca3af;line-height:1}
 .mg-truck-empty-sub{margin:8px 0 0;font-size:24px;font-weight:500;color:#6b7280;line-height:1}
