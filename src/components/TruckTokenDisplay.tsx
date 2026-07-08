@@ -121,29 +121,16 @@ function buildBalancedQueueRows(source: Truck[], gates: string[], maxRows = MAX_
     return source.slice(0, maxRows)
   }
 
-  const trucksByGate = gates.map((gate) => {
-    const normalizedGate = gate.toLowerCase()
-    return source.filter((truck) => (truck.gate_no ?? '').toLowerCase() === normalizedGate)
-  })
+  const perGate = Math.max(1, Math.floor(maxRows / gates.length))
 
-  const rows: Truck[] = []
-  let round = 0
-
-  while (rows.length < maxRows) {
-    let added = false
-    for (const gateTrucks of trucksByGate) {
-      const truck = gateTrucks[round]
-      if (truck) {
-        rows.push(truck)
-        added = true
-        if (rows.length >= maxRows) break
-      }
-    }
-    if (!added) break
-    round += 1
-  }
-
-  return rows
+  return gates
+    .flatMap((gate) => {
+      const normalizedGate = gate.toLowerCase()
+      return source
+        .filter((truck) => (truck.gate_no ?? '').toLowerCase() === normalizedGate)
+        .slice(0, perGate)
+    })
+    .slice(0, maxRows)
 }
 
 function DisplayStatCard({
