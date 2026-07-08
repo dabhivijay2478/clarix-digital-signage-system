@@ -114,6 +114,38 @@ function DisplayTime({ text }: { text: string }) {
   )
 }
 
+const MAX_QUEUE_ROWS = 4
+
+function buildBalancedQueueRows(source: Truck[], gates: string[], maxRows = MAX_QUEUE_ROWS): Truck[] {
+  if (gates.length === 0) {
+    return source.slice(0, maxRows)
+  }
+
+  const trucksByGate = gates.map((gate) => {
+    const normalizedGate = gate.toLowerCase()
+    return source.filter((truck) => (truck.gate_no ?? '').toLowerCase() === normalizedGate)
+  })
+
+  const rows: Truck[] = []
+  let round = 0
+
+  while (rows.length < maxRows) {
+    let added = false
+    for (const gateTrucks of trucksByGate) {
+      const truck = gateTrucks[round]
+      if (truck) {
+        rows.push(truck)
+        added = true
+        if (rows.length >= maxRows) break
+      }
+    }
+    if (!added) break
+    round += 1
+  }
+
+  return rows
+}
+
 function DisplayStatCard({
   line1,
   line2Prefix,
@@ -312,13 +344,13 @@ export default function TruckTokenDisplay({
 
   const gateNumbers = useMemo(() => {
     if (normalizedGateFilters?.length) {
-      return normalizedGateFilters
+      return normalizedGateFilters.map((gate) => gate.toLowerCase())
     }
     const configured = (gateSettings ?? gates ?? []).map((gate) => gate?.number).filter(Boolean)
     const discovered = displayTrucks
       .map((truck) => (truck?.gate_no ?? '').toLowerCase())
       .filter(Boolean)
-    return [...new Set([...configured, ...discovered])]
+    return [...new Set([...configured, ...discovered].map((gate) => gate.toLowerCase()))]
   }, [gateSettings, gates, displayTrucks, normalizedGateFilters])
 
   const resolvedGateSettings = useMemo<GateQueueSettings[]>(
@@ -329,16 +361,10 @@ export default function TruckTokenDisplay({
     [gateSettings, gates],
   )
 
-  const queueRows = useMemo(() => {
-    const buildRows = (source: Truck[]) => gateNumbers
-      .flatMap((gate) => source.filter((truck) => (truck.gate_no ?? '').toLowerCase() === gate))
-      .slice(0, 4)
-
-    return {
-      loading: buildRows(loadingTrucks),
-      waiting: buildRows(waitingTrucks),
-    }
-  }, [gateNumbers, loadingTrucks, waitingTrucks])
+  const queueRows = useMemo(() => ({
+    loading: buildBalancedQueueRows(loadingTrucks, gateNumbers),
+    waiting: buildBalancedQueueRows(waitingTrucks, gateNumbers),
+  }), [gateNumbers, loadingTrucks, waitingTrucks])
 
   const mode = useRotatingQueueMode(queueRows.loading.length > 0, queueRows.waiting.length > 0)
   const rows = queueRows[mode]
