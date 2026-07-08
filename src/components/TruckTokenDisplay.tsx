@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 
 import { getTruckStatusInfo } from '@/lib/truck-alerts'
 import {
@@ -47,9 +47,8 @@ function DisplayStatCard({
   return (
     <div className="mg-truck-stat">
       <p className="mg-truck-stat-line">
+        <span className="mg-truck-stat-label">{label}:</span>
         <span className="mg-truck-stat-num" style={{ color: STAT_VALUE_COLORS[color] }}>{value}</span>
-        <span className="mg-truck-stat-sep">:</span>
-        <span className="mg-truck-stat-label">{label}</span>
       </p>
     </div>
   )
@@ -242,6 +241,14 @@ export default function TruckTokenDisplay({
   const mode = useRotatingQueueMode(queueRows.loading.length > 0, queueRows.waiting.length > 0)
   const rows = queueRows[mode]
 
+  const statItems: Array<{ value: number | string; label: string; color: StatColor }> = [
+    { value: activeTrucks.length, label: 'Total', color: 'primary' },
+    { value: waitingTrucks.length, label: 'Waiting', color: 'amber' },
+    { value: loadingTrucks.length, label: 'Loading', color: 'blue' },
+    { value: dispatchSummary?.today ?? 0, label: 'Dispatched', color: 'green' },
+    { value: dispatchSummary?.this_month ?? 0, label: 'This Month', color: 'rose' },
+  ]
+
   return (
     <div
       className={`mg-truck-root ${className ?? ''}`.trim()}
@@ -256,9 +263,8 @@ export default function TruckTokenDisplay({
         overflow: 'hidden',
         background: '#f4f6f8',
         color: '#111827',
-        padding: 12,
-        paddingLeft: 20,
-        paddingRight: 20,
+        padding: 24,
+        boxSizing: 'border-box',
       }}
     >
       <style dangerouslySetInnerHTML={{ __html: TRUCK_DISPLAY_CRITICAL_CSS }} />
@@ -274,17 +280,40 @@ export default function TruckTokenDisplay({
           </div>
         )}
 
-        <div className="mg-truck-top-row">
-          <div className="mg-truck-stats">
-            <DisplayStatCard value={activeTrucks.length} label="Total" color="primary" />
-            <DisplayStatCard value={waitingTrucks.length} label="Waiting" color="amber" />
-            <DisplayStatCard value={loadingTrucks.length} label="Loading" color="blue" />
-            <DisplayStatCard value={dispatchSummary?.today ?? 0} label="Dispatched" color="green" />
-            <DisplayStatCard value={dispatchSummary?.this_month ?? 0} label="This Month" color="rose" />
+        <div
+          className="mg-truck-top-row"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1fr) auto',
+            gap: '16px 24px',
+            alignItems: 'baseline',
+            overflow: 'visible',
+            width: '100%',
+          }}
+        >
+          <div
+            className="mg-truck-stats"
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              minWidth: 0,
+              overflow: 'visible',
+              alignItems: 'baseline',
+            }}
+          >
+            {statItems.map((item, index) => (
+              <Fragment key={item.label}>
+                {index > 0 && <span className="mg-truck-stat-divider" aria-hidden="true" />}
+                <DisplayStatCard value={item.value} label={item.label} color={item.color} />
+              </Fragment>
+            ))}
           </div>
 
           {currentTime && (
-            <div className="mg-truck-clock-wrap">
+            <div
+              className="mg-truck-clock-wrap"
+              style={{ whiteSpace: 'nowrap', flexShrink: 0, justifySelf: 'end' }}
+            >
               <span className="mg-truck-clock-time">
                 {currentTime.toLocaleTimeString(undefined, {
                   hour: '2-digit',
