@@ -47,6 +47,8 @@ import { useAuthStore } from '@/store/authStore';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useGateStore, isValidGateNumber } from '@/store/gateStore';
 import { assignScreenToGate, unassignScreenFromGate } from '@/lib/gate-binding';
+import ScreenResolutionFields from '@/components/ScreenResolutionFields';
+import { SCREEN_RESOLUTION_PRESETS, detectResolutionPreset } from '@/lib/screen-resolution';
 
 const ITEM_SCHEDULE_DAY_LABELS: Record<AppWeekday, string> = {
   Mon: 'Monday',
@@ -194,6 +196,7 @@ export default function ScreensPage() {
   const [formOrientation, setFormOrientation] = useState('Landscape');
   const [formWidth, setFormWidth] = useState('1920');
   const [formHeight, setFormHeight] = useState('1080');
+  const [formResolutionPreset, setFormResolutionPreset] = useState('fhd');
   const [formGate, setFormGate] = useState<string>('');
 
   const [editingScreen, setEditingScreen] = useState<Screen | null>(null);
@@ -203,6 +206,7 @@ export default function ScreensPage() {
   const [editFormOrientation, setEditFormOrientation] = useState('Landscape');
   const [editFormWidth, setEditFormWidth] = useState('1920');
   const [editFormHeight, setEditFormHeight] = useState('1080');
+  const [editFormResolutionPreset, setEditFormResolutionPreset] = useState('fhd');
   const [editFormPurpose, setEditFormPurpose] = useState<ScreenPurpose>('truck_gate');
   const [editFormGate, setEditFormGate] = useState<string>('');
   const [editFormDefaultContentId, setEditFormDefaultContentId] = useState('');
@@ -513,6 +517,21 @@ export default function ScreensPage() {
     return [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   }, [gates, editingScreen?.gate, editFormGate]);
 
+  const applyResolutionPreset = (
+    presetId: string,
+    setPreset: (value: string) => void,
+    setWidth: (value: string) => void,
+    setHeight: (value: string) => void,
+  ) => {
+    setPreset(presetId);
+    if (presetId === 'custom') return;
+    const preset = SCREEN_RESOLUTION_PRESETS.find((item) => item.id === presetId);
+    if (preset) {
+      setWidth(String(preset.width));
+      setHeight(String(preset.height));
+    }
+  };
+
   const handleAdd = async () => {
     if (!formName.trim()) return;
     try {
@@ -540,6 +559,7 @@ export default function ScreensPage() {
       setFormOrientation('Landscape');
       setFormWidth('1920');
       setFormHeight('1080');
+      setFormResolutionPreset('fhd');
       setFormGate('');
     } catch {
       showToast('Failed to add screen', 'error');
@@ -593,6 +613,9 @@ export default function ScreensPage() {
     setEditFormOrientation(screen.orientation || 'Landscape');
     setEditFormWidth(String(screen.resolution?.width ?? 1920));
     setEditFormHeight(String(screen.resolution?.height ?? 1080));
+    setEditFormResolutionPreset(
+      detectResolutionPreset(screen.resolution?.width ?? 1920, screen.resolution?.height ?? 1080),
+    );
     setEditFormPurpose(screen.purpose === 'playlist' ? 'truck_gate' : (screen.purpose ?? 'truck_gate'));
     const gateNum = getAssignedGateForScreen(screen.id) || screen.gate || '';
     setEditFormGate(gateNum);
@@ -1578,29 +1601,33 @@ export default function ScreensPage() {
               onChange={(e) => setFormIp(e.target.value)}
             />
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1.5">
-              <Label>Orientation</Label>
-              <select
-                className="flex h-9 w-full rounded-md border border-input bg-card px-3 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                value={formOrientation}
-                onChange={(e) => setFormOrientation(e.target.value)}
-              >
-                <option value="Landscape">Landscape</option>
-                <option value="Portrait">Portrait</option>
-                <option value="LandscapeFlipped">Landscape Flipped</option>
-                <option value="PortraitFlipped">Portrait Flipped</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Width</Label>
-              <Input type="number" value={formWidth} onChange={(e) => setFormWidth(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Height</Label>
-              <Input type="number" value={formHeight} onChange={(e) => setFormHeight(e.target.value)} />
-            </div>
+          <div className="space-y-1.5">
+            <Label className="text-base font-semibold">Orientation</Label>
+            <select
+              className="flex h-12 w-full rounded-xl border border-input bg-card px-4 text-base font-medium focus:outline-none focus:ring-2 focus:ring-ring"
+              value={formOrientation}
+              onChange={(e) => setFormOrientation(e.target.value)}
+            >
+              <option value="Landscape">Landscape</option>
+              <option value="Portrait">Portrait</option>
+              <option value="LandscapeFlipped">Landscape Flipped</option>
+              <option value="PortraitFlipped">Portrait Flipped</option>
+            </select>
           </div>
+          <ScreenResolutionFields
+            presetId={formResolutionPreset}
+            width={formWidth}
+            height={formHeight}
+            onPresetChange={(presetId) => applyResolutionPreset(presetId, setFormResolutionPreset, setFormWidth, setFormHeight)}
+            onWidthChange={(value) => {
+              setFormWidth(value);
+              setFormResolutionPreset('custom');
+            }}
+            onHeightChange={(value) => {
+              setFormHeight(value);
+              setFormResolutionPreset('custom');
+            }}
+          />
           <div className="space-y-1.5">
             <Label>Assign to Gate (optional)</Label>
             <select
@@ -1661,29 +1688,33 @@ export default function ScreensPage() {
               onChange={(e) => setEditFormIp(e.target.value)}
             />
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1.5">
-              <Label>Orientation</Label>
-              <select
-                className="flex h-9 w-full rounded-md border border-input bg-card px-3 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                value={editFormOrientation}
-                onChange={(e) => setEditFormOrientation(e.target.value)}
-              >
-                <option value="Landscape">Landscape</option>
-                <option value="Portrait">Portrait</option>
-                <option value="LandscapeFlipped">Landscape Flipped</option>
-                <option value="PortraitFlipped">Portrait Flipped</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Width</Label>
-              <Input type="number" value={editFormWidth} onChange={(e) => setFormWidth(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Height</Label>
-              <Input type="number" value={editFormHeight} onChange={(e) => setFormHeight(e.target.value)} />
-            </div>
+          <div className="space-y-1.5">
+            <Label className="text-base font-semibold">Orientation</Label>
+            <select
+              className="flex h-12 w-full rounded-xl border border-input bg-card px-4 text-base font-medium focus:outline-none focus:ring-2 focus:ring-ring"
+              value={editFormOrientation}
+              onChange={(e) => setEditFormOrientation(e.target.value)}
+            >
+              <option value="Landscape">Landscape</option>
+              <option value="Portrait">Portrait</option>
+              <option value="LandscapeFlipped">Landscape Flipped</option>
+              <option value="PortraitFlipped">Portrait Flipped</option>
+            </select>
           </div>
+          <ScreenResolutionFields
+            presetId={editFormResolutionPreset}
+            width={editFormWidth}
+            height={editFormHeight}
+            onPresetChange={(presetId) => applyResolutionPreset(presetId, setEditFormResolutionPreset, setEditFormWidth, setEditFormHeight)}
+            onWidthChange={(value) => {
+              setEditFormWidth(value);
+              setEditFormResolutionPreset('custom');
+            }}
+            onHeightChange={(value) => {
+              setEditFormHeight(value);
+              setEditFormResolutionPreset('custom');
+            }}
+          />
           <div className="space-y-1.5">
             <Label>Gate Assignment</Label>
             <select

@@ -583,22 +583,13 @@ export default function PlayerPage() {
 
     if (contentItem.content_type === 'Video') {
       return (
-        <div className={`relative w-full h-full overflow-hidden ${transitionClass}`} style={{ width: '100%', height: '100%' }}>
-          {/* Blurred background video */}
-          <video
-            src={src}
-            autoPlay
-            muted
-            loop
-            className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-60 scale-110 pointer-events-none"
-          />
-          {/* Main containment video */}
+        <div className={`mg-player-media ${transitionClass}`} style={{ width: '100%', height: '100%' }}>
           <video
             src={src}
             autoPlay
             playsInline
             loop={playableItems.length === 1}
-            className="relative z-10 w-full h-full object-contain mx-auto"
+            style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
           />
         </div>
       );
@@ -612,15 +603,29 @@ export default function PlayerPage() {
     ) {
       const isWebApp = contentItem.content_type === 'WebApp';
       return (
-        <div className={`relative h-full w-full overflow-hidden bg-black ${transitionClass}`}>
+        <div className={`mg-player-media ${transitionClass}`} style={{ width: '100%', height: '100%', background: '#000', position: 'relative' }}>
           <iframe
             src={src}
             title={contentItem.name}
-            className="h-full w-full border-none bg-white"
-            style={{ width: '100%', height: '100%' }}
+            style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
           />
           {!isWebApp && (
-            <div className="pointer-events-none absolute bottom-4 left-1/2 max-w-[90vw] -translate-x-1/2 rounded-full border border-white/10 bg-black/70 px-4 py-2 text-center text-xs font-medium text-white/80 backdrop-blur">
+            <div
+              style={{
+                position: 'absolute',
+                bottom: 16,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                maxWidth: '90%',
+                padding: '8px 16px',
+                borderRadius: 999,
+                border: '1px solid rgba(255,255,255,0.1)',
+                background: 'rgba(0,0,0,0.7)',
+                fontSize: 12,
+                color: 'rgba(255,255,255,0.8)',
+                textAlign: 'center',
+              }}
+            >
               {contentItem.content_type}: {contentItem.name}
             </div>
           )}
@@ -630,17 +635,11 @@ export default function PlayerPage() {
 
     // Image/Ad/Slideshow default
     return (
-      <div className={`relative w-full h-full overflow-hidden ${transitionClass}`} style={{ width: '100%', height: '100%' }}>
-        {/* Blurred background image */}
-        <div
-          className="absolute inset-0 w-full h-full bg-cover bg-center blur-2xl opacity-60 scale-110 pointer-events-none"
-          style={{ backgroundImage: `url(${src})` }}
-        />
-        {/* Main containment image */}
+      <div className={`mg-player-media ${transitionClass}`} style={{ width: '100%', height: '100%' }}>
         <img
           src={src}
           alt={contentItem.name}
-          className="relative z-10 w-full h-full object-contain mx-auto"
+          style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
         />
       </div>
     );
@@ -665,17 +664,16 @@ export default function PlayerPage() {
   const renderMarquee = () => {
     if (!marquee?.enabled || !marquee.text.trim()) return null;
     return (
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-90 overflow-hidden border-t border-white/10 bg-black/85 py-3 text-white shadow-2xl backdrop-blur">
+      <div className="mg-player-marquee">
         <div
-          className="whitespace-nowrap text-2xl font-bold tracking-wide"
+          className="mg-player-marquee-track"
           style={{
-            animation: `mg-marquee ${Math.max(marquee.speed, 15)}s linear infinite`,
+            animationDuration: `${Math.max(marquee.speed, 15)}s`,
           }}
         >
-          <span className="inline-block px-12">{marquee.text}</span>
-          <span className="inline-block px-12">{marquee.text}</span>
+          <span style={{ padding: '0 48px' }}>{marquee.text}</span>
+          <span style={{ padding: '0 48px' }}>{marquee.text}</span>
         </div>
-        <style>{`@keyframes mg-marquee { from { transform: translateX(100%); } to { transform: translateX(-100%); } }`}</style>
       </div>
     );
   };
@@ -683,76 +681,99 @@ export default function PlayerPage() {
   // ── RENDER BLANK STANDBY SCREEN ───────────────────────────────────────────
   if (screenId && isScreenBlanked) {
     return (
-      <div className="w-screen h-screen bg-black flex items-center justify-center select-none" />
+      <div
+        className="mg-player-stage"
+        style={{ background: '#000' }}
+      />
     );
   }
 
   // ── RENDER SELECTOR SCREEN ────────────────────────────────────────────────
   if (!screenId) {
     return (
-      <div className="w-screen h-screen bg-linear-to-br from-bg-primary via-[#0B0F19] to-bg-secondary flex flex-col items-center justify-center p-8 select-none">
-        {/* Connection mode indicator */}
-        <div className="absolute top-4 right-4 z-50 flex items-center gap-2 bg-white/5 border border-white/10 px-3 py-2 rounded-xl font-mono">
-          <div className="w-2 h-2 rounded-full bg-accent-primary animate-pulse" />
-          <span className="text-[11px] text-text-secondary">{port > 0 ? `Controller ${port}` : 'Cached player'}</span>
+      <div
+        className="mg-player-screen"
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 56,
+          background: '#f4f6f8',
+        }}
+      >
+        <div className="mg-player-badge">
+          <span className="mg-player-badge-dot" />
+          <span>{port > 0 ? `Controller ${port}` : 'Cached player'}</span>
         </div>
 
-        <div className="max-w-md w-full bg-bg-secondary/40 backdrop-blur-2xl border border-white/5 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center animate-fadeIn">
-          {/* Logo anim */}
-          <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-white p-2 shadow-[0_0_25px_var(--accent-glow)] animate-pulse">
+        <div
+          className="mg-player-card"
+          style={{ width: '100%', maxWidth: 840 }}
+        >
+          <div className="mg-player-logo-wrap">
             {appLogo ? (
-              <img src={appLogo} alt={`${appName} logo`} className="h-full w-full object-contain" />
+              <img src={appLogo} alt={`${appName} logo`} />
             ) : (
-              <span className="text-2xl font-bold text-primary">{appName[0]}</span>
+              <span style={{ fontSize: 24, fontWeight: 700, color: '#10b981' }}>{appName[0]}</span>
             )}
           </div>
 
-          <h1 className="text-2xl font-bold text-white mb-2">{appName} Player</h1>
-          <p className="text-xs text-text-secondary mb-8">
+          <h1 className="mg-player-title">{appName} Player</h1>
+          <p className="mg-player-subtitle">
             Select a screen layout to link this display. Ensure the screen is registered in the dashboard.
           </p>
 
           {loading ? (
-            <div className="flex flex-col items-center gap-3 py-6">
-              <div className="w-8 h-8 rounded-full border-2 border-white/5 border-t-accent-primary animate-spin" />
-              <span className="text-xs text-text-muted">Loading available screens...</span>
+            <div className="mg-player-loading">
+              <div className="mg-player-spinner" />
+              <span className="mg-player-muted">Loading available screens...</span>
             </div>
           ) : screensList.length === 0 ? (
-            <div className="py-6 flex flex-col items-center gap-3">
-              <span className="text-sm text-white font-medium">No screens registered</span>
-              <p className="text-xs text-text-muted max-w-[280px]">
+            <div style={{ padding: '24px 0', textAlign: 'center' }}>
+              <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#111827', marginBottom: 12 }}>
+                No screens registered
+              </span>
+              <p className="mg-player-muted" style={{ maxWidth: 280, margin: '0 auto' }}>
                 Add this screen in the Controller dashboard first, then sync it over the same Wi-Fi router.
               </p>
               <button
-                className="btn btn-secondary mt-4 text-xs"
+                type="button"
+                className="mg-player-btn"
                 onClick={() => router.push('/screens')}
               >
                 Go to Dashboard
               </button>
             </div>
           ) : (
-            <div className="flex flex-col gap-2.5 w-full max-h-[260px] overflow-y-auto pr-1">
+            <div className="mg-player-list">
               {screensList.map((screen) => (
                 <button
                   key={screen.id}
+                  type="button"
                   onClick={() => handleSelectScreen(screen.id)}
-                  className="w-full flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 hover:border-accent-primary/50 hover:bg-white/10 text-left transition-all duration-150 group"
+                  className="mg-player-list-item"
                 >
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-semibold text-white group-hover:text-accent-secondary transition-colors">
-                      {screen.name}
-                    </span>
-                    <span className="text-[11px] text-text-secondary">{screen.location || 'No location'}</span>
+                  <div className="mg-player-list-item-row">
+                    <div>
+                      <span className="mg-player-list-item-name">{screen.name}</span>
+                      <span className="mg-player-list-item-meta">{screen.location || 'No location'}</span>
+                    </div>
+                    <span className="mg-player-list-item-status">{screen.pairing_status}</span>
                   </div>
-                  <span className="text-xs text-text-muted font-mono">{screen.pairing_status}</span>
                 </button>
               ))}
             </div>
           )}
 
-          <div className="mt-8 pt-6 border-t border-white/5 w-full flex items-center justify-between text-[11px] text-text-muted">
+          <div className="mg-player-footer">
             <span>{port > 0 ? `Controller-hosted browser player · ${port}` : 'Packaged offline player'}</span>
-            <button className="hover:text-white" onClick={() => router.push('/')}>
+            <button type="button" onClick={() => router.push('/')}>
               ← Back to Main
             </button>
           </div>
@@ -765,7 +786,10 @@ export default function PlayerPage() {
 
   if (screenId && activeTruckGate && !hasScheduledContent) {
     return (
-      <div className="relative h-screen w-screen overflow-hidden bg-black select-none">
+      <div
+        className="mg-player-stage"
+        style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', background: '#000' }}
+      >
         <TruckTokenDisplay
           trucks={trucks}
         />
@@ -786,63 +810,70 @@ export default function PlayerPage() {
     const screenLoc = currentScreen?.location || '';
 
     return (
-      <div className="w-screen h-screen bg-black flex flex-col items-center justify-center p-8 select-none font-sans relative overflow-hidden">
+      <div
+        className="mg-player-screen"
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 56,
+          background: '#f4f6f8',
+        }}
+      >
         {renderTruckAlertOverlay()}
         {renderMarquee()}
-        {/* Modern glowing background lines */}
-        <div className="pointer-events-none absolute left-1/4 top-1/4 h-[500px] w-[500px] rounded-full bg-primary/10 blur-[120px]" />
-        <div className="pointer-events-none absolute bottom-1/4 right-1/4 h-[500px] w-[500px] rounded-full bg-secondary/10 blur-[120px]" />
 
-        {/* Port indicator badge - always visible top-right */}
-        <div className="absolute top-4 right-4 z-50 flex items-center gap-2 bg-white/5 border border-white/10 px-3 py-2 rounded-xl font-mono">
-          <div className="w-2 h-2 rounded-full bg-accent-primary animate-pulse" />
-          <span className="text-[11px] text-text-secondary">Port:</span>
-          <span className="text-sm font-bold text-accent-secondary">{port}</span>
+        <div className="mg-player-badge">
+          <span className="mg-player-badge-dot" />
+          <span>Port: {port}</span>
         </div>
 
-        <div className="relative max-w-lg w-full flex flex-col items-center text-center animate-fadeIn z-10">
-          {/* Pulsing screen icon */}
-          <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-6">
-            <span className="text-3xl text-accent-primary animate-pulse">▣</span>
-          </div>
+        <div style={{ width: '100%', maxWidth: 560, textAlign: 'center' }}>
+          <div className="mg-player-wait-icon">▣</div>
 
-          <h1 className="text-3xl font-extrabold text-white tracking-tight mb-2">
+          <h1 style={{ margin: '0 0 8px', fontSize: 32, fontWeight: 800, color: '#111827' }}>
             {screenName}
           </h1>
           {screenLoc && (
-            <p className="text-sm text-text-secondary font-medium mb-6">
+            <p style={{ margin: '0 0 24px', fontSize: 14, color: '#9ca3af' }}>
               {screenLoc}
             </p>
           )}
 
-          <div className="glass-card-static max-w-sm px-6 py-4 mb-8">
-            <h2 className="text-sm font-semibold text-white mb-2">Awaiting Content Feed</h2>
-            <p className="text-xs text-text-secondary leading-relaxed">
+          <div className="mg-player-info-box">
+            <h2>Awaiting Content Feed</h2>
+            <p>
               No playlist item is allowed to play right now. Update this screen&apos;s playlist or content schedule, then publish a new revision.
             </p>
           </div>
 
-          <div className="flex flex-col gap-1 text-[11px] text-text-muted bg-white/5 border border-white/5 rounded-xl px-4 py-3 font-mono">
-            <div className="flex gap-4 justify-between">
+          <div className="mg-player-meta-table">
+            <div className="mg-player-meta-row">
               <span>Local IP:</span>
-              <span className="text-white">Same Wi-Fi Router</span>
+              <span>Same Wi-Fi Router</span>
             </div>
-            <div className="flex gap-4 justify-between">
+            <div className="mg-player-meta-row">
               <span>Connection:</span>
-              <span className="text-white">{port > 0 ? `Controller ${port}` : 'Outbound sync / local cache'}</span>
+              <span>{port > 0 ? `Controller ${port}` : 'Outbound sync / local cache'}</span>
             </div>
-            <div className="flex gap-4 justify-between">
+            <div className="mg-player-meta-row">
               <span>System Mode:</span>
-              <span className="text-white">Local Network Signage</span>
+              <span>Local Network Signage</span>
             </div>
           </div>
 
-          <div className="mt-12 flex gap-6 text-xs font-semibold">
-            <button className="text-text-muted hover:text-white transition-colors" onClick={handleDisconnectScreen}>
+          <div className="mg-player-actions">
+            <button type="button" onClick={handleDisconnectScreen}>
               Disconnect Screen
             </button>
-            <span className="text-white/10">|</span>
-            <button className="text-text-muted hover:text-white transition-colors" onClick={() => router.push('/')}>
+            <span style={{ margin: '0 16px', color: 'rgba(255,255,255,0.1)' }}>|</span>
+            <button type="button" onClick={() => router.push('/')}>
               Exit Player (Esc)
             </button>
           </div>
@@ -897,7 +928,21 @@ export default function PlayerPage() {
   };
 
   return (
-    <div className="w-screen h-screen bg-black overflow-hidden relative select-none flex items-center justify-center">
+    <div
+      className="mg-player-stage"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        background: '#000',
+      }}
+    >
       <div style={getRotationStyle()}>
         {renderContentItem()}
       </div>
