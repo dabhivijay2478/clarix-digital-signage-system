@@ -128,14 +128,14 @@ function DisplayStatCard({
   return (
     <div
       className="mg-truck-stat"
-      style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', overflow: 'visible' }}
+      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'visible' }}
     >
-      <p className="mg-truck-stat-title" style={{ margin: 0, lineHeight: 1.1, fontSize: '1.75rem' }}>
+      <p className="mg-truck-stat-title" style={{ margin: 0, lineHeight: 1.1, fontSize: '1.75rem', textAlign: 'center' }}>
         {line1}
       </p>
       <p
         className="mg-truck-stat-value-line"
-        style={{ margin: '6px 0 0', display: 'flex', alignItems: 'baseline', lineHeight: 1, overflow: 'visible' }}
+        style={{ margin: '6px 0 0', display: 'flex', alignItems: 'baseline', justifyContent: 'center', lineHeight: 1, overflow: 'visible' }}
       >
         <span className="mg-truck-stat-suffix" style={{ fontSize: '1.5rem' }}>{line2Prefix}:</span>
         <span className="mg-truck-stat-num" style={{ color: STAT_VALUE_COLORS[color], fontSize: '2.75rem' }}>
@@ -392,8 +392,9 @@ export default function TruckTokenDisplay({
             className="mg-truck-stats"
             style={{
               display: 'flex',
-              flexWrap: 'wrap',
-              flex: '0 1 auto',
+              flexWrap: 'nowrap',
+              width: '100%',
+              flex: '1 1 auto',
               minWidth: 0,
               overflow: 'visible',
               alignItems: 'center',
@@ -402,12 +403,17 @@ export default function TruckTokenDisplay({
             {statItems.map((item, index) => (
               <Fragment key={item.line1}>
                 {index > 0 && <span className="mg-truck-stat-divider" aria-hidden="true" />}
-                <DisplayStatCard
-                  line1={item.line1}
-                  line2Prefix={item.line2Prefix}
-                  value={item.value}
-                  color={item.color}
-                />
+                <div
+                  className="mg-truck-stat-cell"
+                  style={{ flex: '1 1 0', minWidth: 0, display: 'flex', justifyContent: 'center', alignItems: 'center' }}
+                >
+                  <DisplayStatCard
+                    line1={item.line1}
+                    line2Prefix={item.line2Prefix}
+                    value={item.value}
+                    color={item.color}
+                  />
+                </div>
               </Fragment>
             ))}
 
@@ -415,16 +421,21 @@ export default function TruckTokenDisplay({
               <>
                 <span className="mg-truck-clock-divider" aria-hidden="true" />
                 <div
-                  className="mg-truck-clock-wrap"
-                  style={{ whiteSpace: 'nowrap', flexShrink: 0, overflow: 'visible', display: 'flex', alignItems: 'center' }}
+                  className="mg-truck-clock-cell"
+                  style={{ flex: '1 1 0', minWidth: 0, display: 'flex', justifyContent: 'center', alignItems: 'center' }}
                 >
-                  <span className="mg-truck-clock-time" style={{ fontSize: '2.75rem' }}>
-                    {currentTime.toLocaleTimeString(undefined, {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      hour12: true,
-                    })}
-                  </span>
+                  <div
+                    className="mg-truck-clock-wrap"
+                    style={{ whiteSpace: 'nowrap', flexShrink: 0, overflow: 'visible', display: 'flex', alignItems: 'center' }}
+                  >
+                    <span className="mg-truck-clock-time" style={{ fontSize: '2.75rem' }}>
+                      {currentTime.toLocaleTimeString(undefined, {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true,
+                      })}
+                    </span>
+                  </div>
                 </div>
               </>
             )}
