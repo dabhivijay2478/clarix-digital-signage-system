@@ -136,6 +136,17 @@ export default function DatabasePage() {
       cell: ({ row }: any) => {
         const val = row.getValue(colName)
         if (val === null || val === undefined) return <span className="text-muted-foreground/40">-</span>
+        if (colName === 'loading_duration') {
+          const secs = Number(val)
+          if (!isNaN(secs) && secs >= 0) {
+            const mins = Math.floor(secs / 60)
+            const hrs = Math.floor(mins / 60)
+            const remainingMins = mins % 60
+            const paddedHours = String(hrs).padStart(2, '0')
+            const paddedMinutes = String(remainingMins).padStart(2, '0')
+            return <span className="font-mono text-[11px] text-muted-foreground">{`${paddedHours}:${paddedMinutes}`}</span>
+          }
+        }
         if (typeof val === 'object') return <span className="font-mono text-[10px] text-muted-foreground">{JSON.stringify(val)}</span>
         return <span className="font-mono text-[11px] text-muted-foreground">{String(val)}</span>
       },

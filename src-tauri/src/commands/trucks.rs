@@ -15,22 +15,18 @@ pub async fn save_dispatched_truck(
         conn.execute(
             "INSERT OR REPLACE INTO dispatched_trucks (
                 id, registration_number, gate_no,
-                is_waiting, is_loading, is_in, is_out,
-                waiting_at, loading_at, in_at, out_at, created_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                waiting_at, loading_at, in_at, out_at, created_at, loading_duration
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             rusqlite::params![
                 truck.id,
                 truck.registration_number,
                 truck.gate_no,
-                truck.is_waiting,
-                truck.is_loading,
-                truck.is_in,
-                truck.is_out,
                 truck.waiting_at,
                 truck.loading_at,
                 truck.in_at,
                 truck.out_at,
-                truck.created_at
+                truck.created_at,
+                truck.loading_duration
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -48,27 +44,31 @@ pub async fn get_active_trucks(pool: State<'_, DbPool>) -> Result<Vec<ActiveTruc
         let mut stmt = conn
             .prepare(
                 "SELECT id, registration_number, gate_no,
-                        is_waiting, is_loading, is_in, is_out,
-                        waiting_at, loading_at, in_at, out_at, created_at
+                        waiting_at, loading_at, in_at, out_at, created_at, loading_duration
                  FROM active_trucks
                  ORDER BY order_index ASC, created_at ASC"
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |row| {
+                let waiting_at: Option<String> = row.get(3)?;
+                let loading_at: Option<String> = row.get(4)?;
+                let in_at: Option<String> = row.get(5)?;
+                let out_at: Option<String> = row.get(6)?;
                 Ok(ActiveTruck {
                     id: row.get(0)?,
                     registration_number: row.get(1)?,
                     gate_no: row.get(2)?,
-                    is_waiting: row.get(3)?,
-                    is_loading: row.get(4)?,
-                    is_in: row.get(5)?,
-                    is_out: row.get(6)?,
-                    waiting_at: row.get(7)?,
-                    loading_at: row.get(8)?,
-                    in_at: row.get(9)?,
-                    out_at: row.get(10)?,
-                    created_at: row.get(11)?,
+                    is_waiting: waiting_at.is_some(),
+                    is_loading: loading_at.is_some(),
+                    is_in: in_at.is_some(),
+                    is_out: out_at.is_some(),
+                    waiting_at,
+                    loading_at,
+                    in_at,
+                    out_at,
+                    created_at: row.get(7)?,
+                    loading_duration: row.get(8)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -100,9 +100,8 @@ pub async fn save_active_trucks(
                 .prepare(
                     "INSERT INTO active_trucks (
                         id, registration_number, gate_no,
-                        is_waiting, is_loading, is_in, is_out,
-                        waiting_at, loading_at, in_at, out_at, created_at, order_index
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"
+                        waiting_at, loading_at, in_at, out_at, created_at, order_index, loading_duration
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 )
                 .map_err(|e| e.to_string())?;
 
@@ -111,16 +110,13 @@ pub async fn save_active_trucks(
                     truck.id,
                     truck.registration_number,
                     truck.gate_no,
-                    truck.is_waiting,
-                    truck.is_loading,
-                    truck.is_in,
-                    truck.is_out,
                     truck.waiting_at,
                     truck.loading_at,
                     truck.in_at,
                     truck.out_at,
                     truck.created_at,
                     index as i64,
+                    truck.loading_duration,
                 ])
                 .map_err(|e| e.to_string())?;
             }

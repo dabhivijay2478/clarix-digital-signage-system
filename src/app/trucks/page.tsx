@@ -183,17 +183,21 @@ function formatDurationFrom(start: string | null | undefined, end?: string | nul
   const totalMinutes = Math.floor((endTime - startTime) / 60000)
   const hours = Math.floor(totalMinutes / 60)
   const minutes = totalMinutes % 60
-  if (hours > 0) return `${hours}h ${minutes}m`
-  return `${minutes}m`
+  
+  const paddedHours = String(hours).padStart(2, '0')
+  const paddedMinutes = String(minutes).padStart(2, '0')
+  return `${paddedHours}:${paddedMinutes}`
 }
 
 function formatDurationSeconds(seconds: number | null | undefined): string {
-  if (!seconds || seconds < 0) return '—'
+  if (seconds === null || seconds === undefined || seconds < 0) return '—'
   const totalMinutes = Math.floor(seconds / 60)
   const hours = Math.floor(totalMinutes / 60)
   const minutes = totalMinutes % 60
-  if (hours > 0) return `${hours}h ${minutes}m`
-  return `${minutes}m`
+  
+  const paddedHours = String(hours).padStart(2, '0')
+  const paddedMinutes = String(minutes).padStart(2, '0')
+  return `${paddedHours}:${paddedMinutes}`
 }
 
 function parseDelimitedText(text: string, delimiter = ','): string[][] {
@@ -411,7 +415,7 @@ export default function TrucksPage() {
         await truckAlertsApi.saveDispatchedTruck(preview)
         await refreshDispatchSummary()
         showToast(`Truck "${truck.registration_number}" dispatched and saved to database`, 'success')
-        deleteTruck(truck.id)
+        // Do not delete truck so it remains in the store and lists
       }
 
       const { screensApi, localNetworkApi } = await import('@/lib/tauri')
@@ -494,12 +498,21 @@ export default function TrucksPage() {
   )
 
   const filteredTrucks = trucks.filter((t) => {
-    if (t.is_out) return false
     const matchesSearch = t.registration_number.toLowerCase().includes(search.toLowerCase()) ||
                          (t.gate_no ?? '').toLowerCase().includes(search.toLowerCase())
     if (!matchesSearch) return false
-    if (activeGateTab !== 'all') return (t.gate_no ?? '').toLowerCase() === activeGateTab
-    return true
+
+    if (activeGateTab === 'dispatched') {
+      return t.is_out === true
+    }
+
+    if (activeGateTab === 'all') {
+      return true
+    }
+
+    // Gate tabs: only active (non-dispatched) trucks for that gate
+    if (t.is_out) return false
+    return (t.gate_no ?? '').toLowerCase() === activeGateTab
   })
 
   const gateRanks = useMemo(() => {
@@ -589,7 +602,7 @@ export default function TrucksPage() {
       {/* ── Truck Table Section ───────────────────────────────────────────────── */}
       <div className="space-y-4">
         {/* Gate Tabs */}
-        <div className="flex border-b border-border/60">
+        <div className="flex border-b border-border/60 overflow-x-auto whitespace-nowrap scrollbar-none">
           <button
             onClick={() => setActiveGateTab('all')}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer ${
@@ -613,6 +626,16 @@ export default function TrucksPage() {
               Gate {gateNum.toUpperCase()}
             </button>
           ))}
+          <button
+            onClick={() => setActiveGateTab('dispatched')}
+            className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer ${
+              activeGateTab === 'dispatched'
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Dispatched / Out
+          </button>
         </div>
 
         {/* Action bar */}
@@ -716,7 +739,17 @@ export default function TrucksPage() {
                           <div>
                             <span className="font-mono font-semibold text-sm">{truck.registration_number}</span>
                             <span className="mt-0.5 block text-[10px] text-muted-foreground/70">
-                              Waiting {formatDurationFrom(truck.waiting_at)}
+                              {truck.is_out ? (
+                                <span className="text-emerald-500 font-semibold">
+                                  Dispatched (Loaded for {formatDurationSeconds(truck.loading_duration)})
+                                </span>
+                              ) : truck.is_loading ? (
+                                <span className="text-blue-500 font-medium">
+                                  Loading for {formatDurationFrom(truck.loading_at)}
+                                </span>
+                              ) : (
+                                `Waiting ${formatDurationFrom(truck.waiting_at)}`
+                              )}
                             </span>
                           </div>
                         </TableCell>
@@ -775,22 +808,23 @@ export default function TrucksPage() {
                         <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                           <Checkbox
                             checked={truck.is_waiting ?? false}
+                            disabled={truck.is_out}
                             onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_waiting', checked === true)}
                           />
                         </TableCell>
                         <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                           <Checkbox
                             checked={truck.is_loading ?? false}
-                            disabled={!canLoading || !canAdvanceByQueue}
-                            title={!canAdvanceByQueue ? 'Only first and second trucks in this gate queue can change status.' : undefined}
+                            disabled={truck.is_out || !canLoading || !canAdvanceByQueue}
+                            title={truck.is_out ? undefined : (!canAdvanceByQueue ? 'Only first and second trucks in this gate queue can change status.' : undefined)}
                             onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_loading', checked === true)}
                           />
                         </TableCell>
                         <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                           <Checkbox
                             checked={truck.is_out ?? false}
-                            disabled={!canOut}
-                            title={!canAdvanceByQueue ? 'Only first and second trucks in this gate queue can change status.' : undefined}
+                            disabled={truck.is_out || !canOut}
+                            title={truck.is_out ? undefined : (!canAdvanceByQueue ? 'Only first and second trucks in this gate queue can change status.' : undefined)}
                             onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_out', checked === true)}
                           />
                         </TableCell>
@@ -804,22 +838,26 @@ export default function TrucksPage() {
                             >
                               <Eye className="size-3.5" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="size-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => openEditTruck(truck.id)}
-                            >
-                              <Edit2 className="size-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="size-7 text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => handleDeleteTruck(truck.id)}
-                            >
-                              <Trash2 className="size-3.5" />
-                            </Button>
+                            {!truck.is_out && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="size-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => openEditTruck(truck.id)}
+                                >
+                                  <Edit2 className="size-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="size-7 text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => handleDeleteTruck(truck.id)}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -988,6 +1026,20 @@ export default function TrucksPage() {
                 </div>
               </div>
             </div>
+
+            {/* Duration Summary */}
+            {selectedTruckForDetails.loading_at && (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground font-medium">Total Loading Time:</span>
+                  <span className="font-mono font-bold text-primary text-sm">
+                    {selectedTruckForDetails.is_out 
+                      ? formatDurationSeconds(selectedTruckForDetails.loading_duration)
+                      : formatDurationFrom(selectedTruckForDetails.loading_at)}
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Created timestamp */}
             <div className="text-[11px] text-muted-foreground text-right border-t border-border/40 pt-3">

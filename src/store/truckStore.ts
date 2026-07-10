@@ -37,6 +37,7 @@ function defaultTruckToWaiting(truck: Truck): Truck {
     loading_at: truck.loading_at ?? null,
     in_at: truck.in_at ?? null,
     out_at: truck.out_at ?? null,
+    loading_duration: truck.loading_duration ?? null,
   }
 }
 
@@ -95,6 +96,7 @@ export const useTruckStore = create<TruckStore>()(
           loading_at: data.is_loading ? now() : null,
           in_at: data.is_in ? now() : null,
           out_at: data.is_out ? now() : null,
+          loading_duration: data.is_out ? (data.loading_duration ?? null) : null,
         }
         set((s) => ({ trucks: [...s.trucks, truck] }))
         scheduleActiveTruckSnapshot(get().trucks)
@@ -136,14 +138,24 @@ export const useTruckStore = create<TruckStore>()(
                 updated.loading_at = time
                 updated.in_at = time
               }
-              else if (field === 'is_out') updated.out_at = time
+              else if (field === 'is_out') {
+                updated.out_at = time
+                if (updated.loading_at) {
+                  const start = new Date(updated.loading_at).getTime()
+                  const end = new Date(time).getTime()
+                  updated.loading_duration = Math.max(0, Math.floor((end - start) / 1000))
+                }
+              }
             } else {
               if (field === 'is_waiting') updated.waiting_at = null
               else if (field === 'is_loading' || field === 'is_in') {
                 updated.loading_at = null
                 updated.in_at = null
               }
-              else if (field === 'is_out') updated.out_at = null
+              else if (field === 'is_out') {
+                updated.out_at = null
+                updated.loading_duration = null
+              }
             }
 
             // If unchecking a step, also uncheck all subsequent steps and clear their timestamps
@@ -155,6 +167,7 @@ export const useTruckStore = create<TruckStore>()(
                 updated.in_at = null
                 updated.is_out = false
                 updated.out_at = null
+                updated.loading_duration = null
               } else if (field === 'is_loading' || field === 'is_in') {
                 updated.is_loading = false
                 updated.loading_at = null
@@ -162,6 +175,7 @@ export const useTruckStore = create<TruckStore>()(
                 updated.in_at = null
                 updated.is_out = false
                 updated.out_at = null
+                updated.loading_duration = null
               }
             }
 
@@ -185,6 +199,7 @@ export const useTruckStore = create<TruckStore>()(
           loading_at: d.is_loading ? now() : null,
           in_at: d.is_in ? now() : null,
           out_at: d.is_out ? now() : null,
+          loading_duration: d.loading_duration ?? null,
         }))
         set((s) => ({ trucks: [...s.trucks, ...newTrucks] }))
         scheduleActiveTruckSnapshot(get().trucks)

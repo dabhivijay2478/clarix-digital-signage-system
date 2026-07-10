@@ -274,6 +274,7 @@ export interface Truck {
   in_at: string | null;
   out_at: string | null;
   created_at: string;
+  loading_duration?: number | null;
 }
 
 export type TruckStatus = "waiting" | "loading" | "in" | "out" | "registered";

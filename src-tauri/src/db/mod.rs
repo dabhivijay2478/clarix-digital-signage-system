@@ -40,6 +40,22 @@ pub fn init_db(app_data_dir: &str) -> Result<DbPool> {
 
     // Run dynamic migrations (in SQLite, we gracefully ignore column addition errors if they already exist)
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN operating_hours TEXT DEFAULT '{}'", []);
+    let _ = conn.execute("ALTER TABLE active_trucks ADD COLUMN loading_duration INTEGER", []);
+    let _ = conn.execute("ALTER TABLE dispatched_trucks ADD COLUMN loading_duration INTEGER", []);
+    
+    // Backfill loading_duration for historical records
+    let _ = conn.execute(
+        "UPDATE dispatched_trucks
+         SET loading_duration = CAST((julianday(out_at) - julianday(loading_at)) * 86400 AS INTEGER)
+         WHERE loading_duration IS NULL AND loading_at IS NOT NULL AND out_at IS NOT NULL",
+        [],
+    );
+    let _ = conn.execute(
+        "UPDATE active_trucks
+         SET loading_duration = CAST((julianday(out_at) - julianday(loading_at)) * 86400 AS INTEGER)
+         WHERE loading_duration IS NULL AND loading_at IS NOT NULL AND out_at IS NOT NULL",
+        [],
+    );
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN playlist_id TEXT", []);
     let _ = conn.execute("ALTER TABLE playlist_items ADD COLUMN display_schedule TEXT DEFAULT '{}'", []);
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN device_id TEXT", []);
@@ -118,31 +134,25 @@ const SCHEMA: &str = r#"
         id                  TEXT PRIMARY KEY,
         registration_number TEXT NOT NULL,
         gate_no             TEXT,
-        is_waiting          BOOLEAN NOT NULL DEFAULT 0,
-        is_loading          BOOLEAN NOT NULL DEFAULT 0,
-        is_in               BOOLEAN NOT NULL DEFAULT 0,
-        is_out              BOOLEAN NOT NULL DEFAULT 0,
         waiting_at          TEXT,
         loading_at          TEXT,
         in_at               TEXT,
         out_at              TEXT,
-        created_at          TEXT NOT NULL
+        created_at          TEXT NOT NULL,
+        loading_duration    INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS active_trucks (
         id                  TEXT PRIMARY KEY,
         registration_number TEXT NOT NULL,
         gate_no             TEXT,
-        is_waiting          BOOLEAN NOT NULL DEFAULT 0,
-        is_loading          BOOLEAN NOT NULL DEFAULT 0,
-        is_in               BOOLEAN NOT NULL DEFAULT 0,
-        is_out              BOOLEAN NOT NULL DEFAULT 0,
         waiting_at          TEXT,
         loading_at          TEXT,
         in_at               TEXT,
         out_at              TEXT,
         created_at          TEXT NOT NULL,
-        order_index         INTEGER NOT NULL DEFAULT 0
+        order_index         INTEGER NOT NULL DEFAULT 0,
+        loading_duration    INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS content_items (
