@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0 -p 4200",
     "build": "next build",
+    "sync-player": "next build && cp -r out/. src-tauri/target/debug/browser-player/",
     "start": "next start --hostname 0.0.0.0",
     "lint": "eslint",
     "tauri": "tauri"

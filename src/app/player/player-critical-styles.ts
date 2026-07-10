@@ -37,10 +37,11 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
 .mg-player-actions{margin-top:56px;font-size:20px;font-weight:600}
 .mg-player-actions button{border:none;background:transparent;color:#6b7280;cursor:pointer;font:inherit}
 .mg-player-actions button:hover,.mg-player-actions button:focus{color:#111827;outline:none}
-.mg-player-marquee{position:fixed;left:0;right:0;bottom:0;z-index:90;overflow:hidden;padding:20px 0;border-top:1px solid #d1d5db;background:rgba(255,255,255,0.95);color:#111827}
-.mg-player-marquee-track{display:inline-block;white-space:nowrap;font-size:40px;font-weight:700;-webkit-animation:mg-marquee 20s linear infinite;animation:mg-marquee 20s linear infinite}
+.mg-player-marquee{position:fixed;left:0;right:0;bottom:0;z-index:90;overflow:hidden;padding:12px 0;height:96px;display:flex;align-items:center;border-top:1px solid #e5e7eb;background:rgba(255,255,255,0.98);color:#111827}
+.mg-player-marquee-track{display:flex;align-items:center;white-space:nowrap;font-size:36px;font-weight:700;-webkit-animation:mg-marquee 20s linear infinite;animation:mg-marquee 20s linear infinite;width:max-content}
 @-webkit-keyframes mg-spin{to{-webkit-transform:rotate(360deg);transform:rotate(360deg)}}
 @keyframes mg-spin{to{transform:rotate(360deg)}}
 @-webkit-keyframes mg-marquee{from{-webkit-transform:translateX(100%);transform:translateX(100%)}to{-webkit-transform:translateX(-100%);transform:translateX(-100%)}}
 @keyframes mg-marquee{from{transform:translateX(100%)}to{transform:translateX(-100%)}}
+.mg-player-branding{position:fixed;right:20px;bottom:20px;z-index:9999;pointer-events:none;background:rgba(15,23,42,0.92);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:8px 14px;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(0,0,0,0.4);backdrop-filter:blur(8px)}.mg-player-branding img{display:block;height:36px;width:auto;object-fit:contain}
 `;

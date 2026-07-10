@@ -63,7 +63,6 @@ export default function SettingsPage() {
   const [activePairing, setActivePairing] = useState<PairingRequest | null>(null)
   const [pairingSelections, setPairingSelections] = useState<Record<string, string>>({})
   const [discoveredControllers, setDiscoveredControllers] = useState<PeerScreen[]>([])
-  const [marquee, setMarquee] = useState<MarqueeSettings | null>(null)
   const [contentStorage, setContentStorage] = useState<ContentStorageInfo | null>(null)
   const [pickingDir, setPickingDir] = useState(false)
 
@@ -92,7 +91,6 @@ export default function SettingsPage() {
       if (nextIdentity.role === 'Controller') {
         setPairingRequests(await networkApi.getPairingRequests())
       }
-      setMarquee(await appConfigApi.getMarquee())
       setContentStorage(await contentLibraryApi.getStorage())
     } catch (error) {
       console.error('Failed to load network state:', error)
@@ -123,17 +121,6 @@ export default function SettingsPage() {
       await loadNetworkState()
     } catch (error) {
       showToast(`Could not change mode: ${error}`, 'error')
-    }
-  }
-
-  const handleSaveMarquee = async () => {
-    if (!marquee) return
-    try {
-      const updated = await appConfigApi.updateMarquee(marquee.enabled, marquee.text, marquee.speed)
-      setMarquee(updated)
-      showToast('Marquee updated and synced to players', 'success')
-    } catch (error) {
-      showToast(`Failed to save marquee: ${error}`, 'error')
     }
   }
 
@@ -414,57 +401,7 @@ export default function SettingsPage() {
             </section>
           )}
 
-          {/* ── Player Bottom Marquee ────────────────────────────────────────────── */}
-          <section className="space-y-3">
-            <div>
-              <h2 className="text-sm font-semibold">Player Bottom Marquee</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Show a custom ticker message at the bottom of all player screens.
-              </p>
-            </div>
-            <Card className="border-border/60 overflow-hidden">
-              {/* Header row */}
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-border/60 bg-muted/20">
-                <Megaphone className="size-3.5 text-muted-foreground" />
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Marquee Ticker</span>
-                <div className="ml-auto flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">Enabled</span>
-                  <Switch
-                    checked={marquee?.enabled ?? false}
-                    onCheckedChange={(enabled) => setMarquee((curr) => curr ? { ...curr, enabled } : curr)}
-                  />
-                </div>
-              </div>
-              {/* Fields */}
-              <div className="p-4 space-y-4">
-                <div className="grid gap-4 sm:grid-cols-[1fr_140px]">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium">Message Text</label>
-                    <Input
-                      value={marquee?.text ?? ''}
-                      onChange={(e) => setMarquee((curr) => curr ? { ...curr, text: e.target.value } : curr)}
-                      placeholder="Enter bottom ticker message..."
-                      className="h-9"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium">Speed (px/s)</label>
-                    <Input
-                      type="number"
-                      min={15}
-                      max={120}
-                      value={marquee?.speed ?? 45}
-                      onChange={(e) => setMarquee((curr) => curr ? { ...curr, speed: Number(e.target.value) || 45 } : curr)}
-                      className="h-9"
-                    />
-                  </div>
-                </div>
-                <Button className="w-full" onClick={handleSaveMarquee}>
-                  Save Marquee
-                </Button>
-              </div>
-            </Card>
-          </section>
+
 
           {/* ── General & About ──────────────────────────────────────────────────── */}
           <div className="grid gap-4 xl:grid-cols-2">
