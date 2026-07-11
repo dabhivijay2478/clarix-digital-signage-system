@@ -1,0 +1,5 @@
+.buildResult/
+dist/
+*.wgt
+author-signature.xml
+signature1.xml

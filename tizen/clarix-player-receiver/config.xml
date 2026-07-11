@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns="http://www.w3.org/ns/widgets"
+        xmlns:tizen="http://tizen.org/ns/widgets"
+        id="http://clarix.local/player-receiver"
+        version="1.0.0"
+        viewmodes="fullscreen">
+    <tizen:application id="ClrxRecv01.ClarixReceiver"
+                       package="ClrxRecv01"
+                       required_version="6.0"/>
+    <content src="index.html"/>
+    <feature name="http://tizen.org/feature/screen.size.all"/>
+    <icon src="icon.png"/>
+    <name>Clarix Player Receiver</name>
+    <description>Locked-down receiver for a local Clarix Controller.</description>
+    <tizen:profile name="tv"/>
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <access origin="http://192.168.0.100:7420" subdomains="false"/>
+    <tizen:allow-navigation>http://192.168.0.100:7420/*</tizen:allow-navigation>
+    <tizen:setting screen-orientation="landscape"
+                   context-menu="disable"
+                   background-support="disable"
+                   encryption="disable"
+                   install-location="auto"
+                   hwkey-event="enable"/>
+</widget>

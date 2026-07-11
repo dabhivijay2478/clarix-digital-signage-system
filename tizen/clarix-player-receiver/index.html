@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src http://192.168.0.100:7420; frame-src http://192.168.0.100:7420; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Clarix Player Receiver</title>
+  <link rel="stylesheet" href="css/receiver.css">
+</head>
+<body>
+  <main id="offline" class="offline" aria-live="polite">
+    <img class="logo" src="icon.png" alt="">
+    <h1>Clarix</h1>
+    <p id="status">Waiting for Controller...</p>
+    <div class="controller-label">Controller:</div>
+    <div id="controller" class="controller-address">192.168.0.100</div>
+    <div id="retry" class="retrying">Retrying...</div>
+  </main>
+  <div id="player-host" class="player-host" hidden></div>
+  <script src="js/receiver-core.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

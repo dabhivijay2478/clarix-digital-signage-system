@@ -8,7 +8,6 @@ import { isPlaylistItemScheduleActive, isScreenWithinOperatingHours } from '../.
 import { showToast } from '../../components/Toast';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { useBrandingStore } from '../../store/ui';
-import { Maximize, Minimize, RefreshCw, LogOut, XCircle } from 'lucide-react';
 import { useGateStore } from '@/store/gateStore';
 import TruckTokenDisplay from '@/components/TruckTokenDisplay';
 import { parseScreenGates } from '@/lib/screen-gates';
@@ -38,72 +37,13 @@ export default function PlayerPage() {
   const [screensList, setScreensList] = useState<Screen[]>([]);
   const [port, setPort] = useState<number>(7420);
   const [loading, setLoading] = useState(true);
+  const [isReceiverMode, setIsReceiverMode] = useState(false);
 
-  // Fullscreen and Overlay states
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showControls, setShowControls] = useState(false);
-  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Toggle fullscreen mode safely
-  const toggleFullscreen = async () => {
-    try {
-      if (typeof window !== 'undefined' && ((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__ || (window as any).__TAURI_IPC__)) {
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-        const win = getCurrentWindow();
-        const current = await win.isFullscreen();
-        await win.setFullscreen(!current);
-        setIsFullscreen(!current);
-        return;
-      }
-    } catch (err) {
-      console.warn('Tauri fullscreen failed, falling back to browser API:', err);
-    }
-
-    try {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
-        setIsFullscreen(true);
-      } else {
-        await document.exitFullscreen();
-        setIsFullscreen(false);
-      }
-    } catch (err) {
-      console.error('Failed to toggle browser fullscreen:', err);
-    }
-  };
-
-  // Sync fullscreen state changes
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const handleFsChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-    document.addEventListener('fullscreenchange', handleFsChange);
-    return () => document.removeEventListener('fullscreenchange', handleFsChange);
-  }, []);
-
-  // Handle controls visibility on mouse move or touch
+  // Receiver mode removes every route back into the controller UI.
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const handleMouseMove = () => {
-      setShowControls(true);
-      if (controlsTimeoutRef.current) {
-        clearTimeout(controlsTimeoutRef.current);
-      }
-      controlsTimeoutRef.current = setTimeout(() => {
-        setShowControls(false);
-      }, 3500);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('touchstart', handleMouseMove);
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('touchstart', handleMouseMove);
-      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-    };
+    setIsReceiverMode(new URLSearchParams(window.location.search).get('receiver') === 'tizen');
   }, []);
 
   // Signage states
@@ -140,6 +80,7 @@ export default function PlayerPage() {
 
   // Escape key handler to return to dashboard
   useEffect(() => {
+    if (isReceiverMode) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         router.push('/');
@@ -147,7 +88,7 @@ export default function PlayerPage() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [router]);
+  }, [isReceiverMode, router]);
 
   // Load screen port
   useEffect(() => {
@@ -230,7 +171,6 @@ export default function PlayerPage() {
             }
           }
         }
-        setIsFullscreen(target);
       } catch (err) {
         console.warn('Failed to sync remote fullscreen:', err);
       }
@@ -835,13 +775,15 @@ export default function PlayerPage() {
               <p className="mg-player-muted" style={{ maxWidth: 280, margin: '0 auto' }}>
                 Add this screen in the Controller dashboard first, then sync it over the same Wi-Fi router.
               </p>
-              <button
-                type="button"
-                className="mg-player-btn"
-                onClick={() => router.push('/screens')}
-              >
-                Go to Dashboard
-              </button>
+              {!isReceiverMode && (
+                <button
+                  type="button"
+                  className="mg-player-btn"
+                  onClick={() => router.push('/screens')}
+                >
+                  Go to Dashboard
+                </button>
+              )}
             </div>
           ) : (
             <div className="mg-player-list">
@@ -866,9 +808,11 @@ export default function PlayerPage() {
 
           <div className="mg-player-footer">
             <span>{port > 0 ? `Controller-hosted browser player · ${port}` : 'Packaged offline player'}</span>
-            <button type="button" onClick={() => router.push('/')}>
-              ← Back to Main
-            </button>
+            {!isReceiverMode && (
+              <button type="button" onClick={() => router.push('/')}>
+                ← Back to Main
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -962,15 +906,17 @@ export default function PlayerPage() {
             </div>
           </div>
 
-          <div className="mg-player-actions">
-            <button type="button" onClick={handleDisconnectScreen}>
-              Disconnect Screen
-            </button>
-            <span style={{ margin: '0 16px', color: 'rgba(255,255,255,0.1)' }}>|</span>
-            <button type="button" onClick={() => router.push('/')}>
-              Exit Player (Esc)
-            </button>
-          </div>
+          {!isReceiverMode && (
+            <div className="mg-player-actions">
+              <button type="button" onClick={handleDisconnectScreen}>
+                Disconnect Screen
+              </button>
+              <span style={{ margin: '0 16px', color: 'rgba(255,255,255,0.1)' }}>|</span>
+              <button type="button" onClick={() => router.push('/')}>
+                Exit Player (Esc)
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );

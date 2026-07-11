@@ -102,6 +102,7 @@ pub async fn start_controller_server(
     let state = AppState { pool, media_dir, identity, events, truck_alerts };
 
     let browser_routes = Router::new()
+        .route("/v1/health", get(health))
         .route("/v1/browser/events", get(stream_browser_events))
         .route("/v1/browser/truck-alerts", get(stream_browser_truck_alerts))
         .route("/api/screens", get(read_screens))
@@ -120,7 +121,6 @@ pub async fn start_controller_server(
         .layer(CorsLayer::permissive());
 
     let router = Router::new()
-        .route("/v1/health", get(health))
         .route("/v1/pairing/requests", post(create_pairing_request))
         .route("/v1/pairing/requests/{id}", get(get_pairing_request))
         .route("/v1/players/heartbeat", post(player_heartbeat))

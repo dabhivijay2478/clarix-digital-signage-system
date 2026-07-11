@@ -1,0 +1,87 @@
+:root {
+  color-scheme: dark;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #07111f;
+  color: #f8fafc;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #07111f;
+  cursor: none;
+}
+
+.offline {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 5vh 5vw;
+  text-align: center;
+  background: radial-gradient(circle at 50% 30%, #142b47 0, #07111f 58%, #030813 100%);
+}
+
+.logo {
+  width: 13vh;
+  height: 13vh;
+  min-width: 92px;
+  min-height: 92px;
+  object-fit: contain;
+  margin-bottom: 2.5vh;
+}
+
+h1 {
+  margin: 0 0 3vh;
+  font-size: clamp(48px, 6vw, 108px);
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+#status {
+  margin: 0 0 4vh;
+  color: #dbeafe;
+  font-size: clamp(28px, 2.5vw, 52px);
+}
+
+.controller-label {
+  color: #94a3b8;
+  font-size: clamp(20px, 1.5vw, 32px);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+}
+
+.controller-address {
+  margin-top: 1vh;
+  font-family: "Courier New", monospace;
+  font-size: clamp(28px, 2.4vw, 48px);
+}
+
+.retrying {
+  margin-top: 4vh;
+  color: #38bdf8;
+  font-size: clamp(22px, 1.7vw, 36px);
+}
+
+.player-host,
+.player-frame {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: #000;
+}
