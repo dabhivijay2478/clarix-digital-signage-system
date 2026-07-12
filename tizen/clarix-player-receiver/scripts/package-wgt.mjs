@@ -5,16 +5,27 @@ import { fileURLToPath } from "node:url";
 
 const projectDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const signingProfile = process.env.TIZEN_SIGNING_PROFILE;
+const isWindows = process.platform === "win32";
+const tizenCli = process.env.TIZEN_CLI || "tizen";
 
 if (!signingProfile) {
   console.error("Set TIZEN_SIGNING_PROFILE to a Samsung TV certificate profile created in Tizen Studio.");
   process.exit(2);
 }
 
-function run(command, args, cwd = projectDir) {
-  const result = spawnSync(command, args, { cwd, stdio: "inherit" });
+if (!/^[a-z0-9._ -]+$/i.test(signingProfile)) {
+  console.error("TIZEN_SIGNING_PROFILE contains unsupported characters.");
+  process.exit(2);
+}
+
+function run(command, args, cwd = projectDir, useWindowsShell = false) {
+  const result = spawnSync(command, args, {
+    cwd,
+    stdio: "inherit",
+    shell: isWindows && useWindowsShell
+  });
   if (result.error?.code === "ENOENT") {
-    console.error(`Cannot find '${command}'. Install Tizen Studio and add its tools/ide/bin directory to PATH.`);
+    console.error(`Cannot find '${command}'. Add Tizen Studio tools/ide/bin to PATH or set TIZEN_CLI to the full tizen.bat path.`);
     process.exit(2);
   }
   if (result.status !== 0) process.exit(result.status || 1);
@@ -22,10 +33,10 @@ function run(command, args, cwd = projectDir) {
 
 run(process.execPath, ["scripts/configure.mjs"]);
 run(process.execPath, ["--test", "test/receiver-core.test.js"]);
-run("tizen", ["build-web", "--", projectDir]);
+run(tizenCli, ["build-web", "--", projectDir], projectDir, true);
 
 const buildDir = path.join(projectDir, ".buildResult");
-run("tizen", ["package", "-t", "wgt", "-s", signingProfile, "--", buildDir]);
+run(tizenCli, ["package", "-t", "wgt", "-s", signingProfile, "--", buildDir], projectDir, true);
 
 const packageName = fs.readdirSync(buildDir).find((name) => name.endsWith(".wgt"));
 if (!packageName) {
@@ -38,3 +49,4 @@ fs.mkdirSync(distDir, { recursive: true });
 const destination = path.join(distDir, "ClarixPlayerReceiver.wgt");
 fs.copyFileSync(path.join(buildDir, packageName), destination);
 console.log(`Created signed package: ${destination}`);
+run(process.execPath, ["scripts/prepare-usb.mjs"]);

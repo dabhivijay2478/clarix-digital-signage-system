@@ -54,14 +54,20 @@ Install Tizen Studio, then use Package Manager to install:
 
 In **Tools > Certificate Manager**, create and activate a **Samsung** TV certificate profile. Keep the author certificate and passwords outside this repository. Add the target display DUID/distributor certificate when the selected Samsung deployment path requires it.
 
-Set the active profile name and build a signed widget:
+On Windows PowerShell, set the active profile name and build a signed widget:
 
-```sh
-export TIZEN_SIGNING_PROFILE="ClarixTV"
-npm run tizen:package
+```powershell
+$env:TIZEN_SIGNING_PROFILE = "ClarixTV"
+bun run tizen:package
 ```
 
-The output is `tizen/clarix-player-receiver/dist/ClarixPlayerReceiver.wgt`. The packaging command refuses to run without an explicit signing profile and reruns configuration and tests before invoking the Tizen CLI.
+The outputs are:
+
+- `tizen/clarix-player-receiver/dist/ClarixPlayerReceiver.wgt`
+- `tizen/clarix-player-receiver/dist/SSSP/ClarixPlayerReceiver.wgt`
+- `tizen/clarix-player-receiver/dist/SSSP/sssp_config.xml`
+
+The packaging command refuses to run without an explicit signing profile, reruns configuration and tests, and generates the USB-ready `SSSP` folder after invoking the Tizen CLI.
 
 Alternatively, import this directory in Tizen Studio with **File > Import > Tizen > Tizen Project**, select the active Samsung certificate profile, then use **Build Signed Package**.
 
@@ -83,6 +89,38 @@ Use this path for device acceptance testing, not permanent fleet deployment:
 
 Samsung documents that development-installed TV applications can be removed when the TV is powered off or disconnected from Tizen Studio. Do not treat a Developer Mode install as the production autostart solution.
 
+## Install from a USB flash drive on Samsung signage
+
+The QB55C is a commercial signage display. Its **Custom App Launcher** supports USB application installation; this is different from consumer Samsung TV USB policy. You do not need a Windows USB driver or a USB cable.
+
+1. Build the signed package with `bun run tizen:package` as shown above.
+2. Format a USB flash drive as FAT32.
+3. Copy this generated folder to the root of the drive:
+
+   ```text
+   tizen\clarix-player-receiver\dist\SSSP
+   ```
+
+4. Verify the drive has this exact structure:
+
+   ```text
+   USB_DRIVE:\SSSP\ClarixPlayerReceiver.wgt
+   USB_DRIVE:\SSSP\sssp_config.xml
+   ```
+
+5. Insert the flash drive into the QB55C.
+6. On the display, open **Home > Custom App / URL Launcher > Settings** and select **Install from USB Device**. Menu names vary by firmware.
+7. Enter the display administrator PIN when requested.
+8. Wait for installation to complete, launch **Clarix Player Receiver**, then remove the USB drive and cold-reboot the display.
+
+If the signed `.wgt` was built separately in Tizen Studio, copy it to `dist/ClarixPlayerReceiver.wgt` and generate the matching byte-size configuration with:
+
+```powershell
+npm --prefix tizen/clarix-player-receiver run prepare:usb
+```
+
+Do not rename either generated file without also regenerating `sssp_config.xml`. Increment the version in this directory's `package.json` before packaging an update so the signage launcher recognizes it as a newer release.
+
 ## Persistent deployment and boot launch
 
 A Web Application cannot grant itself boot-launch authority. Persistent installation and power-on selection are display/fleet policies outside the `.wgt` sandbox.
@@ -95,7 +133,7 @@ For production:
 4. Disable or lock Home/menu access using the signage administration controls available to the deployment.
 5. Perform three cold-start tests by disconnecting AC power, restoring it, and confirming automatic receiver launch without the development computer present.
 
-Direct installation of an ordinary `.wgt` from USB is not supported by Samsung TV security policy. If an installer proposes USB deployment, require the Samsung Seller Office USB Demo package/licence workflow appropriate to the device; copying this `.wgt` to a USB drive is not sufficient.
+If the display reports **Unable to install**, verify the `SSSP` folder location, exact byte size in `sssp_config.xml`, package signature, and model firmware. Some production signage certificate policies require Samsung partner-level re-signing through TV Seller Office or Samsung Tech Sales.
 
 ## Controller requirements
 
