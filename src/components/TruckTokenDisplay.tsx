@@ -24,6 +24,8 @@ interface TruckTokenDisplayProps {
   gateFilter?: string | null
   gateFilters?: string[] | null
   loadRemoteSnapshot?: boolean
+  /** Override the loading ↔ waiting rotation interval (seconds). */
+  displayRotationSecs?: number
 }
 
 type StatColor = 'primary' | 'blue' | 'violet' | 'green' | 'amber' | 'rose'
@@ -222,7 +224,11 @@ function getGateStyle(gateNo: string | null | undefined): React.CSSProperties {
   return { borderColor: palette.border, background: palette.bg, color: palette.text }
 }
 
-function useRotatingQueueMode(hasLoading: boolean, hasWaiting: boolean): QueueMode {
+function useRotatingQueueMode(
+  hasLoading: boolean,
+  hasWaiting: boolean,
+  intervalMs: number,
+): QueueMode {
   const [mode, setMode] = useState<QueueMode>('loading')
 
   useEffect(() => {
@@ -238,10 +244,10 @@ function useRotatingQueueMode(hasLoading: boolean, hasWaiting: boolean): QueueMo
 
     const interval = setInterval(() => {
       setMode((current) => (current === 'loading' ? 'waiting' : 'loading'))
-    }, 8000)
+    }, intervalMs)
 
     return () => clearInterval(interval)
-  }, [hasLoading, hasWaiting])
+  }, [hasLoading, hasWaiting, intervalMs])
 
   return mode
 }
@@ -255,8 +261,11 @@ export default function TruckTokenDisplay({
   gateFilter,
   gateFilters,
   loadRemoteSnapshot = true,
+  displayRotationSecs: displayRotationSecsProp,
 }: TruckTokenDisplayProps) {
   const gates = useGateStore((state) => state.gates)
+  const storedRotationSecs = useGateStore((state) => state.displayRotationSecs)
+  const rotationMs = (displayRotationSecsProp ?? storedRotationSecs) * 1000
   const [remoteTrucks, setRemoteTrucks] = useState<Truck[]>([])
   const [hasLoadedRemoteTrucks, setHasLoadedRemoteTrucks] = useState(false)
   const [dispatchSummary, setDispatchSummary] = useState<TruckDispatchSummary | null>(null)
@@ -354,7 +363,11 @@ export default function TruckTokenDisplay({
     waiting: buildBalancedQueueRows(waitingTrucks, gateNumbers),
   }), [gateNumbers, loadingTrucks, waitingTrucks])
 
-  const mode = useRotatingQueueMode(queueRows.loading.length > 0, queueRows.waiting.length > 0)
+  const mode = useRotatingQueueMode(
+    queueRows.loading.length > 0,
+    queueRows.waiting.length > 0,
+    rotationMs,
+  )
   const rows = queueRows[mode]
 
   const statItems: Array<{ line1: string; line2Prefix: string; value: number | string; color: StatColor }> = [

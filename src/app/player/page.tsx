@@ -619,6 +619,7 @@ export default function PlayerPage() {
       <TruckTokenDisplay
         trucks={truckAlert.queue_trucks ?? trucks}
         gateSettings={truckAlert.queue_gates}
+        displayRotationSecs={truckAlert.display_rotation_secs}
         title="Truck Token Alert"
         className="z-100"
         showHeader={false}

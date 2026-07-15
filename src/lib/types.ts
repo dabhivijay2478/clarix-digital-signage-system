@@ -294,6 +294,8 @@ export interface TruckScreenAlert {
   next_truck_status?: string | null;
   queue_trucks?: Truck[];
   queue_gates?: GateQueueSettings[];
+  /** Seconds between loading ↔ waiting views on truck token displays. */
+  display_rotation_secs?: number;
 }
 
 export interface GateQueueSettings {

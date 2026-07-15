@@ -1,6 +1,6 @@
 use crate::db::DbPool;
 use crate::models::{ContentItem, ContentType};
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 use std::{
     fs,
     io::{Cursor, Read},
@@ -143,15 +143,89 @@ pub async fn add_content_item(
 }
 
 #[tauri::command]
-pub async fn delete_content_item(id: String, pool: State<'_, DbPool>) -> Result<(), String> {
+pub async fn delete_content_item(
+    id: String,
+    pool: State<'_, DbPool>,
+    events: State<'_, crate::lan::server::SyncEventBus>,
+) -> Result<(), String> {
     let pool = pool.inner().clone();
+    let event_bus = events.inner().clone();
     tokio::task::spawn_blocking(move || {
-        let conn = pool.get().map_err(|e| e.to_string())?;
-        conn.execute(
-            "DELETE FROM content_items WHERE id = ?1",
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+        let exists = tx
+            .query_row(
+                "SELECT 1 FROM content_items WHERE id = ?1",
+                params![id],
+                |_| Ok(true),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?
+            .is_some();
+        if !exists {
+            return Err("Content item not found".to_string());
+        }
+
+        let file_path: Option<String> = tx
+            .query_row(
+                "SELECT file_path FROM content_items WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+
+        tx.execute(
+            "DELETE FROM playlist_items WHERE content_id = ?1",
             params![id],
         )
         .map_err(|e| e.to_string())?;
+        tx.execute(
+            "DELETE FROM asset_checksums WHERE content_id = ?1",
+            params![id],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE screens SET default_content_id = NULL WHERE default_content_id = ?1",
+            params![id],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE screen_defaults SET default_content_id = NULL WHERE default_content_id = ?1",
+            params![id],
+        )
+        .map_err(|e| e.to_string())?;
+
+        let rows = tx
+            .execute("DELETE FROM content_items WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        if rows == 0 {
+            return Err("Content item not found".to_string());
+        }
+
+        tx.commit().map_err(|e| e.to_string())?;
+
+        if let Some(path) = file_path.filter(|value| !value.is_empty()) {
+            let other_refs: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM content_items WHERE file_path = ?1",
+                    params![path],
+                    |row| row.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+            if other_refs == 0 {
+                let fs_path = PathBuf::from(&path);
+                let _ = fs::remove_file(&fs_path);
+                if let Some(parent) = fs_path.parent() {
+                    if let Some(stem) = fs_path.file_stem().and_then(|value| value.to_str()) {
+                        let _ = fs::remove_file(parent.join(format!("{stem}.presentation.html")));
+                        let _ = fs::remove_file(parent.join(format!("{stem}.pdf")));
+                    }
+                }
+            }
+        }
+
+        let _ = crate::lan::server::notify_current_revision(&pool, &event_bus);
         Ok(())
     })
     .await

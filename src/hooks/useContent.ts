@@ -55,6 +55,7 @@ export function useContent() {
       setItems((prev) => prev.filter((i) => i.id !== id));
     } catch (e) {
       setError(String(e));
+      throw e;
     }
   }, []);
 

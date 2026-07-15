@@ -43,7 +43,12 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { ProductionImportResult, ProductionRow, TruckDispatchSummary, TruckScreenAlert, Truck as TruckType } from '@/lib/types'
-import { useGateStore, isValidGateNumber, normalizeGateNumber } from '@/store/gateStore'
+import {
+  useGateStore,
+  isValidGateNumber,
+  normalizeGateNumber,
+  TRUCK_DISPLAY_ROTATION_OPTIONS,
+} from '@/store/gateStore'
 import { cn } from '@/lib/utils'
 
 // ── Compact Stat Card ──────────────────────────────────────────────────────
@@ -271,7 +276,7 @@ export default function TrucksPage() {
     moveTruck,
   } = useTrucks()
 
-  const { gates } = useGateStore()
+  const { gates, displayRotationSecs, updateDisplayRotationSecs } = useGateStore()
   const { screens } = useScreens()
 
   const normalizeGateNo = useMemo(() => makeGateNormalizer(gates.map((g) => g.number)), [gates])
@@ -407,6 +412,7 @@ export default function TrucksPage() {
           number: gate.number,
           loadingDurationMins: gate.loadingDurationMins,
         })),
+        display_rotation_secs: displayRotationSecs,
       }
       await truckAlertsApi.publish(alert)
       setLastAlert(alert)
@@ -652,6 +658,26 @@ export default function TrucksPage() {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="display-rotation" className="sr-only">
+                Display change interval
+              </Label>
+              <Select
+                value={String(displayRotationSecs)}
+                onValueChange={(value) => updateDisplayRotationSecs(Number(value))}
+              >
+                <SelectTrigger id="display-rotation" className="h-9 w-[210px] border-border/60 bg-card/60">
+                  <SelectValue placeholder="Display change time" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TRUCK_DISPLAY_ROTATION_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={String(option.value)}>
+                      Change every {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <input
               ref={fileInputRef}
               type="file"
@@ -700,11 +726,10 @@ export default function TrucksPage() {
                     <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Status</TableHead>
                     <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wide">Move</TableHead>
                     <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Gate</TableHead>
-                    <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Est. Wait</TableHead>
                     <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wide">Waiting</TableHead>
                     <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wide">Loading In</TableHead>
                     <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wide">Loading Out</TableHead>
-                    <TableHead className="w-[100px] text-[11px] font-semibold uppercase tracking-wide">Actions</TableHead>
+                    <TableHead className="w-[120px] text-[11px] font-semibold uppercase tracking-wide">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -729,7 +754,7 @@ export default function TrucksPage() {
                     return (
                       <TableRow
                         key={truck.id}
-                        className="cursor-pointer hover:bg-muted/40 transition-colors border-border/40 group"
+                        className="cursor-pointer hover:bg-muted/40 transition-colors border-border/40"
                         onClick={() => setSelectedTruckForDetails(truck)}
                       >
                         <TableCell className="text-muted-foreground font-mono text-xs">
@@ -761,40 +786,38 @@ export default function TrucksPage() {
                             {statusLabel.toLowerCase()}
                           </Badge>
                         </TableCell>
-                        <TableCell>
-                          <span className="font-mono text-xs font-semibold text-muted-foreground">
-                            {statusLabel === 'Waiting'
-                              ? formatQueueDuration(getEstimatedWaitMinsForTruck(trucks, truck, gateQueueSettings))
-                              : 'Now'}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                          {isWaiting ? (
-                            <div className="flex items-center justify-center gap-0.5">
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                className="size-6 p-0 opacity-60 hover:opacity-100"
-                                disabled={!canMoveUp}
-                                onClick={() => moveTruck(truck.id, 'up')}
-                                title="Move Up"
-                              >
-                                <ArrowUp className="size-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                className="size-6 p-0 opacity-60 hover:opacity-100"
-                                disabled={!canMoveDown}
-                                onClick={() => moveTruck(truck.id, 'down')}
-                                title="Move Down"
-                              >
-                                <ArrowDown className="size-3" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground/30 text-xs">—</span>
-                          )}
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center gap-2">
+                            <span className="font-mono text-xs font-semibold text-muted-foreground min-w-[3rem] text-center">
+                              {statusLabel === 'Waiting'
+                                ? formatQueueDuration(getEstimatedWaitMinsForTruck(trucks, truck, gateQueueSettings))
+                                : 'Now'}
+                            </span>
+                            {isWaiting ? (
+                              <div className="flex items-center gap-0.5">
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="size-6 p-0"
+                                  disabled={!canMoveUp}
+                                  onClick={() => moveTruck(truck.id, 'up')}
+                                  title="Move Up"
+                                >
+                                  <ArrowUp className="size-3" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="size-6 p-0"
+                                  disabled={!canMoveDown}
+                                  onClick={() => moveTruck(truck.id, 'down')}
+                                  title="Move Down"
+                                >
+                                  <ArrowDown className="size-3" />
+                                </Button>
+                              </div>
+                            ) : null}
+                          </div>
                         </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           {truck.gate_no ? (
@@ -833,7 +856,7 @@ export default function TrucksPage() {
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              className="size-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="size-7"
                               onClick={() => setSelectedTruckForDetails(truck)}
                             >
                               <Eye className="size-3.5" />
@@ -843,7 +866,7 @@ export default function TrucksPage() {
                                 <Button
                                   variant="ghost"
                                   size="icon-sm"
-                                  className="size-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="size-7"
                                   onClick={() => openEditTruck(truck.id)}
                                 >
                                   <Edit2 className="size-3.5" />
@@ -851,7 +874,7 @@ export default function TrucksPage() {
                                 <Button
                                   variant="ghost"
                                   size="icon-sm"
-                                  className="size-7 text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="size-7 text-destructive hover:bg-destructive/10"
                                   onClick={() => handleDeleteTruck(truck.id)}
                                 >
                                   <Trash2 className="size-3.5" />

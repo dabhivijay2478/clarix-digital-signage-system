@@ -160,9 +160,13 @@ export default function ContentPage() {
   };
 
   const handleDelete = async (id: string) => {
-    await deleteItem(id);
-    showToast('Content deleted', 'error');
-    setDeleteId(null);
+    try {
+      await deleteItem(id);
+      showToast('Content deleted', 'error');
+      setDeleteId(null);
+    } catch (err) {
+      showToast(`Failed to delete content: ${err}`, 'error');
+    }
   };
 
   const isUploadType = formType === 'Image' || formType === 'Video' || formType === 'Presentation' || formType === 'Document' || formType === 'Spreadsheet' || formType === 'Ad' || formType === 'Slideshow' || formType === 'WebApp';
