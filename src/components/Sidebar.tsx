@@ -56,13 +56,23 @@ interface SidebarProps {
 function Brand({ compact = false }: { compact?: boolean }) {
   const { appName, appIcon } = useBrandingStore()
   return (
-    <div className={cn('flex h-16 items-center gap-3 px-4', compact && 'justify-center px-3')}>
-      <Avatar className={cn('rounded-none bg-transparent', compact ? 'size-9' : 'size-10')}>
-        {appIcon && <AvatarImage src={appIcon} alt={`${appName} logo`} className="object-contain" />}
-        <AvatarFallback className="rounded-none bg-transparent font-bold text-foreground text-sm">
-          {appName.charAt(0).toUpperCase()}
-        </AvatarFallback>
-      </Avatar>
+    <div className={cn('flex h-16 items-center gap-2.5 px-4', compact && 'justify-center px-3')}>
+      <div
+        className={cn(
+          'flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-border/40',
+          compact ? 'size-9' : 'size-10',
+        )}
+      >
+        {appIcon ? (
+          <img
+            src={appIcon}
+            alt={`${appName} logo`}
+            className="size-full scale-[1.35] object-contain"
+          />
+        ) : (
+          <span className="text-xs font-bold text-foreground">{appName.charAt(0).toUpperCase()}</span>
+        )}
+      </div>
       {!compact && (
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold tracking-tight text-foreground">{appName}</p>
