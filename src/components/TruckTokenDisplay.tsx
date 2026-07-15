@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
 
 import { getTruckStatusInfo } from '@/lib/truck-alerts'
@@ -26,6 +26,9 @@ interface TruckTokenDisplayProps {
   loadRemoteSnapshot?: boolean
   /** Override the loading ↔ waiting rotation interval (seconds). */
   displayRotationSecs?: number
+  /** Show a back control before the stats row (player screen selection). */
+  showBackButton?: boolean
+  onBack?: () => void
 }
 
 type StatColor = 'primary' | 'blue' | 'violet' | 'green' | 'amber' | 'rose'
@@ -39,45 +42,9 @@ const STAT_VALUE_COLORS: Record<StatColor, string> = {
   rose: '#e11d48',
 }
 
-function useFitColumnText<T extends HTMLElement>(text: string, maxRem: number, minRem = 2) {
-  const ref = useRef<T>(null)
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-
-    const fit = () => {
-      const container = el.parentElement
-      if (!container) return
-
-      let size = maxRem
-      el.style.fontSize = `${size}rem`
-      el.style.overflow = 'visible'
-      el.style.textOverflow = 'clip'
-      el.style.maxWidth = 'none'
-
-      while (el.scrollWidth > container.clientWidth && size > minRem) {
-        size -= 0.125
-        el.style.fontSize = `${size}rem`
-      }
-    }
-
-    fit()
-    window.addEventListener('resize', fit)
-    return () => window.removeEventListener('resize', fit)
-  }, [text, maxRem, minRem])
-
-  return ref
-}
-
-function DisplayPlate({ text, maxRem }: { text: string; maxRem: number }) {
-  const ref = useFitColumnText<HTMLParagraphElement>(text, maxRem, 2.75)
+function DisplayPlate({ text }: { text: string }) {
   return (
-    <p
-      ref={ref}
-      className="mg-truck-plate"
-      style={{ overflow: 'visible', textOverflow: 'clip', maxWidth: 'none' }}
-    >
+    <p className="mg-truck-plate">
       {text}
     </p>
   )
@@ -85,19 +52,15 @@ function DisplayPlate({ text, maxRem }: { text: string; maxRem: number }) {
 
 function DisplayStatus({
   text,
-  maxRem,
   color,
 }: {
   text: string
-  maxRem: number
   color: string
 }) {
-  const ref = useFitColumnText<HTMLSpanElement>(text, maxRem, 2)
   return (
     <span
-      ref={ref}
       className="mg-truck-status"
-      style={{ color, overflow: 'visible', textOverflow: 'clip', maxWidth: 'none' }}
+      style={{ color }}
     >
       {text}
     </span>
@@ -105,13 +68,8 @@ function DisplayStatus({
 }
 
 function DisplayTime({ text }: { text: string }) {
-  const ref = useFitColumnText<HTMLSpanElement>(text, 3.25, 1.75)
   return (
-    <span
-      ref={ref}
-      className="mg-truck-time"
-      style={{ overflow: 'visible', textOverflow: 'clip', maxWidth: 'none' }}
-    >
+    <span className="mg-truck-time">
       {text}
     </span>
   )
@@ -152,15 +110,15 @@ function DisplayStatCard({
       className="mg-truck-stat"
       style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'visible' }}
     >
-      <p className="mg-truck-stat-title" style={{ margin: 0, lineHeight: 1.1, fontSize: '1.75rem', textAlign: 'center' }}>
+      <p className="mg-truck-stat-title" style={{ margin: 0, lineHeight: 1.05, textAlign: 'center' }}>
         {line1}
       </p>
       <p
         className="mg-truck-stat-value-line"
-        style={{ margin: '6px 0 0', display: 'flex', alignItems: 'baseline', justifyContent: 'center', lineHeight: 1, overflow: 'visible' }}
+        style={{ margin: '4px 0 0', display: 'flex', alignItems: 'baseline', justifyContent: 'center', lineHeight: 1, overflow: 'visible' }}
       >
-        <span className="mg-truck-stat-suffix" style={{ fontSize: '1.5rem' }}>{line2Prefix}:</span>
-        <span className="mg-truck-stat-num" style={{ color: STAT_VALUE_COLORS[color], fontSize: '2.75rem' }}>
+        <span className="mg-truck-stat-suffix">{line2Prefix}:</span>
+        <span className="mg-truck-stat-num" style={{ color: STAT_VALUE_COLORS[color] }}>
           {value}
         </span>
       </p>
@@ -262,6 +220,8 @@ export default function TruckTokenDisplay({
   gateFilters,
   loadRemoteSnapshot = true,
   displayRotationSecs: displayRotationSecsProp,
+  showBackButton = false,
+  onBack,
 }: TruckTokenDisplayProps) {
   const gates = useGateStore((state) => state.gates)
   const storedRotationSecs = useGateStore((state) => state.displayRotationSecs)
@@ -278,7 +238,13 @@ export default function TruckTokenDisplay({
     const single = gateFilter?.trim().toLowerCase()
     return single ? [single] : null
   }, [gateFilter, gateFilters])
-  const sourceTrucks = loadRemoteSnapshot && hasLoadedRemoteTrucks ? remoteTrucks : trucks
+  const sourceTrucks = useMemo(() => {
+    if (!loadRemoteSnapshot) return trucks
+    if (hasLoadedRemoteTrucks) {
+      return remoteTrucks.length > 0 ? remoteTrucks : trucks
+    }
+    return trucks
+  }, [loadRemoteSnapshot, hasLoadedRemoteTrucks, remoteTrucks, trucks])
 
   useEffect(() => {
     setCurrentTime(new Date())
@@ -370,6 +336,14 @@ export default function TruckTokenDisplay({
   )
   const rows = queueRows[mode]
 
+  const displaySlots = useMemo(() => {
+    const slots: Array<Truck | null> = rows.slice(0, MAX_QUEUE_ROWS).map((truck) => truck)
+    while (slots.length < MAX_QUEUE_ROWS) {
+      slots.push(null)
+    }
+    return slots
+  }, [rows])
+
   const statItems: Array<{ line1: string; line2Prefix: string; value: number | string; color: StatColor }> = [
     { line1: 'Total in', line2Prefix: 'trucks', value: activeTrucks.length, color: 'primary' },
     { line1: 'Waiting', line2Prefix: 'trucks', value: waitingTrucks.length, color: 'amber' },
@@ -392,48 +366,34 @@ export default function TruckTokenDisplay({
         overflow: 'hidden',
         background: '#f4f6f8',
         color: '#111827',
-        padding: 24,
+        padding: '6px 8px 8px',
         boxSizing: 'border-box',
       }}
     >
       <style dangerouslySetInnerHTML={{ __html: TRUCK_DISPLAY_CRITICAL_CSS }} />
 
-      <div
-        className="mg-truck-layout"
-        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
-      >
+      <div className="mg-truck-layout">
       
-        <div
-          className="mg-truck-top-row"
-          style={{
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'flex-start',
-            margin: '0 0 20px 0',
-            overflow: 'visible',
-            width: '100%',
-          }}
-        >
-          <div
-            className="mg-truck-stats"
-            style={{
-              display: 'flex',
-              flexWrap: 'nowrap',
-              width: '100%',
-              flex: '1 1 auto',
-              minWidth: 0,
-              overflow: 'visible',
-              alignItems: 'center',
-            }}
-          >
+        <div className="mg-truck-top-row">
+          {showBackButton && onBack ? (
+            <>
+              <button
+                type="button"
+                className="mg-truck-back-btn"
+                onClick={onBack}
+                aria-label="Back to screen selection"
+                title="Change screen"
+              >
+                ←
+              </button>
+              <span className="mg-truck-stat-divider mg-truck-back-divider" aria-hidden="true" />
+            </>
+          ) : null}
+          <div className="mg-truck-stats">
             {statItems.map((item, index) => (
               <Fragment key={item.line1}>
                 {index > 0 && <span className="mg-truck-stat-divider" aria-hidden="true" />}
-                <div
-                  className="mg-truck-stat-cell"
-                  style={{ flex: '1 1 0', minWidth: 0, display: 'flex', justifyContent: 'center', alignItems: 'center' }}
-                >
+                <div className="mg-truck-stat-cell">
                   <DisplayStatCard
                     line1={item.line1}
                     line2Prefix={item.line2Prefix}
@@ -447,15 +407,9 @@ export default function TruckTokenDisplay({
             {currentTime && (
               <>
                 <span className="mg-truck-clock-divider" aria-hidden="true" />
-                <div
-                  className="mg-truck-clock-cell"
-                  style={{ flex: '1 1 0', minWidth: 0, display: 'flex', justifyContent: 'center', alignItems: 'center' }}
-                >
-                  <div
-                    className="mg-truck-clock-wrap"
-                    style={{ whiteSpace: 'nowrap', flexShrink: 0, overflow: 'visible', display: 'flex', alignItems: 'center' }}
-                  >
-                    <span className="mg-truck-clock-time" style={{ fontSize: '2.75rem' }}>
+                <div className="mg-truck-clock-cell">
+                  <div className="mg-truck-clock-wrap">
+                    <span className="mg-truck-clock-time">
                       {currentTime.toLocaleTimeString(undefined, {
                         hour: '2-digit',
                         minute: '2-digit',
@@ -467,71 +421,76 @@ export default function TruckTokenDisplay({
               </>
             )}
           </div>
+          <div className="mg-truck-branding">
+            <Image
+              src="/company-logo/AMNS_Logo_Mid.png"
+              alt="AMNS India logo"
+              width={250}
+              height={105}
+              style={{ display: 'block', height: '100%', width: 'auto', objectFit: 'contain' }}
+            />
+          </div>
         </div>
 
         <div className="mg-truck-panel">
           <div className="mg-truck-table-wrap">
-            <div
-              className={`mg-truck-grid${mode === 'waiting' ? ' mg-truck-grid--waiting' : ''}`}
-              style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'visible' }}
-            >
-              <div className="mg-truck-grid-head" style={{ display: 'flex', overflow: 'visible', margin: '0 0 12px 0', padding: 0, gap: 32, border: 'none' }}>
-                <div className="mg-truck-col-gate mg-truck-col-label" style={{ marginRight: 32 }}>Gate</div>
-                <div className="mg-truck-col-plate mg-truck-col-label" style={{ marginRight: 32 }}>Truck Number / License Plate</div>
-                <div className="mg-truck-col-status mg-truck-col-label" style={{ marginRight: mode === 'waiting' ? 32 : 0 }}>Status</div>
+            <div className={`mg-truck-grid${mode === 'waiting' ? ' mg-truck-grid--waiting' : ''}`}>
+              <div className="mg-truck-grid-head">
+                <div className="mg-truck-col-gate mg-truck-col-label">Gate</div>
+                <div className="mg-truck-col-plate mg-truck-col-label">Truck Number / License Plate</div>
+                <div className="mg-truck-col-status mg-truck-col-label">Status</div>
                 {mode === 'waiting' && (
                   <div className="mg-truck-col-est mg-truck-col-label">Est. Wait</div>
                 )}
               </div>
 
-              <div className="mg-truck-grid-body" style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'visible', margin: 0, padding: 0, gap: 0 }}>
-                {rows.length === 0 ? (
+              <div className="mg-truck-grid-body">
+                {rows.length === 0 && (
                   <div className="mg-truck-empty">
                     <p className="mg-truck-empty-title">
                       {mode === 'loading' ? 'No loading trucks' : 'No waiting trucks'}
                     </p>
                     <p className="mg-truck-empty-sub">Queue updates will appear here automatically.</p>
                   </div>
-                ) : (
-                  rows.map((truck) => {
-                    const statusLabel = getTruckStatusInfo(truck).status_label
+                )}
+                {displaySlots.map((truck, slotIndex) => {
+                  if (!truck) {
                     return (
                       <div
-                        key={`${mode}-${truck.id}`}
-                        className="mg-truck-grid-row"
-                        style={{ display: 'flex', alignItems: 'center', overflow: 'visible', margin: 0, padding: 0, gap: 32, border: 'none' }}
-                      >
-                        <div className="mg-truck-col-gate" style={{ overflow: 'visible', margin: 0, marginRight: 32, padding: 0, flex: '0 0 auto' }}>
+                        key={`${mode}-placeholder-${slotIndex}`}
+                        className="mg-truck-grid-row mg-truck-grid-row--placeholder"
+                        aria-hidden="true"
+                      />
+                    )
+                  }
+
+                  const statusLabel = getTruckStatusInfo(truck).status_label
+                  return (
+                    <div
+                      key={`${mode}-${truck.id}`}
+                      className="mg-truck-grid-row"
+                    >
+                        <div className="mg-truck-col-gate">
                           <span
                             className="mg-truck-gate"
-                            style={{
-                              color: getGateStyle(truck.gate_no).color,
-                              fontSize: '4.5rem',
-                              overflow: 'visible',
-                              textOverflow: 'clip',
-                              maxWidth: 'none',
-                              margin: 0,
-                              padding: 0,
-                            }}
+                            style={{ color: getGateStyle(truck.gate_no).color }}
                           >
                             {(truck.gate_no || '-').toUpperCase()}
                           </span>
                         </div>
-                        <div className="mg-truck-col-plate" style={{ overflow: 'visible', margin: 0, marginRight: 32, padding: 0 }}>
+                        <div className="mg-truck-col-plate">
                           <DisplayPlate
                             text={truck.registration_number.toUpperCase()}
-                            maxRem={mode === 'waiting' ? 4.75 : 5.5}
                           />
                         </div>
-                        <div className="mg-truck-col-status" style={{ overflow: 'visible', margin: 0, marginRight: mode === 'waiting' ? 32 : 0, padding: 0 }}>
+                        <div className="mg-truck-col-status">
                           <DisplayStatus
                             text={statusLabel}
-                            maxRem={mode === 'waiting' ? 3.25 : 3.75}
                             color={getStatusStyle(statusLabel).color ?? '#4b5563'}
                           />
                         </div>
                         {mode === 'waiting' && (
-                          <div className="mg-truck-col-est" style={{ overflow: 'visible', margin: 0, padding: 0 }}>
+                          <div className="mg-truck-col-est">
                             <DisplayTime
                               text={(() => {
                                 if (!truck.waiting_at) return '-'
@@ -548,41 +507,11 @@ export default function TruckTokenDisplay({
                         )}
                       </div>
                     )
-                  })
-                )}
+                  })}
               </div>
             </div>
           </div>
         </div>
-      </div>
-
-      {/* AMNS branding — fixed to the bottom-right without a decorative container. */}
-      <div
-        className="mg-truck-branding"
-        style={{
-          position: 'fixed',
-          right: '40px',
-          bottom: '40px',
-          zIndex: 9999,
-          background: 'transparent',
-          border: 'none',
-          borderRadius: 0,
-          padding: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: 'none',
-          backdropFilter: 'none',
-          pointerEvents: 'none',
-        }}
-      >
-        <Image
-          src="/company-logo/AMNS_Logo_Mid.png"
-          alt="AMNS India logo"
-          width={250}
-          height={105}
-          style={{ display: 'block', height: '90px', width: 'auto', objectFit: 'contain' }}
-        />
       </div>
     </div>
   )

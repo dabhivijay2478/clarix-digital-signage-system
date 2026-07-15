@@ -1,49 +1,43 @@
 export const TRUCK_DISPLAY_CRITICAL_CSS = `
-.mg-truck-root{position:fixed;top:0;left:0;right:0;bottom:0;width:100%;height:100%;overflow:hidden;background:#f4f6f8;color:#111827;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%;padding:24px;box-sizing:border-box}
+.mg-truck-root{position:fixed;inset:0;width:100%;height:100%;height:100dvh;overflow:hidden;background:#f4f6f8;color:#111827;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%;padding:0.35vh 0.5vw 0.45vh;box-sizing:border-box}
 .mg-truck-root *,.mg-truck-root *::before,.mg-truck-root *::after{box-sizing:border-box}
-.mg-truck-layout{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-orient:vertical;-webkit-box-direction:normal;-webkit-flex-direction:column;flex-direction:column;height:100%;min-height:0;width:100%;max-width:100%;overflow:hidden}
-.mg-truck-header-block{-webkit-flex-shrink:0;flex-shrink:0;margin-bottom:8px}
-.mg-truck-title-main{margin:0;font-size:32px;font-weight:800;color:#111827;line-height:1}
-.mg-truck-title-sub{margin:0 0 4px;font-size:14px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#059669;line-height:1}
-.mg-truck-top-row{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-orient:horizontal;-webkit-box-direction:normal;-webkit-flex-direction:row;flex-direction:row;-webkit-box-align:center;-webkit-align-items:center;align-items:center;-webkit-box-pack:start;-webkit-justify-content:flex-start;justify-content:flex-start;gap:0;margin:0 0 20px 0;-webkit-flex-shrink:0;flex-shrink:0;width:100%;max-width:100%;overflow:visible}
-.mg-truck-clock-wrap{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-align:center;-webkit-align-items:center;align-items:center;-webkit-flex-shrink:0;flex-shrink:0;white-space:nowrap;margin:0;padding:0}
-.mg-truck-clock-time{font-family:monospace;font-size:2.75rem;font-weight:800;letter-spacing:0.02em;color:#059669;white-space:nowrap;line-height:1;margin:0;padding:0}
-.mg-truck-stats{display:-webkit-box;display:-webkit-flex;display:flex;gap:0;-webkit-flex-wrap:nowrap;flex-wrap:nowrap;width:100%;min-width:0;-webkit-box-flex:1;-webkit-flex:1 1 auto;flex:1 1 auto;overflow:visible;-webkit-box-align:center;-webkit-align-items:center;align-items:center;margin:0;padding:0}
-.mg-truck-stat-cell{-webkit-box-flex:1;-webkit-flex:1 1 0;flex:1 1 0;min-width:0;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-pack:center;-webkit-justify-content:center;justify-content:center;-webkit-box-align:center;-webkit-align-items:center;align-items:center;overflow:visible}
-.mg-truck-clock-cell{-webkit-box-flex:1;-webkit-flex:1 1 0;flex:1 1 0;min-width:0;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-pack:center;-webkit-justify-content:center;justify-content:center;-webkit-box-align:center;-webkit-align-items:center;align-items:center;overflow:visible}
-.mg-truck-stat-divider{width:3px;height:clamp(52px,5.5vw,76px);background:#d1d5db;-webkit-flex-shrink:0;flex-shrink:0;-webkit-align-self:center;align-self:center;margin:0}
-.mg-truck-clock-divider{width:3px;height:clamp(52px,5.5vw,76px);background:#d1d5db;-webkit-flex-shrink:0;flex-shrink:0;-webkit-align-self:center;align-self:center;margin:0}
-.mg-truck-stat{-webkit-box-flex:0;-webkit-flex:0 0 auto;flex:0 0 auto;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-orient:vertical;-webkit-box-direction:normal;-webkit-flex-direction:column;flex-direction:column;-webkit-box-align:center;-webkit-align-items:center;align-items:center;border:none;background:transparent;overflow:visible;margin:0;padding:0;text-align:center}
-.mg-truck-stat-title{margin:0;font-size:1.75rem;font-weight:800;color:#111827;line-height:1.1;white-space:nowrap}
-.mg-truck-stat-value-line{margin:6px 0 0;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-align:baseline;-webkit-align-items:baseline;align-items:baseline;line-height:1;white-space:nowrap;overflow:visible}
-.mg-truck-stat-suffix{font-size:1.5rem;font-weight:700;color:#4b5563;line-height:1;white-space:nowrap;margin-right:8px}
-.mg-truck-stat-num{font-size:2.75rem;font-weight:900;line-height:1;margin:0}
-.mg-truck-panel{-webkit-box-flex:1;-webkit-flex:1 1 auto;flex:1 1 auto;min-height:0;width:100%;max-width:100%;overflow:visible;border:none;border-radius:0;background:transparent;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-orient:vertical;-webkit-box-direction:normal;-webkit-flex-direction:column;flex-direction:column}
-.mg-truck-table-wrap{-webkit-box-flex:1;-webkit-flex:1 1 auto;flex:1 1 auto;min-height:0;width:100%;max-width:100%;overflow:visible;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-orient:vertical;-webkit-box-direction:normal;-webkit-flex-direction:column;flex-direction:column}
-.mg-truck-grid{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-orient:vertical;-webkit-box-direction:normal;-webkit-flex-direction:column;flex-direction:column;height:100%;width:100%;overflow:visible}
-.mg-truck-grid-head{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-flex:0 0 auto;flex:0 0 auto;-webkit-box-align:end;-webkit-align-items:flex-end;align-items:flex-end;border:none;width:100%;overflow:visible;margin:0 0 12px 0;padding:0;gap:32px}
-.mg-truck-grid-head .mg-truck-col-gate,.mg-truck-grid-head .mg-truck-col-plate,.mg-truck-grid-head .mg-truck-col-status,.mg-truck-grid-head .mg-truck-col-est{margin-right:32px}
-.mg-truck-grid-head .mg-truck-col-est:last-child,.mg-truck-grid-head .mg-truck-col-status:last-child{margin-right:0}
-.mg-truck-grid-head .mg-truck-col-label{font-size:2rem;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#4b5563;white-space:nowrap;line-height:1;overflow:visible;text-overflow:clip;max-width:none;margin:0;padding:0}
-.mg-truck-grid-body{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-orient:vertical;-webkit-box-direction:normal;-webkit-flex-direction:column;flex-direction:column;-webkit-box-flex:1;-webkit-flex:1 1 auto;flex:1 1 auto;min-height:0;width:100%;overflow:visible;margin:0;padding:0;gap:0}
-.mg-truck-grid-row{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-flex:1;-webkit-flex:1 1 0;flex:1 1 0;-webkit-box-align:center;-webkit-align-items:center;align-items:center;border:none;width:100%;overflow:visible;margin:0;padding:0;gap:32px}
-.mg-truck-grid-row .mg-truck-col-gate,.mg-truck-grid-row .mg-truck-col-plate,.mg-truck-grid-row .mg-truck-col-status,.mg-truck-grid-row .mg-truck-col-est{margin-right:32px}
-.mg-truck-grid-row .mg-truck-col-est:last-child,.mg-truck-grid-row .mg-truck-col-status:last-child{margin-right:0}
-.mg-truck-col-gate{-webkit-flex:0 0 auto;flex:0 0 auto;overflow:visible;text-overflow:clip;max-width:none;margin:0;padding:0}
-.mg-truck-col-plate{-webkit-box-flex:1;-webkit-flex:1 1 auto;flex:1 1 auto;overflow:visible;text-overflow:clip;max-width:none;margin:0;padding:0;min-width:0}
-.mg-truck-col-status{-webkit-flex:0 0 auto;flex:0 0 auto;overflow:visible;text-overflow:clip;max-width:none;margin:0;padding:0}
-.mg-truck-col-est{-webkit-flex:0 0 auto;flex:0 0 auto;overflow:visible;text-overflow:clip;max-width:none;margin:0;padding:0}
-.mg-truck-grid--waiting .mg-truck-col-status{-webkit-flex:0 0 auto;flex:0 0 auto}
-.mg-truck-grid--waiting .mg-truck-col-est{-webkit-flex:0 0 auto;flex:0 0 auto}
-.mg-truck-gate{display:block;font-size:4.5rem;font-weight:800;letter-spacing:0.02em;text-transform:uppercase;white-space:nowrap;line-height:1;overflow:visible;text-overflow:clip;max-width:none;margin:0;padding:0}
-.mg-truck-plate{margin:0;padding:0;font-family:monospace;font-weight:800;color:#111827;letter-spacing:0;line-height:1;font-size:5.5rem;white-space:nowrap;overflow:visible;text-overflow:clip;max-width:none}
-.mg-truck-grid--waiting .mg-truck-plate{font-size:4.75rem}
-.mg-truck-status{display:block;font-size:3.75rem;font-weight:800;letter-spacing:0.02em;text-transform:uppercase;white-space:nowrap;overflow:visible;text-overflow:clip;max-width:none;line-height:1;margin:0;padding:0}
-.mg-truck-grid--waiting .mg-truck-status{font-size:3.25rem}
-.mg-truck-time{font-family:monospace;font-size:3.25rem;font-weight:800;color:#1f2937;white-space:nowrap;overflow:visible;text-overflow:clip;display:block;max-width:none;line-height:1;margin:0;padding:0}
-.mg-truck-empty{height:100%;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-orient:vertical;-webkit-box-direction:normal;-webkit-flex-direction:column;flex-direction:column;-webkit-box-align:center;-webkit-align-items:center;align-items:center;-webkit-box-pack:center;-webkit-justify-content:center;justify-content:center;padding:24px;text-align:center}
-.mg-truck-empty-title{margin:0;font-size:44px;font-weight:800;color:#9ca3af;line-height:1}
-.mg-truck-empty-sub{margin:8px 0 0;font-size:24px;font-weight:500;color:#6b7280;line-height:1}
-.mg-truck-branding{position:fixed;right:40px;bottom:40px;z-index:9999;pointer-events:none;background:transparent!important;border:0!important;border-radius:0!important;padding:0!important;box-shadow:none!important;backdrop-filter:none!important;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-align:center;-webkit-align-items:center;align-items:center;-webkit-box-pack:center;-webkit-justify-content:center;justify-content:center}
-.mg-truck-branding img{display:block;height:90px;width:auto;object-fit:contain;filter:none!important}
+.mg-truck-layout{display:grid;grid-template-rows:20vh minmax(0,1fr);height:100%;min-height:0;width:100%;overflow:hidden;gap:0.35vh}
+.mg-truck-top-row{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:0.4vw;margin:0;width:100%;min-height:0;overflow:hidden;padding-right:0.25vw}
+.mg-truck-back-btn{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:clamp(34px,1.7vw,52px);height:clamp(34px,1.7vw,52px);margin:0 0.35vw 0 0;padding:0;border:2px solid #059669;border-radius:8px;background:#ecfdf5;color:#047857;font-size:clamp(0.95rem,1.35vw,1.65rem);font-weight:800;line-height:1;cursor:pointer;align-self:center}
+.mg-truck-back-btn:active{background:#d1fae5}
+.mg-truck-back-divider{margin-right:0.25vw!important;height:55%!important}
+.mg-truck-clock-wrap{display:flex;align-items:center;justify-content:center;flex-shrink:1;min-width:0;margin:0;padding:0;height:100%}
+.mg-truck-clock-time{font-family:monospace;font-size:clamp(1.15rem,1.65vw,2.35rem);font-weight:800;letter-spacing:0; color:#059669;white-space:nowrap;line-height:1;margin:0;padding:0;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.mg-truck-stats{display:flex;flex-wrap:nowrap;width:100%;min-width:0;flex:1 1 auto;overflow:hidden;align-items:stretch;margin:0;padding:0;height:100%}
+.mg-truck-stat-cell{flex:1 1 0;min-width:0;display:flex;justify-content:center;align-items:center;overflow:hidden;height:100%}
+.mg-truck-clock-cell{flex:0 0 8.5vw;min-width:0;max-width:9.5vw;display:flex;justify-content:center;align-items:center;overflow:hidden;height:100%;padding:0 0.25vw}
+.mg-truck-stat-divider,.mg-truck-clock-divider{width:2px;height:58%;background:#d1d5db;flex-shrink:0;align-self:center;margin:0}
+.mg-truck-stat{display:flex;flex-direction:column;align-items:center;justify-content:center;border:none;background:transparent;overflow:hidden;margin:0;padding:0;text-align:center;height:100%;width:100%}
+.mg-truck-stat-title{margin:0;font-size:clamp(1rem,1.65vw,2.4rem);font-weight:800;color:#111827;line-height:1.05;white-space:nowrap}
+.mg-truck-stat-value-line{margin:0.25vh 0 0;display:flex;align-items:baseline;justify-content:center;line-height:1;white-space:nowrap;overflow:hidden}
+.mg-truck-stat-suffix{font-size:clamp(0.85rem,1.25vw,1.75rem);font-weight:700;color:#4b5563;line-height:1;white-space:nowrap;margin-right:0.25vw}
+.mg-truck-stat-num{font-size:clamp(1.55rem,3.1vw,4.75rem);font-weight:900;line-height:1;margin:0}
+.mg-truck-branding{flex:0 0 auto;display:flex;align-items:center;justify-content:flex-end;height:58%;max-height:7vh;margin-left:0.35vw;padding-left:0.35vw;border-left:2px solid #d1d5db;overflow:hidden}
+.mg-truck-branding img{display:block;height:100%;max-height:7vh;width:auto;object-fit:contain}
+.mg-truck-panel{position:relative;min-height:0;width:100%;overflow:hidden;display:flex;flex-direction:column}
+.mg-truck-table-wrap{flex:1 1 auto;min-height:0;width:100%;overflow:hidden;display:flex;flex-direction:column}
+.mg-truck-grid{display:flex;flex-direction:column;height:100%;width:100%;overflow:hidden;min-height:0}
+.mg-truck-grid-head{flex:0 0 3.2vh;display:grid;grid-template-columns:5.5vw minmax(0,1fr) 12vw 11vw;align-items:end;border:none;width:100%;overflow:visible;margin:0;padding:0 0.5vw;gap:1vw}
+.mg-truck-grid:not(.mg-truck-grid--waiting) .mg-truck-grid-head{grid-template-columns:5.5vw minmax(0,1fr) 12vw}
+.mg-truck-grid-head .mg-truck-col-label{font-size:clamp(0.9rem,1.2vw,1.75rem);font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#4b5563;white-space:nowrap;line-height:1;overflow:visible;margin:0;padding:0}
+.mg-truck-grid-body{position:relative;flex:1 1 auto;min-height:0;width:100%;overflow:hidden;display:grid;grid-template-rows:repeat(4,minmax(0,1fr));margin:0;padding:0;gap:0}
+.mg-truck-grid-row{display:grid;grid-template-columns:5.5vw minmax(0,1fr) 12vw 11vw;align-items:center;border-top:1px solid #e5e7eb;width:100%;overflow:visible;margin:0;padding:0 0.5vw;gap:1vw;min-height:0;height:100%}
+.mg-truck-grid:not(.mg-truck-grid--waiting) .mg-truck-grid-row{grid-template-columns:5.5vw minmax(0,1fr) 12vw}
+.mg-truck-grid-row:first-child{border-top:none}
+.mg-truck-grid-row--placeholder{visibility:hidden;pointer-events:none}
+.mg-truck-col-gate,.mg-truck-col-plate,.mg-truck-col-status,.mg-truck-col-est{overflow:visible;min-width:0;margin:0;padding:0}
+.mg-truck-gate{display:block;font-size:clamp(1.65rem,2.85vw,4.5rem);font-weight:800;letter-spacing:0.02em;text-transform:uppercase;white-space:nowrap;line-height:1;overflow:visible;margin:0;padding:0}
+.mg-truck-plate{margin:0;padding:0;font-family:monospace;font-weight:800;color:#111827;letter-spacing:0;line-height:1;font-size:clamp(1.75rem,3.4vw,5.25rem);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.mg-truck-grid--waiting .mg-truck-plate{font-size:clamp(1.65rem,3.1vw,4.75rem)}
+.mg-truck-status{display:block;font-size:clamp(1.2rem,2.15vw,3.5rem);font-weight:800;letter-spacing:0.02em;text-transform:uppercase;white-space:nowrap;overflow:visible;line-height:1;margin:0;padding:0}
+.mg-truck-grid--waiting .mg-truck-status{font-size:clamp(1.1rem,2vw,3.1rem)}
+.mg-truck-time{font-family:monospace;font-size:clamp(1.1rem,2vw,3.1rem);font-weight:800;color:#1f2937;white-space:nowrap;overflow:visible;display:block;line-height:1;margin:0;padding:0;text-align:left}
+.mg-truck-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1vh 1vw;text-align:center;pointer-events:none}
+.mg-truck-empty-title{margin:0;font-size:clamp(1.35rem,2.2vw,3rem);font-weight:800;color:#9ca3af;line-height:1}
+.mg-truck-empty-sub{margin:0.8vh 0 0;font-size:clamp(0.95rem,1.35vw,1.75rem);font-weight:500;color:#6b7280;line-height:1}
 `;

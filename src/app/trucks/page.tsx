@@ -320,6 +320,16 @@ export default function TrucksPage() {
     })
   }, [trucks])
 
+  useEffect(() => {
+    if (trucks.length === 0) return
+    const timer = setTimeout(() => {
+      void trucksApi.saveActiveSnapshot(trucks).catch((error) => {
+        console.warn('Failed to refresh active truck snapshot:', error)
+      })
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [trucks])
+
   const resetTruckForm = () => {
     setFRegNo('')
     setFGateNo('')

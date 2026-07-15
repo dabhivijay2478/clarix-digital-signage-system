@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { Sun, Moon, Loader2 } from 'lucide-react'
 import { useTheme } from 'next-themes'
@@ -37,7 +37,6 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
   const [inviteName, setInviteName] = useState('')
   const [loggingIn, setLoggingIn] = useState(false)
   const trucks = useTruckStore((state) => state.trucks)
-  const didSyncActiveSnapshot = useRef(false)
 
   useEffect(() => {
     setMounted(true)
@@ -58,11 +57,13 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
   }, [appName, customFavicon])
 
   useEffect(() => {
-    if (isPresentation || didSyncActiveSnapshot.current || trucks.length === 0) return
-    didSyncActiveSnapshot.current = true
-    void trucksApi.saveActiveSnapshot(trucks).catch((error) => {
-      console.warn('Failed to sync active truck snapshot:', error)
-    })
+    if (isPresentation || trucks.length === 0) return
+    const timer = setTimeout(() => {
+      void trucksApi.saveActiveSnapshot(trucks).catch((error) => {
+        console.warn('Failed to sync active truck snapshot:', error)
+      })
+    }, 250)
+    return () => clearTimeout(timer)
   }, [isPresentation, trucks])
 
   if (isPresentation) {

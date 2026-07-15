@@ -3,8 +3,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { screensApi, playlistsApi, contentApi, analyticsApi, localNetworkApi, customConfirm, getBrowserControllerOrigin, appConfigApi } from '../../lib/tauri';
-import type { Screen, Playlist, ContentItem, PlaylistItem, TruckScreenAlert, MarqueeSettings, ScreenPurpose } from '../../lib/types';
+import { screensApi, playlistsApi, contentApi, analyticsApi, localNetworkApi, customConfirm, getBrowserControllerOrigin, appConfigApi, trucksApi } from '../../lib/tauri';
+import type { Screen, Playlist, ContentItem, PlaylistItem, TruckScreenAlert, MarqueeSettings, ScreenPurpose, Truck } from '../../lib/types';
 import { isPlaylistItemScheduleActive, isScreenWithinOperatingHours } from '../../lib/signage-schedule';
 import { showToast } from '../../components/Toast';
 import { convertFileSrc } from '@tauri-apps/api/core';
@@ -74,6 +74,7 @@ export default function PlayerPage() {
   const [currentItemIndex, setCurrentItemIndex] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [activeTruckGates, setActiveTruckGates] = useState<string[]>([]);
+  const [liveTrucks, setLiveTrucks] = useState<Truck[]>([]);
 
   // Active Screen context for orientation and operating hours
   const [activeScreen, setActiveScreen] = useState<Screen | null>(null);
@@ -154,7 +155,29 @@ export default function PlayerPage() {
   const handleSelectScreen = (id: string) => {
     localStorage.setItem('clarix_player_screen_id', id);
     setScreenId(id);
+    setLiveTrucks([]);
+
+    const selected = screensList.find((screen) => screen.id === id);
+    if (selected?.purpose === 'truck_gate') {
+      const gateNumbers = parseScreenGates(selected.gate);
+      setActiveTruckGates(gateNumbers.map((gate) => gate.toLowerCase()));
+      setActiveScreen(selected);
+      setActivePlaylist(null);
+      setIsPlaying(false);
+    } else {
+      setActiveTruckGates([]);
+    }
   };
+
+  const handleBackToScreenSelection = useCallback(() => {
+    localStorage.removeItem('clarix_player_screen_id');
+    setScreenId(null);
+    setActiveTruckGates([]);
+    setTruckAlert(null);
+    setActiveScreen(null);
+    setActivePlaylist(null);
+    loadScreensList();
+  }, [loadScreensList]);
 
   // Helper to disconnect screen representation
   const handleDisconnectScreen = async () => {
@@ -307,8 +330,16 @@ export default function PlayerPage() {
             ...playlistToPlay,
             items: [...playlistToPlay.items].sort((a, b) => a.order - b.order),
           };
-          setActivePlaylist(sortedPlaylist);
-          setIsPlaying(true);
+          const hasTimedPlaylistItems = sortedPlaylist.items.some((item) => {
+            const schedule = item.display_schedule;
+            return Boolean(
+              schedule
+              && typeof schedule === 'object'
+              && Object.keys(schedule).length > 0
+            );
+          });
+          setActivePlaylist(hasTimedPlaylistItems ? sortedPlaylist : null);
+          setIsPlaying(hasTimedPlaylistItems);
         } else {
           setActivePlaylist(null);
           setIsPlaying(false);
@@ -405,17 +436,51 @@ export default function PlayerPage() {
     return () => events.close();
   }, [screenId, resolveActiveSignage]);
 
-  // Transient truck status alerts are pushed by the controller and overlay playback.
+  // Keep truck token displays in sync with controller data on load and on every change.
   useEffect(() => {
-    if (activeTruckGates.length > 0) {
-      setTruckAlert(null);
+    if (!screenId || activeTruckGates.length === 0) {
+      setLiveTrucks([]);
       return;
     }
+
+    let disposed = false;
+
+    const refreshLiveTrucks = async () => {
+      try {
+        const active = await trucksApi.getActive();
+        if (!disposed) {
+          setLiveTrucks(active);
+        }
+      } catch (error) {
+        console.warn('Failed to refresh live trucks for player display:', error);
+      }
+    };
+
+    void refreshLiveTrucks();
+    const interval = setInterval(() => {
+      void refreshLiveTrucks();
+    }, 3000);
+
+    return () => {
+      disposed = true;
+      clearInterval(interval);
+    };
+  }, [screenId, activeTruckGates]);
+
+  // Transient truck status alerts are pushed by the controller and overlay playback.
+  useEffect(() => {
     if (typeof window === 'undefined' || !window.location.protocol.startsWith('http')) return;
+
     const events = new EventSource(`${getBrowserControllerOrigin()}/v1/browser/truck-alerts`);
     events.addEventListener('truck-alert', (event) => {
       try {
         const alert = JSON.parse((event as MessageEvent).data) as TruckScreenAlert;
+        if (alert.queue_trucks?.length) {
+          setLiveTrucks(alert.queue_trucks);
+        }
+
+        if (activeTruckGates.length > 0) return;
+
         setTruckAlert(alert);
         if (truckAlertTimeoutRef.current) {
           clearTimeout(truckAlertTimeoutRef.current);
@@ -451,6 +516,17 @@ export default function PlayerPage() {
     }
     return [];
   }, [activePlaylist, activeScreenDefaultContentId]);
+
+  const hasScheduledPlaylistOverride = useCallback((): boolean => {
+    if (!activePlaylist || !isPlaying || activeScreen?.purpose !== 'truck_gate') return false;
+    return activePlaylist.items.some((item) => {
+      const schedule = item.display_schedule;
+      if (!schedule || (typeof schedule === 'object' && Object.keys(schedule).length === 0)) {
+        return false;
+      }
+      return isPlaylistItemScheduleActive(schedule);
+    });
+  }, [activePlaylist, isPlaying, activeScreen?.purpose]);
 
   // Handle slide duration and transition loop
   useEffect(() => {
@@ -625,6 +701,8 @@ export default function PlayerPage() {
         showHeader={false}
         gateFilter={truckAlert.gate}
         loadRemoteSnapshot={false}
+        showBackButton={!isReceiverMode}
+        onBack={handleBackToScreenSelection}
       />
     );
   };
@@ -847,17 +925,21 @@ export default function PlayerPage() {
     );
   }
 
-  const hasScheduledContent = getPlayableItems().length > 0;
+  const shouldShowTruckDisplay =
+    Boolean(screenId && activeTruckGates.length > 0 && !hasScheduledPlaylistOverride());
 
-  if (screenId && activeTruckGates.length > 0 && !hasScheduledContent) {
+  if (shouldShowTruckDisplay) {
     return (
       <div
         className="mg-player-stage"
         style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', background: '#000' }}
       >
         <TruckTokenDisplay
-          trucks={trucks}
+          trucks={liveTrucks.length > 0 ? liveTrucks : trucks}
           gateFilters={activeTruckGates}
+          loadRemoteSnapshot={liveTrucks.length === 0}
+          showBackButton={!isReceiverMode}
+          onBack={handleBackToScreenSelection}
         />
         {renderMarquee()}
       </div>
