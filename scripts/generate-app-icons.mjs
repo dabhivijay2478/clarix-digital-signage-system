@@ -6,22 +6,28 @@ import sharp from "sharp";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const sourceLogo = join(projectRoot, "logo.png");
-const publicLogo = join(projectRoot, "public", "logo.png");
 const tauriIcon = join(projectRoot, "src-tauri", "icons", "icon.png");
 
-/** Logo fill ratio inside the square canvas (higher = bigger mark). */
-const LOGO_SCALE = 0.92;
+/** Matches sidebar logo scale (1.65) so the dock/taskbar mark fills the tile. */
+const APP_ICON_SCALE = 1.65;
 const RENDER_SIZE = 1024;
 
-async function renderLogoSquare(size) {
-  const logoSize = Math.round(size * LOGO_SCALE);
-  const logo = await sharp(sourceLogo)
+async function renderAppIcon(size) {
+  const logoSize = Math.round(size * APP_ICON_SCALE);
+  const logo = sharp(sourceLogo)
     .resize(logoSize, logoSize, {
       fit: "contain",
       background: { r: 255, g: 255, b: 255, alpha: 1 },
     })
-    .flatten({ background: "#ffffff" })
-    .toBuffer();
+    .flatten({ background: "#ffffff" });
+
+  if (logoSize > size) {
+    const offset = Math.floor((logoSize - size) / 2);
+    return logo
+      .extract({ left: offset, top: offset, width: size, height: size })
+      .png()
+      .toBuffer();
+  }
 
   return sharp({
     create: {
@@ -31,7 +37,7 @@ async function renderLogoSquare(size) {
       background: { r: 255, g: 255, b: 255, alpha: 1 },
     },
   })
-    .composite([{ input: logo, gravity: "center" }])
+    .composite([{ input: await logo.toBuffer(), gravity: "center" }])
     .png()
     .toBuffer();
 }
@@ -41,16 +47,14 @@ if (!existsSync(sourceLogo)) {
   process.exit(1);
 }
 
-const master = await renderLogoSquare(RENDER_SIZE);
-await sharp(master).toFile(publicLogo);
+const master = await renderAppIcon(RENDER_SIZE);
 await sharp(master).resize(512, 512).toFile(tauriIcon);
 
-console.log(`[icons] Wrote ${publicLogo}`);
-console.log(`[icons] Wrote ${tauriIcon}`);
+console.log(`[icons] Wrote ${tauriIcon} (scale ${APP_ICON_SCALE})`);
 
 execFileSync("npx", ["tauri", "icon", tauriIcon], {
   cwd: projectRoot,
   stdio: "inherit",
 });
 
-console.log("[icons] Regenerated platform icons (icns, ico, ios, android, appx).");
+console.log("[icons] Regenerated platform app icons (icns, ico, ios, android, appx).");
