@@ -43,7 +43,7 @@ const navItems: NavItem[] = [
   { href: '/screens', label: 'Screens', icon: Monitor, permission: 'screens' },
   { href: '/content', label: 'Content', icon: PlaySquare, permission: 'content' },
   { href: '/production', label: 'Production', icon: BarChart3 },
-  { href: '/marquee', label: 'Marquee', icon: Megaphone, permission: 'settings' },
+  // { href: '/marquee', label: 'Marquee', icon: Megaphone, permission: 'settings' },
   { href: '/team', label: 'Team', icon: Users, permission: 'team' },
   { href: '/settings', label: 'Settings', icon: Settings, permission: 'settings' },
 ]
