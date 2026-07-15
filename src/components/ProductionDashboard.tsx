@@ -1,11 +1,14 @@
 'use client'
 
+import { useEffect, useRef, useState } from 'react'
 import {
   LineChart,
   Line,
   XAxis,
   YAxis,
   CartesianGrid,
+  Tooltip,
+  Legend,
 } from 'recharts'
 import { TrendingUp, Factory, Activity } from 'lucide-react'
 
@@ -28,6 +31,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { PRODUCTION_DASHBOARD_CRITICAL_CSS } from '@/components/production-dashboard-critical-styles'
 import { cn } from '@/lib/utils'
 
 /* ─── Static data (fake API response) ───────────────────────────────────── */
@@ -149,11 +153,13 @@ const LINE_COLORS: Record<LineKey, string> = {
 function AskRateBadge({ value, isPlayer = false }: { value: number; isPlayer?: boolean }) {
   if (value < 0) {
     return (
-      <span className={cn(
-        'inline-flex items-center justify-center rounded px-2.5 py-0.5 text-xs font-bold',
-        isPlayer && 'text-lg text-black'
-      )}
-        style={{ background: '#ffe600', color: '#1a1a1a', minWidth: 56 }}>
+      <span
+        className={cn(
+          'inline-flex items-center justify-center rounded px-2.5 py-0.5 text-xs font-bold',
+          isPlayer && 'mg-prod-ask-badge text-lg text-black'
+        )}
+        style={isPlayer ? undefined : { background: '#ffe600', color: '#1a1a1a', minWidth: 56 }}
+      >
         {value}
       </span>
     )
@@ -166,6 +172,74 @@ function AskRateBadge({ value, isPlayer = false }: { value: number; isPlayer?: b
       )}>
       +{value}
     </Badge>
+  )
+}
+
+function PlayerProductionChart({ data }: { data: typeof chartData }) {
+  const hostRef = useRef<HTMLDivElement>(null)
+  const [size, setSize] = useState({ width: 1920, height: 720 })
+
+  useEffect(() => {
+    const el = hostRef.current
+    if (!el) return
+
+    const measure = () => {
+      const rect = el.getBoundingClientRect()
+      if (rect.width > 0 && rect.height > 0) {
+        setSize({
+          width: Math.floor(rect.width),
+          height: Math.floor(rect.height),
+        })
+      }
+    }
+
+    measure()
+    window.addEventListener('resize', measure)
+    const timers = [100, 400, 1000].map((ms) => window.setTimeout(measure, ms))
+
+    return () => {
+      window.removeEventListener('resize', measure)
+      timers.forEach((timer) => window.clearTimeout(timer))
+    }
+  }, [])
+
+  return (
+    <div
+      ref={hostRef}
+      className="mg-prod-chart text-black"
+      style={{ width: '100%', height: '100%', flex: 1, minHeight: 0, position: 'relative' }}
+    >
+      {size.width > 0 && size.height > 0 && (
+        <LineChart
+          width={size.width}
+          height={size.height}
+          data={data}
+          margin={{ top: 8, right: 24, left: 4, bottom: 8 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+          <XAxis
+            dataKey="date"
+            tickLine={false}
+            axisLine={false}
+            tick={{ fontSize: 14, fill: '#000000' }}
+            label={{ value: 'Date', position: 'insideBottom', offset: -4, fontSize: 14, fontWeight: 600, fill: '#000000' }}
+            height={32}
+          />
+          <YAxis
+            tickLine={false}
+            axisLine={false}
+            tick={{ fontSize: 14, fill: '#000000' }}
+            label={{ value: 'Qty', angle: -90, position: 'insideLeft', offset: 8, fontSize: 14, fontWeight: 600, fill: '#000000' }}
+            width={48}
+          />
+          <Tooltip />
+          <Legend wrapperStyle={{ fontSize: 14, fontWeight: 600, color: '#000000' }} />
+          <Line type="monotone" dataKey="FSL" stroke={LINE_COLORS.FSL} strokeWidth={2.5} dot={{ r: 4, strokeWidth: 0, fill: LINE_COLORS.FSL }} activeDot={{ r: 6 }} name="FSL" />
+          <Line type="monotone" dataKey="PSL1" stroke={LINE_COLORS.PSL1} strokeWidth={2.5} dot={{ r: 4, strokeWidth: 0, fill: LINE_COLORS.PSL1 }} activeDot={{ r: 6 }} name="PSL1" />
+          <Line type="monotone" dataKey="PSL2" stroke={LINE_COLORS.PSL2} strokeWidth={2.5} dot={{ r: 4, strokeWidth: 0, fill: LINE_COLORS.PSL2 }} activeDot={{ r: 6 }} name="PSL2" />
+        </LineChart>
+      )}
+    </div>
   )
 }
 
@@ -182,10 +256,10 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
   return (
     <div
       className={cn(
-        'space-y-6 pb-8',
-        isPlayer && 'production-player-surface min-h-full bg-white text-slate-950'
+        isPlayer ? 'mg-prod-player-layout production-player-surface bg-white text-slate-950' : 'space-y-6 pb-8',
       )}
     >
+      {isPlayer && <style dangerouslySetInnerHTML={{ __html: PRODUCTION_DASHBOARD_CRITICAL_CSS }} />}
       {!isPlayer && (
         <>
           {/* ── Page header ── */}
@@ -237,13 +311,13 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
       )}
 
       {/* ── Summary Table ── */}
-      <Card className={cn(isPlayer && 'border-slate-200 bg-white text-slate-950 shadow-sm backdrop-blur-none')}>
-        <CardHeader className={cn('pb-3', isPlayer && 'border-b border-slate-200 pb-5')}>
-          <CardTitle className={cn('flex items-center gap-2 text-base', isPlayer && 'text-3xl text-black')}>
-            <TrendingUp className={cn('h-4 w-4 text-primary', isPlayer && 'h-7 w-7 text-black')} />
+      <Card className={cn(isPlayer && 'mg-prod-table-card border-slate-200 bg-white text-slate-950 shadow-sm backdrop-blur-none')}>
+        <CardHeader className={cn('pb-3', isPlayer && 'mg-prod-card-header border-b border-slate-200')}>
+          <CardTitle className={cn('flex items-center gap-2 text-base', isPlayer && 'mg-prod-card-title text-black')}>
+            <TrendingUp className={cn('h-4 w-4 text-primary', isPlayer && 'mg-prod-card-title-icon text-black')} />
             Production Summary — {monthLabel}
           </CardTitle>
-          <CardDescription className={cn('text-xs', isPlayer && 'text-lg text-black')}>
+          <CardDescription className={cn('text-xs', isPlayer && 'mg-prod-card-desc text-black')}>
             ABP · Monthly Plan · Actual vs Target with Asking Rate &amp; Forecast
           </CardDescription>
         </CardHeader>
@@ -255,7 +329,7 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
                   <TableHead key={h}
                     className={cn(
                       'h-11 px-4 text-center text-[11px] font-bold uppercase tracking-wider text-muted-foreground',
-                      isPlayer && 'h-16 text-base text-black'
+                      isPlayer && 'mg-prod-th text-black'
                     )}>
                     {h}
                   </TableHead>
@@ -265,32 +339,34 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
             <TableBody>
               {tableRows.map((row) => (
                 <TableRow key={row.line} className={cn(isPlayer && 'border-slate-200 hover:bg-slate-50')}>
-                  <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'py-6 text-xl text-black')}>
+                  <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'mg-prod-td text-black')}>
                     <span className="inline-flex items-center gap-1.5 font-bold"
                       style={{ color: isPlayer ? '#000000' : LINE_COLORS[row.line as LineKey] }}>
-                      <span className="h-2 w-2 rounded-full"
-                        style={{ background: LINE_COLORS[row.line as LineKey] }} />
+                      <span
+                        className={cn('h-2 w-2 rounded-full', isPlayer && 'mg-prod-line-dot')}
+                        style={{ background: LINE_COLORS[row.line as LineKey] }}
+                      />
                       {row.line}
                     </span>
                   </TableCell>
-                  <TableCell className={cn('px-4 py-3 text-center text-muted-foreground', isPlayer && 'py-6 text-xl text-black')}>{row.abp.toLocaleString()}</TableCell>
-                  <TableCell className={cn('px-4 py-3 text-center text-muted-foreground', isPlayer && 'py-6 text-xl text-black')}>{row.plan.toLocaleString()}</TableCell>
-                  <TableCell className={cn('px-4 py-3 text-center font-semibold text-foreground', isPlayer && 'py-6 text-xl text-black')}>{row.actual.toLocaleString()}</TableCell>
-                  <TableCell className={cn('px-4 py-3 text-center text-muted-foreground', isPlayer && 'py-6 text-xl text-black')}>{row.prodRate}</TableCell>
-                  <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'py-6 text-xl text-black')}><AskRateBadge value={row.askRate} isPlayer={isPlayer} /></TableCell>
-                  <TableCell className={cn('px-4 py-3 text-center font-semibold text-primary', isPlayer && 'py-6 text-xl text-black')}>{row.forecast.toLocaleString()}</TableCell>
+                  <TableCell className={cn('px-4 py-3 text-center text-muted-foreground', isPlayer && 'mg-prod-td text-black')}>{row.abp.toLocaleString()}</TableCell>
+                  <TableCell className={cn('px-4 py-3 text-center text-muted-foreground', isPlayer && 'mg-prod-td text-black')}>{row.plan.toLocaleString()}</TableCell>
+                  <TableCell className={cn('px-4 py-3 text-center font-semibold text-foreground', isPlayer && 'mg-prod-td text-black')}>{row.actual.toLocaleString()}</TableCell>
+                  <TableCell className={cn('px-4 py-3 text-center text-muted-foreground', isPlayer && 'mg-prod-td text-black')}>{row.prodRate}</TableCell>
+                  <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'mg-prod-td text-black')}><AskRateBadge value={row.askRate} isPlayer={isPlayer} /></TableCell>
+                  <TableCell className={cn('px-4 py-3 text-center font-semibold text-primary', isPlayer && 'mg-prod-td text-black')}>{row.forecast.toLocaleString()}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
             <TableFooter>
               <TableRow className={cn('bg-muted/60 font-bold', isPlayer && 'border-slate-200 bg-slate-100 text-slate-950')}>
-                <TableCell className={cn('px-4 py-3 text-center text-foreground font-extrabold', isPlayer && 'py-6 text-xl text-black')}>Total</TableCell>
-                <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'py-6 text-xl text-black')}>{totals.abp.toLocaleString()}</TableCell>
-                <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'py-6 text-xl text-black')}>{totals.plan.toLocaleString()}</TableCell>
-                <TableCell className={cn('px-4 py-3 text-center text-foreground', isPlayer && 'py-6 text-xl text-black')}>{totals.actual.toLocaleString()}</TableCell>
-                <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'py-6 text-xl text-black')}>{totals.prodRate}</TableCell>
-                <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'py-6 text-xl text-black')}><AskRateBadge value={totals.askRate} isPlayer={isPlayer} /></TableCell>
-                <TableCell className={cn('px-4 py-3 text-center text-primary', isPlayer && 'py-6 text-xl text-black')}>{totals.forecast.toLocaleString()}</TableCell>
+                <TableCell className={cn('px-4 py-3 text-center text-foreground font-extrabold', isPlayer && 'mg-prod-td text-black')}>Total</TableCell>
+                <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'mg-prod-td text-black')}>{totals.abp.toLocaleString()}</TableCell>
+                <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'mg-prod-td text-black')}>{totals.plan.toLocaleString()}</TableCell>
+                <TableCell className={cn('px-4 py-3 text-center text-foreground', isPlayer && 'mg-prod-td text-black')}>{totals.actual.toLocaleString()}</TableCell>
+                <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'mg-prod-td text-black')}>{totals.prodRate}</TableCell>
+                <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'mg-prod-td text-black')}><AskRateBadge value={totals.askRate} isPlayer={isPlayer} /></TableCell>
+                <TableCell className={cn('px-4 py-3 text-center text-primary', isPlayer && 'mg-prod-td text-black')}>{totals.forecast.toLocaleString()}</TableCell>
               </TableRow>
             </TableFooter>
           </Table>
@@ -298,40 +374,47 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
       </Card>
 
       {/* ── Production Trend Chart ── */}
-      <Card className={cn(isPlayer && 'border-slate-200 bg-white text-slate-950 shadow-sm backdrop-blur-none')}>
-        <CardHeader>
-          <CardTitle className={cn('text-center text-base underline decoration-primary/40 underline-offset-4', isPlayer && 'text-3xl text-black no-underline')}>
+      <Card className={cn(isPlayer && 'mg-prod-chart-card border-slate-200 bg-white text-slate-950 shadow-sm backdrop-blur-none')}>
+        <CardHeader className={cn(isPlayer && 'mg-prod-card-header')}>
+          <CardTitle className={cn('text-center text-base underline decoration-primary/40 underline-offset-4', isPlayer && 'mg-prod-card-title text-black no-underline')}>
             Production trend {monthLabel} (MT)
           </CardTitle>
-          <CardDescription className={cn('text-center text-xs', isPlayer && 'text-lg text-black')}>
+          <CardDescription className={cn('text-center text-xs', isPlayer && 'mg-prod-card-desc text-black')}>
             Daily production quantities for FSL, PSL1 and PSL2
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <ChartContainer config={chartConfig} className={cn('h-[360px] w-full', isPlayer && 'h-[420px] text-lg text-black')}>
+        <CardContent className={cn(isPlayer && 'mg-prod-chart-content')}>
+          {isPlayer ? (
+            <PlayerProductionChart data={chartData} />
+          ) : (
+          <ChartContainer
+            config={chartConfig}
+            className="h-[360px] w-full"
+          >
             <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" className={cn('stroke-border/40', isPlayer && 'stroke-slate-200')} />
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border/40" />
               <XAxis
                 dataKey="date"
                 tickLine={false}
                 axisLine={false}
-                tick={{ fontSize: isPlayer ? 16 : 11, fill: isPlayer ? '#000000' : undefined }}
-                label={{ value: 'Date', position: 'insideBottom', offset: -12, fontSize: isPlayer ? 16 : 12, fontWeight: 600, fill: isPlayer ? '#000000' : undefined }}
+                tick={{ fontSize: 11 }}
+                label={{ value: 'Date', position: 'insideBottom', offset: -12, fontSize: 12, fontWeight: 600 }}
                 height={46}
               />
               <YAxis
                 tickLine={false}
                 axisLine={false}
-                tick={{ fontSize: isPlayer ? 16 : 11, fill: isPlayer ? '#000000' : undefined }}
-                label={{ value: 'Qty', angle: -90, position: 'insideLeft', offset: 12, fontSize: isPlayer ? 16 : 12, fontWeight: 600, fill: isPlayer ? '#000000' : undefined }}
+                tick={{ fontSize: 11 }}
+                label={{ value: 'Qty', angle: -90, position: 'insideLeft', offset: 12, fontSize: 12, fontWeight: 600 }}
               />
               <ChartTooltip content={<ChartTooltipContent indicator="dot" />} />
-              <ChartLegend content={<ChartLegendContent className={cn(isPlayer && 'text-base font-semibold text-black')} />} />
+              <ChartLegend content={<ChartLegendContent />} />
               <Line type="monotone" dataKey="FSL"  stroke="var(--color-FSL)"  strokeWidth={2.5} dot={{ r: 4, strokeWidth: 0, fill: 'var(--color-FSL)'  }} activeDot={{ r: 6 }} name="FSL"  />
               <Line type="monotone" dataKey="PSL1" stroke="var(--color-PSL1)" strokeWidth={2.5} dot={{ r: 4, strokeWidth: 0, fill: 'var(--color-PSL1)' }} activeDot={{ r: 6 }} name="PSL1" />
               <Line type="monotone" dataKey="PSL2" stroke="var(--color-PSL2)" strokeWidth={2.5} dot={{ r: 4, strokeWidth: 0, fill: 'var(--color-PSL2)' }} activeDot={{ r: 6 }} name="PSL2" />
             </LineChart>
           </ChartContainer>
+          )}
         </CardContent>
       </Card>
     </div>

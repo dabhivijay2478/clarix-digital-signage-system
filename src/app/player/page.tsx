@@ -661,7 +661,7 @@ export default function PlayerPage() {
         alt="AMNS India"
         style={{
           display: 'block',
-          width: 'clamp(140px, 14vw, 250px)',
+          width: 'clamp(90px, 8vw, 160px)',
           height: 'auto',
           objectFit: 'contain',
         }}
@@ -797,15 +797,19 @@ export default function PlayerPage() {
             left: 0,
             width: '100%',
             height: '100%',
-            overflowY: 'auto',
+            overflow: 'hidden',
             background: '#ffffff',
             colorScheme: 'light',
-            padding: '24px 28px',
+            padding: '0.8vh 1.2vw',
             boxSizing: 'border-box',
+            display: 'flex',
+            flexDirection: 'column',
           }}
         >
           {renderMarquee()}
-          <ProductionDashboard mode="player" />
+          <div style={{ flex: 1, minHeight: 0, width: '100%', overflow: 'hidden' }}>
+            <ProductionDashboard mode="player" />
+          </div>
           {renderBrandingLogo()}
         </div>
       );
