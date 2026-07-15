@@ -3,6 +3,7 @@ use rusqlite::{params, OptionalExtension};
 use tauri::State;
 
 use crate::{
+    auth_config::configured_admin_user,
     db::DbPool,
     models::{AdminRole, AuthSession, AuthUser, TeamInvite},
 };
@@ -48,21 +49,6 @@ fn ensure_super_admin(conn: &rusqlite::Connection, token: &str) -> anyhow::Resul
     Ok(user)
 }
 
-fn parse_env_admin_user() -> Option<(String, String, String, String, bool)> {
-    let val = std::env::var("ADMIN_USER").ok()?;
-    let parts: Vec<&str> = val.splitn(5, ',').map(|p| p.trim()).collect();
-    if parts.len() < 5 {
-        return None;
-    }
-    Some((
-        parts[2].to_string(), // name
-        parts[1].to_string(), // password
-        parts[3].to_string(), // role
-        parts[0].to_string(), // email
-        parts[4].to_lowercase() == "true", // is_developer
-    ))
-}
-
 #[tauri::command]
 pub async fn login_user(
     email: String,
@@ -75,10 +61,10 @@ pub async fn login_user(
         let conn = pool.get()?;
 
         // First, check if this is the env-based admin user
-        if let Some((name, env_password, role_str, raw_email, is_developer)) = parse_env_admin_user() {
-            if raw_email.to_lowercase().trim() == normalized_email {
+        if let Some(admin) = configured_admin_user() {
+            if admin.email.to_lowercase().trim() == normalized_email {
                 // Compare plain-text password for env admin
-                if password.trim() != env_password.trim() {
+                if password.trim() != admin.password.trim() {
                     anyhow::bail!("Invalid email or password.");
                 }
 
@@ -95,15 +81,15 @@ pub async fn login_user(
 
                 let user_id = if let Some(uid) = existing_id {
                     conn.execute(
-                        "UPDATE users SET name = ?1, role = ?2, is_developer = ?3, updated_at = ?4 WHERE id = ?5",
-                        params![name, role_str, is_developer, now, uid],
+                        "UPDATE users SET name = ?1, email = ?2, password_hash = ?3, role = ?4, is_developer = ?5, updated_at = ?6 WHERE id = ?7",
+                        params![admin.name, admin.email, admin.password, admin.role, admin.is_developer, now, uid],
                     )?;
                     uid
                 } else {
                     conn.execute(
                         "INSERT INTO users (id, name, email, password_hash, role, is_developer, created_at, updated_at)
                          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
-                        params![user_id, name, raw_email, "", role_str, is_developer, now],
+                        params![user_id, admin.name, admin.email, admin.password, admin.role, admin.is_developer, now],
                     )?;
                     user_id
                 };
@@ -127,10 +113,10 @@ pub async fn login_user(
 
                 let user = AuthUser {
                     id: user_id,
-                    name,
-                    email: raw_email,
-                    role: AdminRole::from_str(&role_str),
-                    is_developer,
+                    name: admin.name,
+                    email: admin.email,
+                    role: AdminRole::from_str(&admin.role),
+                    is_developer: admin.is_developer,
                     created_at: parse_date(now),
                 };
 

@@ -117,8 +117,7 @@ pub async fn start_controller_server(
         .route("/api/production/datasets/{id}", get(read_production_dataset))
         .route("/media/{filename}", get(legacy_media))
         .route("/presentation/{filename}", get(presentation_viewer))
-        .route("/api/proxy", get(proxy_url))
-        .layer(CorsLayer::permissive());
+        .route("/api/proxy", get(proxy_url));
 
     let router = Router::new()
         .route("/v1/pairing/requests", post(create_pairing_request))
@@ -138,6 +137,7 @@ pub async fn start_controller_server(
         .route_service("/trucks/display", ServeFile::new(browser_assets_dir.join("trucks/display.html")))
         .route_service("/trucks/display/", ServeFile::new(browser_assets_dir.join("trucks/display.html")))
         .fallback_service(ServeDir::new(browser_assets_dir))
+        .layer(CorsLayer::permissive())
         .with_state(state);
 
     tracing::info!("MG Enterprise controller listening on fixed port {port}");
@@ -149,8 +149,8 @@ pub async fn start_controller_server(
     Ok(port)
 }
 
-// CORS is handled by tower_http::cors::CorsLayer::permissive() on the browser_routes group.
-// This allows all origins, methods, and headers — including proper OPTIONS preflight handling.
+// CORS is permissive for the whole LAN server so packaged TV receivers can
+// fetch controller-hosted player HTML and static assets from a file:// app.
 
 async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
     Json(serde_json::json!({

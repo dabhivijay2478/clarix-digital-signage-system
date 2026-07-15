@@ -27,6 +27,27 @@ function playlistPlaybackSignature(playlist: Playlist): string {
   });
 }
 
+function formatScreenOrientation(orientation: Screen['orientation']): string {
+  switch (orientation) {
+    case 'LandscapeFlipped':
+      return 'Landscape (flipped)';
+    case 'PortraitFlipped':
+      return 'Portrait (flipped)';
+    default:
+      return orientation;
+  }
+}
+
+function getScreenSelectionTags(screen: Screen): string[] {
+  const tags: string[] = [];
+  if (screen.location?.trim()) tags.push(screen.location.trim());
+  tags.push(formatScreenOrientation(screen.orientation));
+  if (screen.resolution?.width && screen.resolution?.height) {
+    tags.push(`${screen.resolution.width}×${screen.resolution.height}`);
+  }
+  return tags;
+}
+
 export default function PlayerPage() {
   const router = useRouter();
   const branding = useBrandingStore();
@@ -795,11 +816,16 @@ export default function PlayerPage() {
                   className="mg-player-list-item"
                 >
                   <div className="mg-player-list-item-row">
-                    <div>
+                    <div className="mg-player-list-item-icon" aria-hidden="true">▣</div>
+                    <div className="mg-player-list-item-body">
                       <span className="mg-player-list-item-name">{screen.name}</span>
-                      <span className="mg-player-list-item-meta">{screen.location || 'No location'}</span>
+                      <div className="mg-player-list-item-meta">
+                        {getScreenSelectionTags(screen).map((tag) => (
+                          <span key={`${screen.id}-${tag}`} className="mg-player-list-item-tag">{tag}</span>
+                        ))}
+                      </div>
                     </div>
-                    <span className="mg-player-list-item-status">{screen.pairing_status}</span>
+                    <span className="mg-player-list-item-chevron" aria-hidden="true">›</span>
                   </div>
                 </button>
               ))}

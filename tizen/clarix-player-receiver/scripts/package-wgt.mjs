@@ -4,9 +4,19 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const projectDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const stagingRoot = path.join(projectDir, ".tizen-build");
+const buildDir = path.join(stagingRoot, "build");
 const signingProfile = process.env.TIZEN_SIGNING_PROFILE;
 const isWindows = process.platform === "win32";
 const tizenCli = process.env.TIZEN_CLI || "tizen";
+const appEntries = [
+  "config.xml",
+  "css",
+  "icon.png",
+  "index.html",
+  "js",
+  "logo.png"
+];
 
 if (!signingProfile) {
   console.error("Set TIZEN_SIGNING_PROFILE to a Samsung TV certificate profile created in Tizen Studio.");
@@ -31,11 +41,18 @@ function run(command, args, cwd = projectDir, useWindowsShell = false) {
   if (result.status !== 0) process.exit(result.status || 1);
 }
 
-run(process.execPath, ["scripts/configure.mjs"]);
-run(process.execPath, ["--test", "test/receiver-core.test.js"]);
-run(tizenCli, ["build-web", "--", projectDir], projectDir, true);
+function stageApp() {
+  fs.rmSync(stagingRoot, { recursive: true, force: true });
+  fs.mkdirSync(buildDir, { recursive: true });
+  for (const entry of appEntries) {
+    const source = path.join(projectDir, entry);
+    const destination = path.join(buildDir, entry);
+    fs.cpSync(source, destination, { recursive: true });
+  }
+}
 
-const buildDir = path.join(projectDir, ".buildResult");
+run(process.execPath, ["--test", "test/receiver-core.test.js"]);
+stageApp();
 run(tizenCli, ["package", "-t", "wgt", "-s", signingProfile, "--", buildDir], projectDir, true);
 
 const packageName = fs.readdirSync(buildDir).find((name) => name.endsWith(".wgt"));
@@ -46,7 +63,7 @@ if (!packageName) {
 
 const distDir = path.join(projectDir, "dist");
 fs.mkdirSync(distDir, { recursive: true });
-const destination = path.join(distDir, "ClarixPlayerReceiver.wgt");
+const destination = path.join(distDir, "MGEnterpriseReceiver.wgt");
 fs.copyFileSync(path.join(buildDir, packageName), destination);
 console.log(`Created signed package: ${destination}`);
 run(process.execPath, ["scripts/prepare-usb.mjs"]);

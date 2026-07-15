@@ -1,6 +1,6 @@
 [package]
 name = "clarix"
-version = "0.1.0"
+version = "0.1.1"
 description = "MG Enterprise — Digital Signage Management Desktop App"
 authors = ["MG Enterprise Team"]
 edition = "2021"

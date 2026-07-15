@@ -4,45 +4,32 @@ This directory is a standalone Samsung TV Web Application project. It is a local
 
 ## Runtime behavior
 
-- Reads `receiver-config.json` from the installed widget.
-- Probes `http://<controller>:<port>/v1/health` on startup.
+- Uses the controller IP entered on the TV/emulator and saves it locally.
+- Probes `http://<controller>:7420/v1/health` on startup.
 - Shows the branded offline screen and retries every 5 seconds while unavailable.
-- Loads `/player?receiver=tizen` inside a full-screen sandbox after a successful health response.
-- Checks health every 10 seconds while online and immediately removes the player frame after a failed check.
+- Opens the controller-hosted `/player` page after a successful health response, with a full-screen iframe fallback for Tizen runtimes that block top-level HTTP navigation.
+- Checks health every 10 seconds while online and returns to the offline screen after a failed check.
 - Restarts the connection check when the application returns to the foreground.
 
-The wrapper has three independent navigation controls:
+The receiver has these navigation controls:
 
-1. `config.xml` grants network and navigation access only to the configured origin.
-2. The document Content Security Policy grants `connect-src` and `frame-src` only to that origin.
-3. The iframe sandbox omits pop-up, top-navigation, and download permissions.
+1. `config.xml` grants internet access for local controller APIs.
+2. The document Content Security Policy allows HTTP controller API access.
+3. The receiver does not render a custom player UI; the controller player owns screen selection and truck-token styling.
 
-Receiver mode also removes the player page's dashboard, disconnect, and Escape actions. There is no URL input or browser UI in the widget.
+The IP input is runtime configuration. One signed package can be installed on multiple displays; enter the correct controller IP on each display the first time it runs.
 
 ## Configure the controller
 
-Edit `receiver-config.json`:
-
-```json
-{
-  "controllerIp": "192.168.0.100",
-  "port": 7420,
-  "playerPath": "/player"
-}
-```
-
 An IPv4 address or DNS hostname such as `clarix.local` is accepted. Internet URLs, URL schemes, query strings, fragments, and invalid ports are rejected.
 
-From the repository root, synchronize the Tizen allowlist and CSP with the JSON file:
+From the repository root, verify the receiver:
 
 ```sh
-npm run tizen:configure
 npm run tizen:test
 ```
 
-Run `tizen:configure` after every controller host or port change. Package again after configuration changes; the installed configuration is deliberately not editable through the TV UI.
-
-Reserve the controller address in the offline router before packaging. If its IP changes, the old package will continue blocking the new address by design.
+Reserve the controller address in the offline router when possible. If it changes, open the receiver, choose **Edit IP**, enter the new controller IP, and press **Connect**. You do not need a new WGT for an IP change.
 
 ## Tizen Studio and Samsung signing
 
@@ -63,11 +50,11 @@ bun run tizen:package
 
 The outputs are:
 
-- `tizen/clarix-player-receiver/dist/ClarixPlayerReceiver.wgt`
-- `tizen/clarix-player-receiver/dist/SSSP/ClarixPlayerReceiver.wgt`
+- `tizen/clarix-player-receiver/dist/MGEnterpriseReceiver.wgt`
+- `tizen/clarix-player-receiver/dist/SSSP/MGEnterpriseReceiver.wgt`
 - `tizen/clarix-player-receiver/dist/SSSP/sssp_config.xml`
 
-The packaging command refuses to run without an explicit signing profile, reruns configuration and tests, and generates the USB-ready `SSSP` folder after invoking the Tizen CLI.
+The packaging command refuses to run without an explicit signing profile, runs tests, and generates the USB-ready `SSSP` folder after invoking the Tizen CLI.
 
 Alternatively, import this directory in Tizen Studio with **File > Import > Tizen > Tizen Project**, select the active Samsung certificate profile, then use **Build Signed Package**.
 
@@ -82,7 +69,7 @@ Use this path for device acceptance testing, not permanent fleet deployment:
 5. Install from Tizen Studio with **Run As > Tizen Web Application**, or use:
 
    ```sh
-   tizen install -s <device-serial> --name ClarixPlayerReceiver.wgt -- tizen/clarix-player-receiver/dist
+   tizen install -s <device-serial> --name MGEnterpriseReceiver.wgt -- tizen/clarix-player-receiver/dist
    ```
 
 6. Launch **Clarix Player Receiver** and confirm the offline screen, recovery, playback, and blocked navigation cases.
@@ -104,7 +91,7 @@ The QB55C is a commercial signage display. Its **Custom App Launcher** supports 
 4. Verify the drive has this exact structure:
 
    ```text
-   USB_DRIVE:\SSSP\ClarixPlayerReceiver.wgt
+   USB_DRIVE:\SSSP\MGEnterpriseReceiver.wgt
    USB_DRIVE:\SSSP\sssp_config.xml
    ```
 
@@ -113,7 +100,7 @@ The QB55C is a commercial signage display. Its **Custom App Launcher** supports 
 7. Enter the display administrator PIN when requested.
 8. Wait for installation to complete, launch **Clarix Player Receiver**, then remove the USB drive and cold-reboot the display.
 
-If the signed `.wgt` was built separately in Tizen Studio, copy it to `dist/ClarixPlayerReceiver.wgt` and generate the matching byte-size configuration with:
+If the signed `.wgt` was built separately in Tizen Studio, copy it to `dist/MGEnterpriseReceiver.wgt` and generate the matching byte-size configuration with:
 
 ```powershell
 npm --prefix tizen/clarix-player-receiver run prepare:usb
@@ -140,7 +127,7 @@ If the display reports **Unable to install**, verify the `SSSP` folder location,
 - Clarix must listen on `0.0.0.0:7420` (or the configured port).
 - TCP inbound access to that port must be allowed by the controller firewall.
 - `/v1/health` must return JSON with `{"status":"online"}` and a CORS response that permits the Tizen application.
-- `/player` and all player assets must stay on the configured controller origin.
+- `/player` and its API/assets must respond from the same controller origin.
 
 The controller in this repository supplies the required health endpoint and CORS headers.
 
@@ -150,7 +137,7 @@ The controller in this repository supplies the required health endpoint and CORS
 - Start the controller: player opens without remote input.
 - Stop the controller/network: player is removed and offline screen returns within about 14 seconds (probe interval plus timeout).
 - Restore the controller: playback returns automatically.
-- Verify external links, `window.open`, downloads, context menus, Back, Escape, refresh, and dashboard-exit actions cannot escape the receiver.
+- Verify context menus, Back, Escape, refresh, and dashboard-exit actions cannot escape the receiver.
 - Cold boot with no development workstation: the display selects the receiver automatically.
 
 For router and firewall diagnostics, also see `docs/offline-router-setup.md` at the repository root.

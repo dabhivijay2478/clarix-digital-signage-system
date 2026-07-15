@@ -4,11 +4,36 @@ use tokio::sync::RwLock;
 use crate::models::DeviceRole;
 
 mod commands;
+mod auth_config;
 mod db;
 mod lan;
 mod models;
 mod scheduler;
 mod security;
+
+fn load_env_file(path: impl AsRef<std::path::Path>) {
+    let path = path.as_ref();
+    if !path.exists() {
+        return;
+    }
+
+    match dotenvy::from_path(path) {
+        Ok(_) => tracing::info!("Loaded environment file: {}", path.display()),
+        Err(error) => tracing::warn!("Failed to load environment file {}: {}", path.display(), error),
+    }
+}
+
+fn load_packaged_env(app: &tauri::App) {
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            load_env_file(exe_dir.join(".env"));
+        }
+    }
+
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        load_env_file(resource_dir.join(".env"));
+    }
+}
 
 pub fn run() {
     // Load .env file before anything else reads env vars
@@ -28,6 +53,8 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
+            load_packaged_env(app);
+
             let app_data = app
                 .path()
                 .app_data_dir()

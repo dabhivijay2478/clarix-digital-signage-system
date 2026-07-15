@@ -46,6 +46,8 @@ const browserControllerPort = process.env.NEXT_PUBLIC_CLARIX_CONTROLLER_PORT ?? 
 
 export function getBrowserControllerOrigin(): string {
   if (typeof window === 'undefined') return `http://localhost:${browserControllerPort}`;
+  const controllerOrigin = (window as typeof window & { __CLARIX_CONTROLLER_ORIGIN__?: string }).__CLARIX_CONTROLLER_ORIGIN__;
+  if (controllerOrigin) return controllerOrigin;
   if (isTauriRuntime()) return `http://127.0.0.1:${browserControllerPort}`;
   if (window.location.port === browserControllerPort) return window.location.origin;
   return `http://${window.location.hostname}:${browserControllerPort}`;

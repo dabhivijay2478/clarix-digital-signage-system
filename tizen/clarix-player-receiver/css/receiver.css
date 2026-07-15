@@ -1,8 +1,8 @@
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   font-family: Arial, Helvetica, sans-serif;
-  background: #07111f;
-  color: #f8fafc;
+  background: #ffffff;
+  color: #111827;
 }
 
 * {
@@ -17,8 +17,8 @@ body {
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: #07111f;
-  cursor: none;
+  background: #ffffff;
+  cursor: default;
 }
 
 .offline {
@@ -30,16 +30,18 @@ body {
   justify-content: center;
   padding: 5vh 5vw;
   text-align: center;
-  background: radial-gradient(circle at 50% 30%, #142b47 0, #07111f 58%, #030813 100%);
+  background: #ffffff;
 }
 
 .logo {
-  width: 13vh;
-  height: 13vh;
-  min-width: 92px;
-  min-height: 92px;
+  width: 30vh;
+  height: 30vh;
+  min-width: 220px;
+  min-height: 220px;
+  max-width: 420px;
+  max-height: 420px;
   object-fit: contain;
-  margin-bottom: 2.5vh;
+  margin-bottom: 3vh;
 }
 
 h1 {
@@ -51,12 +53,12 @@ h1 {
 
 #status {
   margin: 0 0 4vh;
-  color: #dbeafe;
+  color: #1f2937;
   font-size: clamp(28px, 2.5vw, 52px);
 }
 
 .controller-label {
-  color: #94a3b8;
+  color: #64748b;
   font-size: clamp(20px, 1.5vw, 32px);
   text-transform: uppercase;
   letter-spacing: .12em;
@@ -68,10 +70,77 @@ h1 {
   font-size: clamp(28px, 2.4vw, 48px);
 }
 
+.controller-form {
+  width: min(860px, 90vw);
+  margin-top: 3vh;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 1vh;
+  color: #94a3b8;
+  font-size: clamp(16px, 1.1vw, 24px);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+}
+
+.controller-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.controller-input,
+.control-button {
+  min-height: 56px;
+  border: 1px solid #38bdf8;
+  border-radius: 6px;
+  font: inherit;
+  font-size: clamp(20px, 1.5vw, 30px);
+}
+
+.controller-input {
+  width: 100%;
+  padding: 0 16px;
+  color: #111827;
+  background: #ffffff;
+  caret-color: #0284c7;
+  cursor: text;
+  font-family: "Courier New", monospace;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.control-button {
+  padding: 0 22px;
+  color: #075985;
+  background: #e0f2fe;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.control-button.primary {
+  color: #ffffff;
+  background: #0284c7;
+}
+
+.controller-input:focus,
+.control-button:focus {
+  outline: 3px solid #f8fafc;
+  outline-offset: 3px;
+}
+
 .retrying {
   margin-top: 4vh;
-  color: #38bdf8;
+  color: #0284c7;
   font-size: clamp(22px, 1.7vw, 36px);
+}
+
+@media (max-width: 720px) {
+  .controller-controls {
+    grid-template-columns: 1fr;
+  }
 }
 
 .player-host,
@@ -83,5 +152,6 @@ h1 {
   margin: 0;
   padding: 0;
   border: 0;
-  background: #000;
+  background: #ffffff;
+  cursor: default;
 }

@@ -4,18 +4,19 @@ import { fileURLToPath } from "node:url";
 
 const projectDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const distDir = path.join(projectDir, "dist");
-const source = path.join(distDir, "ClarixPlayerReceiver.wgt");
+const source = path.join(distDir, "MGEnterpriseReceiver.wgt");
 
 if (!fs.existsSync(source)) {
-  console.error("Missing dist/ClarixPlayerReceiver.wgt. Build or copy the signed widget there first.");
+  console.error("Missing dist/MGEnterpriseReceiver.wgt. Build or copy the signed widget there first.");
   process.exit(2);
 }
 
 const packageJson = JSON.parse(fs.readFileSync(path.join(projectDir, "package.json"), "utf8"));
 const usbDir = path.join(distDir, "SSSP");
-const widgetName = "ClarixPlayerReceiver";
+const widgetName = "MGEnterpriseReceiver";
 const destination = path.join(usbDir, `${widgetName}.wgt`);
 
+fs.rmSync(usbDir, { recursive: true, force: true });
 fs.mkdirSync(usbDir, { recursive: true });
 fs.copyFileSync(source, destination);
 
