@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { screensApi, playlistsApi, contentApi, analyticsApi, localNetworkApi, customConfirm, getBrowserControllerOrigin, appConfigApi, trucksApi } from '../../lib/tauri';
 import type { Screen, Playlist, ContentItem, PlaylistItem, TruckScreenAlert, MarqueeSettings, ScreenPurpose, Truck } from '../../lib/types';
@@ -13,6 +12,8 @@ import { useGateStore } from '@/store/gateStore';
 import TruckTokenDisplay from '@/components/TruckTokenDisplay';
 import { parseScreenGates } from '@/lib/screen-gates';
 import { useTruckStore } from '@/store/truckStore';
+
+const AMNS_LOGO_SRC = '/company-logo/AMNS_Logo_Mid.png?v=transparent-20260716';
 
 function playlistPlaybackSignature(playlist: Playlist): string {
   return JSON.stringify({
@@ -1120,11 +1121,9 @@ export default function PlayerPage() {
           justifyContent: 'center',
         }}
       >
-        <Image
-          src="/company-logo/AMNS_Logo_Mid.png"
+        <img
+          src={AMNS_LOGO_SRC}
           alt="AMNS India logo"
-          width={250}
-          height={105}
           style={{
             display: 'block',
             height: '110px',

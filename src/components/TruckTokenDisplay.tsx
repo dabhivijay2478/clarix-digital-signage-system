@@ -15,6 +15,8 @@ import { TRUCK_DISPLAY_CRITICAL_CSS } from './truck-display-critical-styles'
 
 type QueueMode = 'loading' | 'waiting'
 
+const AMNS_LOGO_SRC = '/company-logo/AMNS_Logo_Mid.png?v=transparent-20260716'
+
 interface TruckTokenDisplayProps {
   trucks: Truck[]
   className?: string
