@@ -201,7 +201,7 @@ export default function ScreensPage() {
   const [editFormLocation, setEditFormLocation] = useState('');
   const [editFormIp, setEditFormIp] = useState('');
   const [editFormOrientation, setEditFormOrientation] = useState('Landscape');
-  const [editFormPurpose, setEditFormPurpose] = useState<ScreenPurpose>('truck_gate');
+  const [editFormPurpose, setEditFormPurpose] = useState<ScreenPurpose>('production_dashboard');
   const [editFormGates, setEditFormGates] = useState<string[]>([]);
   const [editFormDefaultContentId, setEditFormDefaultContentId] = useState('');
 
@@ -524,7 +524,7 @@ export default function ScreensPage() {
         1920,
         1080,
         undefined,
-        'truck_gate',
+        'production_dashboard',
         serializeScreenGates(normalizedFormGates)
       );
       if (normalizedFormGates.length > 0) {
@@ -592,7 +592,7 @@ export default function ScreensPage() {
     setEditFormLocation(screen.location || '');
     setEditFormIp(screen.ip_address || '');
     setEditFormOrientation(screen.orientation || 'Landscape');
-    setEditFormPurpose(screen.purpose === 'playlist' ? 'truck_gate' : (screen.purpose ?? 'truck_gate'));
+    setEditFormPurpose('production_dashboard');
     const assignedGates = getAssignedGatesForScreen(screen.id);
     setEditFormGates(
       assignedGates.length > 0 ? assignedGates : parseScreenGates(screen.gate),
@@ -603,10 +603,7 @@ export default function ScreensPage() {
   const handleSaveEdit = async () => {
     if (!editingScreen || !editFormName.trim()) return;
     const normalizedEditGates = normalizeScreenGateSelection(editFormGates);
-    if (editFormPurpose === 'truck_gate' && normalizedEditGates.length === 0) {
-      showToast('Please select at least one gate for the truck token display', 'error');
-      return;
-    }
+    // No gate validation needed — Production Data Display does not require gates
     for (const gateNumber of normalizedEditGates) {
       if (!isValidGateNumber(gateNumber)) {
         showToast('Gate must use a letter and number, for example D4', 'error');
@@ -617,7 +614,7 @@ export default function ScreensPage() {
     try {
       assignScreenToGatesInStore(editingScreen.id, normalizedEditGates);
 
-      const nextDefaultContentId = editFormPurpose === 'truck_gate'
+      const nextDefaultContentId = editFormPurpose === 'production_dashboard'
         ? null
         : editFormDefaultContentId || null;
 
@@ -823,7 +820,7 @@ export default function ScreensPage() {
                         </div>
 
                         {/* Media Thumbnail */}
-                        <div className="w-16 h-10 rounded-md overflow-hidden bg-background flex-shrink-0 relative border border-border/40">
+                        <div className="w-16 h-10 rounded-md overflow-hidden bg-background shrink-0 relative border border-border/40">
                           {contentItem.content_type === 'Image' ? (
                             <img src={mediaUrl} alt="" className="w-full h-full object-cover" />
                           ) : contentItem.content_type === 'Video' ? (
@@ -970,7 +967,7 @@ export default function ScreensPage() {
                         onClick={() => handleAddContent(item.id)}
                         className="flex items-center gap-3 p-2.5 border border-border/50 bg-muted/20 hover:bg-muted/40 rounded-xl cursor-pointer transition-all duration-150 group"
                       >
-                        <div className="w-12 h-8 rounded-md overflow-hidden bg-background flex-shrink-0 border border-border/40">
+                        <div className="w-12 h-8 rounded-md overflow-hidden bg-background shrink-0 border border-border/40">
                           {item.content_type === 'Image' ? (
                             <img src={mediaUrl} alt="" className="w-full h-full object-cover" />
                           ) : item.content_type === 'Video' ? (
@@ -1192,34 +1189,14 @@ export default function ScreensPage() {
                 onChange={(event) => {
                   const purpose = event.target.value as ScreenPurpose;
                   setEditFormPurpose(purpose);
-                  if (purpose === 'truck_gate') {
+                  if (purpose === 'production_dashboard') {
                     setEditFormDefaultContentId('');
                   }
                 }}
               >
-                <option value="truck_gate">Truck Token Display</option>
+                <option value="production_dashboard">Production Data Display</option>
               </select>
             </div>
-            {editFormPurpose === 'truck_gate' && (
-              <ScreenGateSelect
-                gateOptions={gateOptions}
-                value={editFormGates}
-                onChange={setEditFormGates}
-                required
-              />
-            )}
-            {editFormPurpose !== 'truck_gate' && (
-              <div>
-                <label className="input-label">Default content</label>
-                <select className="input" value={editFormDefaultContentId} onChange={(event) => setEditFormDefaultContentId(event.target.value)}>
-                  <option value="">None</option>
-                  {contentItems.map((item) => (
-                    <option key={item.id} value={item.id}>{item.name}</option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-muted-foreground">Shown when no scheduled playlist item is active.</p>
-              </div>
-            )}
           </div>
         </Modal>
 

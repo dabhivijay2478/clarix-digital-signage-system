@@ -226,8 +226,10 @@ pub async fn edit_screen(
     production_dashboard_id: Option<String>,
     default_content_id: Option<String>,
     pool: State<'_, DbPool>,
+    events: State<'_, crate::lan::server::SyncEventBus>,
 ) -> Result<(), String> {
     let pool = pool.inner().clone();
+    let event_bus = events.inner().clone();
     let orientation_val = orientation.unwrap_or_else(|| "Landscape".to_string());
     let w_val = resolution_w.unwrap_or(1920);
     let h_val = resolution_h.unwrap_or(1080);
@@ -240,6 +242,7 @@ pub async fn edit_screen(
             params![name, location, ip_address, orientation_val, w_val, h_val, playlist_id, purpose_val, gate_val, production_dashboard_id, default_content_id, id],
         )
         .map_err(|e| e.to_string())?;
+        let _ = crate::lan::server::publish_revision(&pool, &event_bus);
         Ok(())
     })
     .await

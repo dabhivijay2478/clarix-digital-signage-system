@@ -179,6 +179,36 @@
   --sidebar-ring: #10b981;
 }
 
+/* Standalone signage output always uses a bright, high-contrast display theme,
+   independent of the controller application's selected theme. */
+.production-player-surface {
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #000000;
+  --card: #ffffff;
+  --card-foreground: #000000;
+  --popover: #ffffff;
+  --popover-foreground: #000000;
+  --primary: #059669;
+  --primary-foreground: #ffffff;
+  --muted: #f1f5f9;
+  --muted-foreground: #000000;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #10b981;
+}
+
+/* Signage is read from a distance, so player typography must stay large and
+   solid black even when a child component carries an application-theme color. */
+.production-player-surface,
+.production-player-surface * {
+  color: #000000 !important;
+}
+
+.production-player-surface .recharts-text {
+  fill: #000000 !important;
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
    TAILWIND THEME CONFIGURATION
    ───────────────────────────────────────────────────────────────────────────── */
