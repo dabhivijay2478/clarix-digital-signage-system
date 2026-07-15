@@ -1,7 +1,9 @@
 use anyhow::Result;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::{params, OptionalExtension};
 use std::path::Path;
+use crate::auth_config::{configured_admin_user, AdminUserConfig};
 use crate::models::{DeviceIdentity, DeviceRole, NETWORK_PROTOCOL_VERSION};
 
 pub type DbPool = Pool<SqliteConnectionManager>;
@@ -37,9 +39,26 @@ pub fn init_db(app_data_dir: &str) -> Result<DbPool> {
 
     // Run schema migrations
     conn.execute_batch(SCHEMA)?;
+    seed_admin_user(&conn)?;
 
     // Run dynamic migrations (in SQLite, we gracefully ignore column addition errors if they already exist)
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN operating_hours TEXT DEFAULT '{}'", []);
+    let _ = conn.execute("ALTER TABLE active_trucks ADD COLUMN loading_duration INTEGER", []);
+    let _ = conn.execute("ALTER TABLE dispatched_trucks ADD COLUMN loading_duration INTEGER", []);
+    
+    // Backfill loading_duration for historical records
+    let _ = conn.execute(
+        "UPDATE dispatched_trucks
+         SET loading_duration = CAST((julianday(out_at) - julianday(loading_at)) * 86400 AS INTEGER)
+         WHERE loading_duration IS NULL AND loading_at IS NOT NULL AND out_at IS NOT NULL",
+        [],
+    );
+    let _ = conn.execute(
+        "UPDATE active_trucks
+         SET loading_duration = CAST((julianday(out_at) - julianday(loading_at)) * 86400 AS INTEGER)
+         WHERE loading_duration IS NULL AND loading_at IS NOT NULL AND out_at IS NOT NULL",
+        [],
+    );
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN playlist_id TEXT", []);
     let _ = conn.execute("ALTER TABLE playlist_items ADD COLUMN display_schedule TEXT DEFAULT '{}'", []);
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN device_id TEXT", []);
@@ -118,31 +137,25 @@ const SCHEMA: &str = r#"
         id                  TEXT PRIMARY KEY,
         registration_number TEXT NOT NULL,
         gate_no             TEXT,
-        is_waiting          BOOLEAN NOT NULL DEFAULT 0,
-        is_loading          BOOLEAN NOT NULL DEFAULT 0,
-        is_in               BOOLEAN NOT NULL DEFAULT 0,
-        is_out              BOOLEAN NOT NULL DEFAULT 0,
         waiting_at          TEXT,
         loading_at          TEXT,
         in_at               TEXT,
         out_at              TEXT,
-        created_at          TEXT NOT NULL
+        created_at          TEXT NOT NULL,
+        loading_duration    INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS active_trucks (
         id                  TEXT PRIMARY KEY,
         registration_number TEXT NOT NULL,
         gate_no             TEXT,
-        is_waiting          BOOLEAN NOT NULL DEFAULT 0,
-        is_loading          BOOLEAN NOT NULL DEFAULT 0,
-        is_in               BOOLEAN NOT NULL DEFAULT 0,
-        is_out              BOOLEAN NOT NULL DEFAULT 0,
         waiting_at          TEXT,
         loading_at          TEXT,
         in_at               TEXT,
         out_at              TEXT,
         created_at          TEXT NOT NULL,
-        order_index         INTEGER NOT NULL DEFAULT 0
+        order_index         INTEGER NOT NULL DEFAULT 0,
+        loading_duration    INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS content_items (
@@ -397,6 +410,62 @@ fn seed_default_marquee(conn: &rusqlite::Connection) -> Result<()> {
          VALUES (1, 0, '', 45, ?1)",
         rusqlite::params![chrono::Utc::now().to_rfc3339()],
     )?;
+    Ok(())
+}
+
+fn seed_admin_user(conn: &rusqlite::Connection) -> Result<()> {
+    if let Some(admin) = configured_admin_user() {
+        upsert_admin_user(conn, &admin)?;
+        tracing::info!("Configured admin user ensured from ADMIN_USER");
+    } else {
+        tracing::warn!("ADMIN_USER is not configured; no admin user was seeded");
+    }
+
+    Ok(())
+}
+
+fn upsert_admin_user(conn: &rusqlite::Connection, admin: &AdminUserConfig) -> Result<()> {
+    let normalized_email = admin.email.trim().to_lowercase();
+    let now = chrono::Utc::now().to_rfc3339();
+    let existing_id: Option<String> = conn
+        .query_row(
+            "SELECT id FROM users WHERE lower(email) = ?1",
+            params![normalized_email],
+            |row| row.get(0),
+        )
+        .optional()?;
+
+    if let Some(user_id) = existing_id {
+        conn.execute(
+            "UPDATE users
+             SET name = ?1, email = ?2, password_hash = ?3, role = ?4, is_developer = ?5, updated_at = ?6
+             WHERE id = ?7",
+            params![
+                admin.name.trim(),
+                admin.email.trim(),
+                admin.password.trim(),
+                admin.role.trim(),
+                admin.is_developer,
+                now,
+                user_id,
+            ],
+        )?;
+    } else {
+        conn.execute(
+            "INSERT INTO users (id, name, email, password_hash, role, is_developer, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+            params![
+                uuid::Uuid::new_v4().to_string(),
+                admin.name.trim(),
+                admin.email.trim(),
+                admin.password.trim(),
+                admin.role.trim(),
+                admin.is_developer,
+                now,
+            ],
+        )?;
+    }
+
     Ok(())
 }
 

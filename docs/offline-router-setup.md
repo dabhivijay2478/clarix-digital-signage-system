@@ -92,6 +92,8 @@ Use this when the Samsung display should open the controller-hosted browser play
 5. Save and launch.
 6. If the page does not load, test `http://<controller-ip>:7420/v1/health` from another device on the same router.
 
+URL Launcher is the simple controller-hosted option. For the locked-down Clarix Tizen receiver, signed `.wgt` packaging, recovery behavior, and Custom App boot configuration, use [`tizen/clarix-player-receiver/README.md`](../tizen/clarix-player-receiver/README.md).
+
 ## Recommended Static IP or DHCP Reservation
 
 After the controller works, reserve its IP address in the router so the player URL does not change.
@@ -132,4 +134,3 @@ Use this order when a display cannot show content:
 | Samsung display opens old address | Controller IP changed | Add a DHCP reservation and update URL Launcher |
 | Works on controller computer only | Using `localhost` or `127.0.0.1` | Use the controller LAN IP, not localhost |
 | Playlist assigned but screen says no feed | Playlist was not saved/published or schedule is not eligible | Save playlist, publish revision, and check schedule times |
-

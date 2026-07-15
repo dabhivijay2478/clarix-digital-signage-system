@@ -3,6 +3,7 @@
 import { Suspense } from 'react'
 
 import TruckTokenDisplay from '@/components/TruckTokenDisplay'
+import PlayerThemeLock from '@/app/player/PlayerThemeLock'
 import { useTruckStore } from '@/store/truckStore'
 
 function GateDisplayContent() {
@@ -13,8 +14,32 @@ function GateDisplayContent() {
 
 export default function GateDisplayPage() {
   return (
-    <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-black text-white">Loading Truck Token Display...</div>}>
-      <GateDisplayContent />
-    </Suspense>
+    <>
+      <PlayerThemeLock />
+      <Suspense
+        fallback={(
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: '#f4f6f8',
+              color: '#111827',
+              fontFamily: 'system-ui, sans-serif',
+              fontSize: 24,
+            }}
+          >
+            Loading Truck Token Display...
+          </div>
+        )}
+      >
+        <GateDisplayContent />
+      </Suspense>
+    </>
   )
 }

@@ -102,6 +102,7 @@ pub async fn start_controller_server(
     let state = AppState { pool, media_dir, identity, events, truck_alerts };
 
     let browser_routes = Router::new()
+        .route("/v1/health", get(health))
         .route("/v1/browser/events", get(stream_browser_events))
         .route("/v1/browser/truck-alerts", get(stream_browser_truck_alerts))
         .route("/api/screens", get(read_screens))
@@ -110,16 +111,15 @@ pub async fn start_controller_server(
         .route("/api/schedule", get(read_schedule))
         .route("/api/marquee", get(read_marquee))
         .route("/api/trucks", get(read_active_trucks).post(write_active_trucks))
+        .route("/api/trucks/dispatch-summary", get(read_truck_dispatch_summary))
         .route("/api/production/dashboards", get(read_production_dashboards))
         .route("/api/production/dashboards/{id}", get(read_production_dashboard))
         .route("/api/production/datasets/{id}", get(read_production_dataset))
         .route("/media/{filename}", get(legacy_media))
         .route("/presentation/{filename}", get(presentation_viewer))
-        .route("/api/proxy", get(proxy_url))
-        .layer(CorsLayer::permissive());
+        .route("/api/proxy", get(proxy_url));
 
     let router = Router::new()
-        .route("/v1/health", get(health))
         .route("/v1/pairing/requests", post(create_pairing_request))
         .route("/v1/pairing/requests/{id}", get(get_pairing_request))
         .route("/v1/players/heartbeat", post(player_heartbeat))
@@ -137,6 +137,7 @@ pub async fn start_controller_server(
         .route_service("/trucks/display", ServeFile::new(browser_assets_dir.join("trucks/display.html")))
         .route_service("/trucks/display/", ServeFile::new(browser_assets_dir.join("trucks/display.html")))
         .fallback_service(ServeDir::new(browser_assets_dir))
+        .layer(CorsLayer::permissive())
         .with_state(state);
 
     tracing::info!("MG Enterprise controller listening on fixed port {port}");
@@ -148,8 +149,8 @@ pub async fn start_controller_server(
     Ok(port)
 }
 
-// CORS is handled by tower_http::cors::CorsLayer::permissive() on the browser_routes group.
-// This allows all origins, methods, and headers — including proper OPTIONS preflight handling.
+// CORS is permissive for the whole LAN server so packaged TV receivers can
+// fetch controller-hosted player HTML and static assets from a file:// app.
 
 async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
@@ -386,6 +387,19 @@ async fn write_active_trucks(
 ) -> Result<StatusCode, (StatusCode, String)> {
     save_active_truck_snapshot(&state.pool, trucks).map_err(internal_error)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn read_truck_dispatch_summary(
+    State(state): State<AppState>,
+) -> Result<Json<crate::models::TruckDispatchSummary>, (StatusCode, String)> {
+    let pool = state.pool.clone();
+    let summary = tokio::task::spawn_blocking(move || {
+        crate::commands::trucks::query_truck_dispatch_summary(&pool)
+    })
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(summary))
 }
 
 async fn read_production_dashboards(
@@ -918,25 +932,29 @@ fn query_active_trucks(pool: &DbPool) -> anyhow::Result<Vec<ActiveTruck>> {
     let conn = pool.get()?;
     let mut stmt = conn.prepare(
         "SELECT id, registration_number, gate_no,
-                is_waiting, is_loading, is_in, is_out,
-                waiting_at, loading_at, in_at, out_at, created_at
+                waiting_at, loading_at, in_at, out_at, created_at, loading_duration
          FROM active_trucks
          ORDER BY order_index ASC, created_at ASC",
     )?;
     let rows = stmt.query_map([], |row| {
+        let waiting_at: Option<String> = row.get(3)?;
+        let loading_at: Option<String> = row.get(4)?;
+        let in_at: Option<String> = row.get(5)?;
+        let out_at: Option<String> = row.get(6)?;
         Ok(ActiveTruck {
             id: row.get(0)?,
             registration_number: row.get(1)?,
             gate_no: row.get(2)?,
-            is_waiting: row.get(3)?,
-            is_loading: row.get(4)?,
-            is_in: row.get(5)?,
-            is_out: row.get(6)?,
-            waiting_at: row.get(7)?,
-            loading_at: row.get(8)?,
-            in_at: row.get(9)?,
-            out_at: row.get(10)?,
-            created_at: row.get(11)?,
+            is_waiting: waiting_at.is_some(),
+            is_loading: loading_at.is_some(),
+            is_in: in_at.is_some(),
+            is_out: out_at.is_some(),
+            waiting_at,
+            loading_at,
+            in_at,
+            out_at,
+            created_at: row.get(7)?,
+            loading_duration: row.get(8)?,
         })
     })?;
 
@@ -956,9 +974,8 @@ fn save_active_truck_snapshot(pool: &DbPool, trucks: Vec<ActiveTruck>) -> anyhow
         let mut stmt = tx.prepare(
             "INSERT INTO active_trucks (
                 id, registration_number, gate_no,
-                is_waiting, is_loading, is_in, is_out,
-                waiting_at, loading_at, in_at, out_at, created_at, order_index
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                waiting_at, loading_at, in_at, out_at, created_at, order_index, loading_duration
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         )?;
 
         for (index, truck) in trucks.into_iter().enumerate() {
@@ -966,16 +983,13 @@ fn save_active_truck_snapshot(pool: &DbPool, trucks: Vec<ActiveTruck>) -> anyhow
                 truck.id,
                 truck.registration_number,
                 truck.gate_no,
-                truck.is_waiting,
-                truck.is_loading,
-                truck.is_in,
-                truck.is_out,
                 truck.waiting_at,
                 truck.loading_at,
                 truck.in_at,
                 truck.out_at,
                 truck.created_at,
                 index as i64,
+                truck.loading_duration,
             ])?;
         }
     }

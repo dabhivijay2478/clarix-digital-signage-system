@@ -25,14 +25,24 @@ export function previewTruckStatusUpdate(truck: Truck, field: TruckStatusField, 
       updated.loading_at = time;
       updated.in_at = time;
     }
-    if (field === 'is_out') updated.out_at = time;
+    if (field === 'is_out') {
+      updated.out_at = time;
+      if (updated.loading_at) {
+        const start = new Date(updated.loading_at).getTime();
+        const end = new Date(time).getTime();
+        updated.loading_duration = Math.max(0, Math.floor((end - start) / 1000));
+      }
+    }
   } else {
     if (field === 'is_waiting') updated.waiting_at = null;
     if (field === 'is_loading' || field === 'is_in') {
       updated.loading_at = null;
       updated.in_at = null;
     }
-    if (field === 'is_out') updated.out_at = null;
+    if (field === 'is_out') {
+      updated.out_at = null;
+      updated.loading_duration = null;
+    }
   }
 
   if (!value) {
@@ -43,6 +53,7 @@ export function previewTruckStatusUpdate(truck: Truck, field: TruckStatusField, 
       updated.in_at = null;
       updated.is_out = false;
       updated.out_at = null;
+      updated.loading_duration = null;
     } else if (field === 'is_loading' || field === 'is_in') {
       updated.is_loading = false;
       updated.loading_at = null;
@@ -50,6 +61,7 @@ export function previewTruckStatusUpdate(truck: Truck, field: TruckStatusField, 
       updated.in_at = null;
       updated.is_out = false;
       updated.out_at = null;
+      updated.loading_duration = null;
     }
   }
 

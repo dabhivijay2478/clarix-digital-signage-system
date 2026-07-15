@@ -98,6 +98,32 @@ type TruckImportRow = {
   gate_no: string
 }
 
+function getGateColorClass(gateNo: string | null | undefined): string {
+  if (!gateNo) {
+    return 'bg-zinc-500/10 text-zinc-400 border-zinc-500/15'
+  }
+  const cleanGate = gateNo.trim().toUpperCase()
+  
+  let hash = 0
+  for (let i = 0; i < cleanGate.length; i++) {
+    hash = cleanGate.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  
+  const colors = [
+    'bg-emerald-500/10 text-emerald-400 border-emerald-500/15',
+    'bg-cyan-500/10 text-cyan-400 border-cyan-500/15',
+    'bg-indigo-500/10 text-indigo-400 border-indigo-500/15',
+    'bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/15',
+    'bg-amber-500/10 text-amber-400 border-amber-500/15',
+    'bg-rose-500/10 text-rose-400 border-rose-500/15',
+    'bg-sky-500/10 text-sky-400 border-sky-500/15',
+    'bg-orange-500/10 text-orange-400 border-orange-500/15',
+  ]
+  
+  const index = Math.abs(hash) % colors.length
+  return colors[index]
+}
+
 function makeGateNormalizer(configuredGates: string[]) {
   return function normalizeGateNo(value: string | null | undefined): string {
     const raw = (value ?? '').trim().toLowerCase()
@@ -157,17 +183,21 @@ function formatDurationFrom(start: string | null | undefined, end?: string | nul
   const totalMinutes = Math.floor((endTime - startTime) / 60000)
   const hours = Math.floor(totalMinutes / 60)
   const minutes = totalMinutes % 60
-  if (hours > 0) return `${hours}h ${minutes}m`
-  return `${minutes}m`
+  
+  const paddedHours = String(hours).padStart(2, '0')
+  const paddedMinutes = String(minutes).padStart(2, '0')
+  return `${paddedHours}:${paddedMinutes}`
 }
 
 function formatDurationSeconds(seconds: number | null | undefined): string {
-  if (!seconds || seconds < 0) return '—'
+  if (seconds === null || seconds === undefined || seconds < 0) return '—'
   const totalMinutes = Math.floor(seconds / 60)
   const hours = Math.floor(totalMinutes / 60)
   const minutes = totalMinutes % 60
-  if (hours > 0) return `${hours}h ${minutes}m`
-  return `${minutes}m`
+  
+  const paddedHours = String(hours).padStart(2, '0')
+  const paddedMinutes = String(minutes).padStart(2, '0')
+  return `${paddedHours}:${paddedMinutes}`
 }
 
 function parseDelimitedText(text: string, delimiter = ','): string[][] {
@@ -385,7 +415,7 @@ export default function TrucksPage() {
         await truckAlertsApi.saveDispatchedTruck(preview)
         await refreshDispatchSummary()
         showToast(`Truck "${truck.registration_number}" dispatched and saved to database`, 'success')
-        deleteTruck(truck.id)
+        // Do not delete truck so it remains in the store and lists
       }
 
       const { screensApi, localNetworkApi } = await import('@/lib/tauri')
@@ -468,12 +498,21 @@ export default function TrucksPage() {
   )
 
   const filteredTrucks = trucks.filter((t) => {
-    if (t.is_out) return false
     const matchesSearch = t.registration_number.toLowerCase().includes(search.toLowerCase()) ||
                          (t.gate_no ?? '').toLowerCase().includes(search.toLowerCase())
     if (!matchesSearch) return false
-    if (activeGateTab !== 'all') return (t.gate_no ?? '').toLowerCase() === activeGateTab
-    return true
+
+    if (activeGateTab === 'dispatched') {
+      return t.is_out === true
+    }
+
+    if (activeGateTab === 'all') {
+      return true
+    }
+
+    // Gate tabs: only active (non-dispatched) trucks for that gate
+    if (t.is_out) return false
+    return (t.gate_no ?? '').toLowerCase() === activeGateTab
   })
 
   const gateRanks = useMemo(() => {
@@ -563,7 +602,7 @@ export default function TrucksPage() {
       {/* ── Truck Table Section ───────────────────────────────────────────────── */}
       <div className="space-y-4">
         {/* Gate Tabs */}
-        <div className="flex border-b border-border/60">
+        <div className="flex border-b border-border/60 overflow-x-auto whitespace-nowrap scrollbar-none">
           <button
             onClick={() => setActiveGateTab('all')}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer ${
@@ -587,6 +626,16 @@ export default function TrucksPage() {
               Gate {gateNum.toUpperCase()}
             </button>
           ))}
+          <button
+            onClick={() => setActiveGateTab('dispatched')}
+            className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer ${
+              activeGateTab === 'dispatched'
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Dispatched / Out
+          </button>
         </div>
 
         {/* Action bar */}
@@ -690,7 +739,17 @@ export default function TrucksPage() {
                           <div>
                             <span className="font-mono font-semibold text-sm">{truck.registration_number}</span>
                             <span className="mt-0.5 block text-[10px] text-muted-foreground/70">
-                              Waiting {formatDurationFrom(truck.waiting_at)}
+                              {truck.is_out ? (
+                                <span className="text-emerald-500 font-semibold">
+                                  Dispatched (Loaded for {formatDurationSeconds(truck.loading_duration)})
+                                </span>
+                              ) : truck.is_loading ? (
+                                <span className="text-blue-500 font-medium">
+                                  Loading for {formatDurationFrom(truck.loading_at)}
+                                </span>
+                              ) : (
+                                `Waiting ${formatDurationFrom(truck.waiting_at)}`
+                              )}
                             </span>
                           </div>
                         </TableCell>
@@ -739,7 +798,7 @@ export default function TrucksPage() {
                         </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           {truck.gate_no ? (
-                            <Badge variant="secondary" className="bg-primary/8 text-primary border-primary/15 text-[11px] font-semibold uppercase">
+                            <Badge variant="outline" className={cn("text-[11px] font-bold uppercase", getGateColorClass(truck.gate_no))}>
                               {truck.gate_no}
                             </Badge>
                           ) : (
@@ -749,22 +808,23 @@ export default function TrucksPage() {
                         <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                           <Checkbox
                             checked={truck.is_waiting ?? false}
+                            disabled={truck.is_out}
                             onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_waiting', checked === true)}
                           />
                         </TableCell>
                         <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                           <Checkbox
                             checked={truck.is_loading ?? false}
-                            disabled={!canLoading || !canAdvanceByQueue}
-                            title={!canAdvanceByQueue ? 'Only first and second trucks in this gate queue can change status.' : undefined}
+                            disabled={truck.is_out || !canLoading || !canAdvanceByQueue}
+                            title={truck.is_out ? undefined : (!canAdvanceByQueue ? 'Only first and second trucks in this gate queue can change status.' : undefined)}
                             onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_loading', checked === true)}
                           />
                         </TableCell>
                         <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                           <Checkbox
                             checked={truck.is_out ?? false}
-                            disabled={!canOut}
-                            title={!canAdvanceByQueue ? 'Only first and second trucks in this gate queue can change status.' : undefined}
+                            disabled={truck.is_out || !canOut}
+                            title={truck.is_out ? undefined : (!canAdvanceByQueue ? 'Only first and second trucks in this gate queue can change status.' : undefined)}
                             onCheckedChange={(checked) => handleTruckStatusChange(truck, 'is_out', checked === true)}
                           />
                         </TableCell>
@@ -778,22 +838,26 @@ export default function TrucksPage() {
                             >
                               <Eye className="size-3.5" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="size-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => openEditTruck(truck.id)}
-                            >
-                              <Edit2 className="size-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="size-7 text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => handleDeleteTruck(truck.id)}
-                            >
-                              <Trash2 className="size-3.5" />
-                            </Button>
+                            {!truck.is_out && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="size-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => openEditTruck(truck.id)}
+                                >
+                                  <Edit2 className="size-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="size-7 text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => handleDeleteTruck(truck.id)}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -962,6 +1026,20 @@ export default function TrucksPage() {
                 </div>
               </div>
             </div>
+
+            {/* Duration Summary */}
+            {selectedTruckForDetails.loading_at && (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground font-medium">Total Loading Time:</span>
+                  <span className="font-mono font-bold text-primary text-sm">
+                    {selectedTruckForDetails.is_out 
+                      ? formatDurationSeconds(selectedTruckForDetails.loading_duration)
+                      : formatDurationFrom(selectedTruckForDetails.loading_at)}
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Created timestamp */}
             <div className="text-[11px] text-muted-foreground text-right border-t border-border/40 pt-3">

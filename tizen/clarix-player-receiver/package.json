@@ -1,0 +1,11 @@
+{
+  "name": "clarix-player-receiver-tizen",
+  "version": "1.0.27",
+  "private": true,
+  "scripts": {
+    "configure": "node scripts/configure.mjs",
+    "test": "node --test test/*.test.js",
+    "package:wgt": "node scripts/package-wgt.mjs",
+    "prepare:usb": "node scripts/prepare-usb.mjs"
+  }
+}

@@ -7,8 +7,8 @@ import { useContent } from '../../hooks/useContent';
 import ScreenCard from '../../components/ScreenCard';
 import Modal from '../../components/Modal';
 import { showToast } from '../../components/Toast';
-import type { AppWeekday, ContentItem, PlaylistItem, PlaylistItemDaySchedule, PlaylistItemSchedule, ProductionDashboard, Screen, ScreenPurpose, TransitionEffect } from '../../lib/types';
-import { customConfirm, getBrowserControllerOrigin, productionApi } from '../../lib/tauri';
+import type { AppWeekday, ContentItem, PlaylistItem, PlaylistItemDaySchedule, PlaylistItemSchedule, Screen, ScreenPurpose, TransitionEffect } from '../../lib/types';
+import { customConfirm, getBrowserControllerOrigin } from '../../lib/tauri';
 import {
   APP_WEEKDAYS,
   defaultPlaylistItemDayTimes,
@@ -46,7 +46,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuthStore } from '@/store/authStore';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useGateStore, isValidGateNumber } from '@/store/gateStore';
-import { assignScreenToGate, unassignScreenFromGate } from '@/lib/gate-binding';
+import { assignScreenToGate, assignScreenToGates } from '@/lib/gate-binding';
+import ScreenGateSelect from '@/components/ScreenGateSelect';
+import { formatScreenGatesLabel, normalizeScreenGateSelection, parseScreenGates, serializeScreenGates } from '@/lib/screen-gates';
 
 const ITEM_SCHEDULE_DAY_LABELS: Record<AppWeekday, string> = {
   Mon: 'Monday',
@@ -173,7 +175,7 @@ export default function ScreensPage() {
   const [formName, setFormName] = useState('');
 
   // Gate store configuration hooks
-  const { gates, assignments, addGate, removeGate, assignScreen, unassignScreen, getAllAssignedScreenIds, unassignScreenFromAll, getAssignedGateForScreen, updateGateLoadingDuration } = useGateStore();
+  const { gates, assignments, addGate, removeGate, assignScreenToGates: assignScreenToGatesInStore, getAllAssignedScreenIds, unassignScreenFromAll, getAssignedGatesForScreen, updateGateLoadingDuration } = useGateStore();
   const authUser = useAuthStore((s) => s.user);
   const { hasPermission, isSuperAdmin } = usePermissions();
   const [showAddGate, setShowAddGate] = useState(false);
@@ -192,22 +194,16 @@ export default function ScreensPage() {
   const [formLocation, setFormLocation] = useState('');
   const [formIp, setFormIp] = useState('');
   const [formOrientation, setFormOrientation] = useState('Landscape');
-  const [formWidth, setFormWidth] = useState('1920');
-  const [formHeight, setFormHeight] = useState('1080');
-  const [formGate, setFormGate] = useState<string>('');
+  const [formGates, setFormGates] = useState<string[]>([]);
 
   const [editingScreen, setEditingScreen] = useState<Screen | null>(null);
   const [editFormName, setEditFormName] = useState('');
   const [editFormLocation, setEditFormLocation] = useState('');
   const [editFormIp, setEditFormIp] = useState('');
   const [editFormOrientation, setEditFormOrientation] = useState('Landscape');
-  const [editFormWidth, setEditFormWidth] = useState('1920');
-  const [editFormHeight, setEditFormHeight] = useState('1080');
-  const [editFormPurpose, setEditFormPurpose] = useState<ScreenPurpose>('playlist');
-  const [editFormGate, setEditFormGate] = useState<string>('');
-  const [editFormProductionDashboardId, setEditFormProductionDashboardId] = useState('');
+  const [editFormPurpose, setEditFormPurpose] = useState<ScreenPurpose>('truck_gate');
+  const [editFormGates, setEditFormGates] = useState<string[]>([]);
   const [editFormDefaultContentId, setEditFormDefaultContentId] = useState('');
-  const [productionDashboards, setProductionDashboards] = useState<ProductionDashboard[]>([]);
 
   // Screen Operating Hours Modal state
   const [hoursScreen, setHoursScreen] = useState<Screen | null>(null);
@@ -255,12 +251,6 @@ export default function ScreensPage() {
     [playlists, selectedScreen]
   );
   const autoCreatingPlaylistFor = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    productionApi.getDashboards()
-      .then(setProductionDashboards)
-      .catch((error) => console.warn('Failed to load production dashboards for screen editor:', error));
-  }, []);
 
   useEffect(() => {
     if (!selectedScreenId) {
@@ -514,30 +504,35 @@ export default function ScreensPage() {
     gates.forEach((gate) => {
       if (gate.number) values.add(gate.number.toLowerCase());
     });
-    ['d4', 'd5', editingScreen?.gate, editFormGate].forEach((gate) => {
-      const normalized = gate?.trim().toLowerCase();
+    ['d4', 'd5', editingScreen?.gate, ...editFormGates, ...formGates].forEach((gate) => {
+      parseScreenGates(typeof gate === 'string' ? gate : null).forEach((value) => values.add(value));
+      const normalized = typeof gate === 'string' ? gate.trim().toLowerCase() : '';
       if (normalized) values.add(normalized);
     });
     return [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  }, [gates, editingScreen?.gate, editFormGate]);
+  }, [gates, editingScreen?.gate, editFormGates, formGates]);
 
   const handleAdd = async () => {
     if (!formName.trim()) return;
+    const normalizedFormGates = normalizeScreenGateSelection(formGates);
     try {
       const screen = await addScreen(
         formName,
         formLocation,
         formIp || undefined,
         formOrientation,
-        parseInt(formWidth) || 1920,
-        parseInt(formHeight) || 1080,
+        1920,
+        1080,
         undefined,
-        undefined,
-        formGate || null
+        'truck_gate',
+        serializeScreenGates(normalizedFormGates)
       );
-      if (formGate) {
-        await assignScreenToGate(screen, formGate);
-        showToast(`Screen "${formName}" added and assigned to Gate ${formGate.toUpperCase()}`, 'success');
+      if (normalizedFormGates.length > 0) {
+        await assignScreenToGates(screen, normalizedFormGates);
+        showToast(
+          `Screen "${formName}" added and assigned to ${formatScreenGatesLabel(normalizedFormGates)}`,
+          'success',
+        );
       } else {
         showToast(`Screen "${formName}" added`, 'success');
       }
@@ -546,9 +541,7 @@ export default function ScreensPage() {
       setFormLocation('');
       setFormIp('');
       setFormOrientation('Landscape');
-      setFormWidth('1920');
-      setFormHeight('1080');
-      setFormGate('');
+      setFormGates([]);
     } catch {
       showToast('Failed to add screen', 'error');
     }
@@ -599,57 +592,47 @@ export default function ScreensPage() {
     setEditFormLocation(screen.location || '');
     setEditFormIp(screen.ip_address || '');
     setEditFormOrientation(screen.orientation || 'Landscape');
-    setEditFormWidth(String(screen.resolution?.width ?? 1920));
-    setEditFormHeight(String(screen.resolution?.height ?? 1080));
-    setEditFormPurpose(screen.purpose ?? 'playlist');
-    const gateNum = getAssignedGateForScreen(screen.id) || screen.gate || '';
-    setEditFormGate(gateNum);
-    setEditFormProductionDashboardId(screen.production_dashboard_id ?? '');
+    setEditFormPurpose(screen.purpose === 'playlist' ? 'truck_gate' : (screen.purpose ?? 'truck_gate'));
+    const assignedGates = getAssignedGatesForScreen(screen.id);
+    setEditFormGates(
+      assignedGates.length > 0 ? assignedGates : parseScreenGates(screen.gate),
+    );
     setEditFormDefaultContentId(screen.default_content_id ?? '');
   };
 
   const handleSaveEdit = async () => {
     if (!editingScreen || !editFormName.trim()) return;
-    const normalizedEditGate = editFormGate.trim().toLowerCase();
-    if (editFormPurpose === 'truck_gate' && !normalizedEditGate) {
-      showToast('Please select a gate for the truck token display', 'error');
+    const normalizedEditGates = normalizeScreenGateSelection(editFormGates);
+    if (editFormPurpose === 'truck_gate' && normalizedEditGates.length === 0) {
+      showToast('Please select at least one gate for the truck token display', 'error');
       return;
     }
-    if (normalizedEditGate && !isValidGateNumber(normalizedEditGate)) {
-      showToast('Gate must use a letter and number, for example D4', 'error');
-      return;
+    for (const gateNumber of normalizedEditGates) {
+      if (!isValidGateNumber(gateNumber)) {
+        showToast('Gate must use a letter and number, for example D4', 'error');
+        return;
+      }
     }
 
     try {
-      // 1. Update gate assignment in client store
-      if (normalizedEditGate) {
-        assignScreen(normalizedEditGate, editingScreen.id);
-      } else {
-        unassignScreenFromAll(editingScreen.id);
-      }
+      assignScreenToGatesInStore(editingScreen.id, normalizedEditGates);
 
-      // Determine next dashboard ID based on purpose
-      let nextDashboardId: string | null = null;
-      if (editFormPurpose === 'production_dashboard') {
-        nextDashboardId = editFormProductionDashboardId || null;
-      }
       const nextDefaultContentId = editFormPurpose === 'truck_gate'
         ? null
         : editFormDefaultContentId || null;
 
-      // 2. Persist the change to backend
       await editScreen(
         editingScreen.id,
         editFormName,
         editFormLocation,
         editFormIp || undefined,
         editFormOrientation,
-        parseInt(editFormWidth) || 1920,
-        parseInt(editFormHeight) || 1080,
+        editingScreen.resolution?.width ?? 1920,
+        editingScreen.resolution?.height ?? 1080,
         editingScreen.playlist_id ?? undefined,
         editFormPurpose,
-        normalizedEditGate || null,
-        nextDashboardId,
+        serializeScreenGates(normalizedEditGates),
+        null,
         nextDefaultContentId
       );
 
@@ -736,7 +719,7 @@ export default function ScreensPage() {
                 )}
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {selectedScreen.location || 'No location set'} • {selectedScreen.resolution?.width ?? 1920}x{selectedScreen.resolution?.height ?? 1080} • {selectedScreen.orientation}
+                {selectedScreen.location || 'No location set'} • {selectedScreen.orientation}
               </p>
             </div>
           </div>
@@ -1211,36 +1194,19 @@ export default function ScreensPage() {
                   setEditFormPurpose(purpose);
                   if (purpose === 'truck_gate') {
                     setEditFormDefaultContentId('');
-                    setEditFormProductionDashboardId('');
                   }
                 }}
               >
-                <option value="playlist">General Playlist</option>
-                <option value="truck_gate">Truck Gate Display</option>
-                <option value="production_dashboard">Production Dashboard</option>
+                <option value="truck_gate">Truck Token Display</option>
               </select>
             </div>
             {editFormPurpose === 'truck_gate' && (
-              <div>
-                <label className="input-label">Gate</label>
-                <select className="input" value={editFormGate} onChange={(event) => setEditFormGate(event.target.value)}>
-                  <option value="">Select gate</option>
-                  {gateOptions.map((gate) => (
-                    <option key={gate} value={gate}>{gate.toUpperCase()}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {editFormPurpose === 'production_dashboard' && (
-              <div>
-                <label className="input-label">Production dashboard</label>
-                <select className="input" value={editFormProductionDashboardId} onChange={(event) => setEditFormProductionDashboardId(event.target.value)}>
-                  <option value="">Select dashboard</option>
-                  {productionDashboards.map((dashboard) => (
-                    <option key={dashboard.id} value={dashboard.id}>{dashboard.name}</option>
-                  ))}
-                </select>
-              </div>
+              <ScreenGateSelect
+                gateOptions={gateOptions}
+                value={editFormGates}
+                onChange={setEditFormGates}
+                required
+              />
             )}
             {editFormPurpose !== 'truck_gate' && (
               <div>
@@ -1412,7 +1378,7 @@ export default function ScreensPage() {
                   <tr>
                     <th className="px-4 py-3 text-left font-medium">Name</th>
                     <th className="px-4 py-3 text-left font-medium">Location</th>
-                    <th className="px-4 py-3 text-left font-medium">Resolution</th>
+                    <th className="px-4 py-3 text-left font-medium">Gates</th>
                     <th className="px-4 py-3 text-left font-medium">Status</th>
                     <th className="px-4 py-3 text-right font-medium">Actions</th>
                   </tr>
@@ -1430,7 +1396,11 @@ export default function ScreensPage() {
                         {screen.location || '—'}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
-                        {screen.resolution?.width ?? 1920}×{screen.resolution?.height ?? 1080}
+                        {formatScreenGatesLabel(
+                          getAssignedGatesForScreen(screen.id).length > 0
+                            ? getAssignedGatesForScreen(screen.id)
+                            : parseScreenGates(screen.gate),
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <Badge variant={screen.is_online ? 'default' : 'secondary'} className="text-xs">
@@ -1606,44 +1576,24 @@ export default function ScreensPage() {
               onChange={(e) => setFormIp(e.target.value)}
             />
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1.5">
-              <Label>Orientation</Label>
-              <select
-                className="flex h-9 w-full rounded-md border border-input bg-card px-3 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                value={formOrientation}
-                onChange={(e) => setFormOrientation(e.target.value)}
-              >
-                <option value="Landscape">Landscape</option>
-                <option value="Portrait">Portrait</option>
-                <option value="LandscapeFlipped">Landscape Flipped</option>
-                <option value="PortraitFlipped">Portrait Flipped</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Width</Label>
-              <Input type="number" value={formWidth} onChange={(e) => setFormWidth(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Height</Label>
-              <Input type="number" value={formHeight} onChange={(e) => setFormHeight(e.target.value)} />
-            </div>
-          </div>
           <div className="space-y-1.5">
-            <Label>Assign to Gate (optional)</Label>
+            <Label className="text-base font-semibold">Orientation</Label>
             <select
-              className="flex h-9 w-full rounded-md border border-input bg-card px-3 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-              value={formGate}
-              onChange={(e) => setFormGate(e.target.value)}
+              className="flex h-12 w-full rounded-xl border border-input bg-card px-4 text-base font-medium focus:outline-none focus:ring-2 focus:ring-ring"
+              value={formOrientation}
+              onChange={(e) => setFormOrientation(e.target.value)}
             >
-              <option value="">No gate</option>
-              {gates.map((gate) => (
-                <option key={gate.id} value={gate.number}>
-                  Gate {gate.number.toUpperCase()}
-                </option>
-              ))}
+              <option value="Landscape">Landscape</option>
+              <option value="Portrait">Portrait</option>
+              <option value="LandscapeFlipped">Landscape Flipped</option>
+              <option value="PortraitFlipped">Portrait Flipped</option>
             </select>
           </div>
+          <ScreenGateSelect
+            gateOptions={gateOptions}
+            value={formGates}
+            onChange={setFormGates}
+          />
         </div>
       </Modal>
 
@@ -1689,42 +1639,25 @@ export default function ScreensPage() {
               onChange={(e) => setEditFormIp(e.target.value)}
             />
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1.5">
-              <Label>Orientation</Label>
-              <select
-                className="flex h-9 w-full rounded-md border border-input bg-card px-3 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                value={editFormOrientation}
-                onChange={(e) => setEditFormOrientation(e.target.value)}
-              >
-                <option value="Landscape">Landscape</option>
-                <option value="Portrait">Portrait</option>
-                <option value="LandscapeFlipped">Landscape Flipped</option>
-                <option value="PortraitFlipped">Portrait Flipped</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Width</Label>
-              <Input type="number" value={editFormWidth} onChange={(e) => setFormWidth(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Height</Label>
-              <Input type="number" value={editFormHeight} onChange={(e) => setFormHeight(e.target.value)} />
-            </div>
-          </div>
           <div className="space-y-1.5">
-            <Label>Gate Assignment</Label>
+            <Label className="text-base font-semibold">Orientation</Label>
             <select
-              className="flex h-9 w-full rounded-md border border-input bg-card px-3 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-              value={editFormGate}
-              onChange={(e) => setEditFormGate(e.target.value)}
+              className="flex h-12 w-full rounded-xl border border-input bg-card px-4 text-base font-medium focus:outline-none focus:ring-2 focus:ring-ring"
+              value={editFormOrientation}
+              onChange={(e) => setEditFormOrientation(e.target.value)}
             >
-              <option value="">-- No Gate (Unassigned) --</option>
-              {gates.map((g) => (
-                <option key={g.id} value={g.number}>{g.number.toUpperCase()}</option>
-              ))}
+              <option value="Landscape">Landscape</option>
+              <option value="Portrait">Portrait</option>
+              <option value="LandscapeFlipped">Landscape Flipped</option>
+              <option value="PortraitFlipped">Portrait Flipped</option>
             </select>
           </div>
+          <ScreenGateSelect
+            gateOptions={gateOptions}
+            value={editFormGates}
+            onChange={setEditFormGates}
+            required
+          />
         </div>
       </Modal>
 
@@ -1947,13 +1880,12 @@ export default function ScreensPage() {
                       'Landscape',
                       1920,
                       1080,
+                      undefined,
+                      'truck_gate',
                     )
                     if (!newScreen) throw new Error('Screen creation failed')
                     const gate = await assignScreenToGate(newScreen, assignPickerGate)
-                    const dashboardNote = gate?.productionDashboardId
-                      ? ' · auto-linked gate dashboard'
-                      : ''
-                    showToast(`Screen "${newScreen.name}" created and assigned to gate ${assignPickerGate.toUpperCase()}${dashboardNote}`, 'success')
+                    showToast(`Screen "${newScreen.name}" created and assigned to gate ${assignPickerGate.toUpperCase()}`, 'success')
                     setPickerNewName('')
                     setPickerNewLocation('')
                     setPickerNewIp('')
@@ -1993,10 +1925,7 @@ export default function ScreensPage() {
                     onClick={async () => {
                       if (!assignPickerGate) return
                       const gate = await assignScreenToGate(screen, assignPickerGate)
-                      const dashboardNote = gate?.productionDashboardId
-                        ? ' · auto-linked gate dashboard'
-                        : ''
-                      showToast(`Screen "${screen.name}" assigned to gate ${assignPickerGate.toUpperCase()}${dashboardNote}`, 'success')
+                      showToast(`Screen "${screen.name}" assigned to gate ${assignPickerGate.toUpperCase()}`, 'success')
                       setAssignPickerGate(null)
                     }}
                   >
@@ -2006,7 +1935,7 @@ export default function ScreensPage() {
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold">{screen.name}</p>
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {screen.location || 'No location'} · {screen.resolution.width}×{screen.resolution.height}
+                        {screen.location || 'No location'} · {formatScreenGatesLabel(parseScreenGates(screen.gate))}
                       </p>
                     </div>
                     <Badge variant="outline" className="shrink-0">

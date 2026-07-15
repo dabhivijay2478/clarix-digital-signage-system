@@ -51,9 +51,11 @@ interface GateStore {
   addGate: (number: string) => Gate | null   // returns null if duplicate or invalid
   removeGate: (id: string) => void
   assignScreen: (gateNumber: string, screenId: string) => Gate | null
+  assignScreenToGates: (screenId: string, gateNumbers: string[]) => void
   unassignScreen: (gateNumber: string, screenId: string) => void
   unassignScreenFromAll: (screenId: string) => void
   getAssignedGateForScreen: (screenId: string) => string | null
+  getAssignedGatesForScreen: (screenId: string) => string[]
   getScreensForGate: (gateNumber: string) => string[]
   getAllAssignedScreenIds: () => string[]
   updateGateConfig: (
@@ -104,23 +106,31 @@ export const useGateStore = create<GateStore>()(
       },
 
       assignScreen: (gateNumber, screenId) => {
+        get().assignScreenToGates(screenId, [gateNumber])
         const normalized = normalizeGateNumber(gateNumber)
-        let resolvedGate: Gate | null = null
+        return get().gates.find((g) => g.number === normalized) ?? null
+      },
+
+      assignScreenToGates: (screenId, gateNumbers) => {
+        const normalized = [...new Set(
+          gateNumbers
+            .map((gateNumber) => normalizeGateNumber(gateNumber))
+            .filter((gateNumber) => gateNumber && isValidGateNumber(gateNumber)),
+        )].slice(0, 2)
+
         set((s) => {
-          // First remove from any existing gate
           const newAssignments: GateScreenAssignments = {}
-          for (const [gn, ids] of Object.entries(s.assignments)) {
-            newAssignments[gn] = ids.filter((id) => id !== screenId)
+          for (const [gateNumber, ids] of Object.entries(s.assignments)) {
+            newAssignments[gateNumber] = ids.filter((id) => id !== screenId)
           }
-          // Assign to new gate (avoid duplicates)
-          const existing = newAssignments[normalized] ?? []
-          if (!existing.includes(screenId)) {
-            newAssignments[normalized] = [...existing, screenId]
+          for (const gateNumber of normalized) {
+            const existing = newAssignments[gateNumber] ?? []
+            if (!existing.includes(screenId)) {
+              newAssignments[gateNumber] = [...existing, screenId]
+            }
           }
-          resolvedGate = s.gates.find((g) => g.number === normalized) ?? null
           return { assignments: newAssignments }
         })
-        return resolvedGate
       },
 
       unassignScreen: (gateNumber, screenId) => {
@@ -144,11 +154,15 @@ export const useGateStore = create<GateStore>()(
       },
 
       getAssignedGateForScreen: (screenId) => {
+        return get().getAssignedGatesForScreen(screenId)[0] ?? null
+      },
+
+      getAssignedGatesForScreen: (screenId) => {
         const assignments = get().assignments
-        for (const [gateNumber, ids] of Object.entries(assignments)) {
-          if (ids.includes(screenId)) return gateNumber
-        }
-        return null
+        const gates = Object.entries(assignments)
+          .filter(([, ids]) => ids.includes(screenId))
+          .map(([gateNumber]) => gateNumber)
+        return gates.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
       },
 
       getScreensForGate: (gateNumber) => {

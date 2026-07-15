@@ -474,6 +474,7 @@ pub struct ActiveTruck {
     pub in_at: Option<String>,
     pub out_at: Option<String>,
     pub created_at: String,
+    pub loading_duration: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

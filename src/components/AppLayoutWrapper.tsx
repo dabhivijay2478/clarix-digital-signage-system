@@ -21,8 +21,6 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
   const pathname = usePathname()
   const isPresentation = pathname === '/player'
     || pathname?.startsWith('/player/')
-    || pathname === '/production-data/view'
-    || pathname?.startsWith('/production-data/view/')
     || pathname === '/trucks/display'
     || pathname?.startsWith('/trucks/display/')
   
@@ -68,7 +66,24 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
   }, [isPresentation, trucks])
 
   if (isPresentation) {
-    return <div className="h-screen w-screen select-none overflow-hidden bg-black">{children}</div>
+    return (
+      <div
+        className="mg-player-shell"
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          width: '100%',
+          height: '100%',
+          overflow: 'hidden',
+          background: '#f4f6f8',
+        }}
+      >
+        {children}
+      </div>
+    )
   }
 
   const handleLogin = async (event: React.FormEvent) => {

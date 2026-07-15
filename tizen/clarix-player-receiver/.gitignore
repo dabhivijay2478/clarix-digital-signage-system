@@ -1,0 +1,7 @@
+.buildResult/
+.tizen-build/
+dist/
+server/
+*.wgt
+author-signature.xml
+signature1.xml

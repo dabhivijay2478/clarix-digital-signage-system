@@ -44,6 +44,15 @@ next-env.d.ts
 /src-tauri/target/
 /src-tauri/gen/
 
+# Tizen/Tizen Studio runtime artifacts
+/tizen/clarix-player-receiver/server/
+/tizen/clarix-player-receiver/server/sdktools/sdk-data/emulator/vms/**/*.lock
+/tizen/clarix-player-receiver/server/sdktools/sdk-data/emulator/vms/**/*.log
+/tizen/clarix-player-receiver/server/sdktools/sdk-data/emulator/vms/**/*.bak
+/tizen/clarix-player-receiver/server/sdktools/sdk-data/emulator/vms/.em-*.serialize.lock
+/tizen/clarix-player-receiver/server/sdktools/sdk-data/emulator/vms/.tizen-em-info
+/tizen/clarix-player-receiver/server/sdktools/data/tools/sec-tv-simulator/node_modules/.bin/
+
 # SQLite databases
 *.db
 *.db-journal

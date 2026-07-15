@@ -28,7 +28,7 @@ export interface Screen {
   created_at: string;
 }
 
-export type ScreenPurpose = "playlist" | "truck_gate" | "production_dashboard";
+export type ScreenPurpose = "playlist" | "truck_gate";
 
 export interface ScreenResolution {
   width: number;
@@ -102,63 +102,7 @@ export interface ProductionImportResult {
   detected: string[];
 }
 
-export interface ProductionDataset {
-  id: string;
-  name: string;
-  source_name: string;
-  selected_table_id: string | null;
-  tables: ProductionTable[];
-  created_at: string;
-  updated_at: string;
-}
 
-export interface ProductionDatasetSummary {
-  id: string;
-  name: string;
-  source_name: string;
-  selected_table_id: string | null;
-  table_count: number;
-  row_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ProductionWidgetFilter {
-  key: string;
-  op: string;
-  value: string;
-}
-
-export interface ProductionWidget {
-  id: string;
-  title: string;
-  widget_type: "chart" | "table" | string;
-  chart_type: "line" | "bar" | "area" | "stacked-bar" | "pie" | "kpi-table" | string;
-  source_table_id: string;
-  x_key: string | null;
-  series_keys: string[];
-  measure_key: string | null;
-  group_by_key: string | null;
-  aggregation: "sum" | "avg" | "count" | "min" | "max" | string;
-  filters: ProductionWidgetFilter[];
-  top_n: number | null;
-  color_map: Record<string, string>;
-}
-
-export interface ProductionDashboard {
-  id: string;
-  name: string;
-  dataset_id: string;
-  widgets: ProductionWidget[];
-  layout: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ProductionDashboardBundle {
-  dashboard: ProductionDashboard;
-  dataset: ProductionDataset;
-}
 
 // ── Playlist ────────────────────────────────────────────────────────────────
 
@@ -330,6 +274,7 @@ export interface Truck {
   in_at: string | null;
   out_at: string | null;
   created_at: string;
+  loading_duration?: number | null;
 }
 
 export type TruckStatus = "waiting" | "loading" | "in" | "out" | "registered";

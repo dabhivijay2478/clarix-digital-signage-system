@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  FileSpreadsheet,
   LayoutDashboard,
   Menu,
   Monitor,
@@ -15,6 +14,7 @@ import {
   ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
+  Megaphone,
 } from 'lucide-react'
 import { usePeers } from '@/hooks/usePeers'
 import { APP_VERSION } from '@/lib/constants'
@@ -42,8 +42,8 @@ const navItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/screens', label: 'Screens', icon: Monitor, permission: 'screens' },
   { href: '/content', label: 'Content', icon: PlaySquare, permission: 'content' },
-  { href: '/production-data', label: 'Production Data', icon: FileSpreadsheet, permission: 'production' },
   { href: '/trucks', label: 'Truck Token', icon: Truck, permission: 'trucks' },
+  { href: '/marquee', label: 'Marquee', icon: Megaphone, permission: 'settings' },
   { href: '/team', label: 'Team', icon: Users, permission: 'team' },
   { href: '/settings', label: 'Settings', icon: Settings, permission: 'settings' },
 ]
@@ -57,9 +57,9 @@ function Brand({ compact = false }: { compact?: boolean }) {
   const { appName, appIcon } = useBrandingStore()
   return (
     <div className={cn('flex h-16 items-center gap-3 px-4', compact && 'justify-center px-3')}>
-      <Avatar className={cn('rounded-xl bg-gradient-to-br from-primary to-secondary shadow-lg shadow-primary/20', compact ? 'size-9' : 'size-10')}>
-        {appIcon && <AvatarImage src={appIcon} alt={`${appName} logo`} className="object-contain p-1.5" />}
-        <AvatarFallback className="rounded-xl bg-gradient-to-br from-primary to-secondary font-bold text-primary-foreground text-sm">
+      <Avatar className={cn('rounded-none bg-transparent', compact ? 'size-9' : 'size-10')}>
+        {appIcon && <AvatarImage src={appIcon} alt={`${appName} logo`} className="object-contain" />}
+        <AvatarFallback className="rounded-none bg-transparent font-bold text-foreground text-sm">
           {appName.charAt(0).toUpperCase()}
         </AvatarFallback>
       </Avatar>

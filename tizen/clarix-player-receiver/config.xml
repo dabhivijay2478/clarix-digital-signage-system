@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns="http://www.w3.org/ns/widgets"
+        xmlns:tizen="http://tizen.org/ns/widgets"
+        id="http://mg-enterprise.local/player-receiver"
+        version="1.0.27"
+        viewmodes="fullscreen">
+    <tizen:application id="MgEntRcv01.MGEnterpriseReceiver"
+                       package="MgEntRcv01"
+                       required_version="6.0"/>
+    <content src="index.html"/>
+    <feature name="http://tizen.org/feature/screen.size.all"/>
+    <icon src="logo.png"/>
+    <name>MG Enterprise Receiver</name>
+    <description>Locked-down receiver for a local MG Enterprise controller.</description>
+    <tizen:profile name="tv"/>
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <access origin="*" subdomains="true"/>
+    <tizen:content-security-policy>default-src 'self' http: https: data: blob:; script-src 'self' http: https: 'unsafe-inline' 'unsafe-eval'; style-src 'self' http: https: 'unsafe-inline'; img-src 'self' http: https: data: blob:; connect-src 'self' http: https: ws: wss:; media-src 'self' http: https: data: blob:; font-src 'self' http: https: data:; frame-src 'self' http: https: about: data:; worker-src 'self' http: https: blob:; object-src 'none'; base-uri 'self' http: https:; form-action 'none'</tizen:content-security-policy>
+    <tizen:allow-navigation>http://*/*</tizen:allow-navigation>
+    <tizen:allow-navigation>http://*:*/*</tizen:allow-navigation>
+    <tizen:setting screen-orientation="landscape"
+                   context-menu="disable"
+                   background-support="disable"
+                   encryption="disable"
+                   install-location="auto"
+                   hwkey-event="enable"/>
+</widget>
