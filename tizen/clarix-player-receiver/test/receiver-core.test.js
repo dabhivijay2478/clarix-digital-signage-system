@@ -44,7 +44,7 @@ test("keeps the manifest, CSP, and controller player navigation controlled", () 
 
   assert.match(manifest, /<access origin="\*" subdomains="true"\/>/);
   assert.match(manifest, /<tizen:content-security-policy>[^<]*'unsafe-inline'[^<]*'unsafe-eval'[^<]*frame-src 'self' http: https: about: data:[^<]*<\/tizen:content-security-policy>/);
-  assert.match(manifest, /<tizen:allow-navigation>http:\/\/\*\/\*<\/tizen:allow-navigation>/);
+  assert.match(manifest, /<tizen:allow-navigation>\*<\/tizen:allow-navigation>/);
   assert.match(html, /script-src 'self' http: https: 'unsafe-inline' 'unsafe-eval'/);
   assert.match(html, /connect-src 'self' http: https: ws: wss:/);
   assert.match(html, /frame-src 'self' http: https: about: data:/);
@@ -52,6 +52,7 @@ test("keeps the manifest, CSP, and controller player navigation controlled", () 
   assert.match(html, /placeholder="Controller IP"/);
   assert.match(main, /trusted\.isAllowed\(target\)/);
   assert.match(main, /openControllerPlayer\(\)/);
+  assert.match(main, /window\.location\.href = target/);
   assert.match(main, /loadControllerPlayer\(target\)/);
   assert.match(main, /\/api\/proxy\?url=/);
   assert.match(main, /__CLARIX_CONTROLLER_ORIGIN__/);

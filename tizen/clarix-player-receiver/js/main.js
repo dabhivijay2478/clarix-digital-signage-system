@@ -77,7 +77,23 @@
 
   function injectControllerContext(html, origin) {
     var base = "<base href=\"" + origin + "/\">";
-    var context = "<script>window.__CLARIX_CONTROLLER_ORIGIN__=\"" + origin.replace(/"/g, "%22") + "\";<\/script>";
+    var safeOrigin = origin.replace(/"/g, "%22");
+    var context = "<script>(function(origin){"
+      + "window.__CLARIX_CONTROLLER_ORIGIN__=origin;"
+      + "function fixUrl(value){"
+      + "if(typeof value!=='string')return value;"
+      + "return value.replace(/^http:\\/\\/(?::7420|undefined:7420|null:7420)(\\/|$)/,origin+'$1');"
+      + "}"
+      + "var originalFetch=window.fetch;"
+      + "if(originalFetch){window.fetch=function(input,init){"
+      + "if(typeof input==='string')return originalFetch.call(this,fixUrl(input),init);"
+      + "if(input&&input.url){try{return originalFetch.call(this,new Request(fixUrl(input.url),input),init);}catch(_error){}}"
+      + "return originalFetch.call(this,input,init);};}"
+      + "var OriginalEventSource=window.EventSource;"
+      + "if(OriginalEventSource){window.EventSource=function(url,config){return new OriginalEventSource(fixUrl(url),config);};window.EventSource.prototype=OriginalEventSource.prototype;}"
+      + "function rewriteNode(node){if(!node||!node.getAttribute)return;['src','href','data'].forEach(function(name){var value=node.getAttribute(name);var next=fixUrl(value);if(next!==value)node.setAttribute(name,next);});}"
+      + "try{new MutationObserver(function(records){records.forEach(function(record){for(var i=0;i<record.addedNodes.length;i++){var node=record.addedNodes[i];rewriteNode(node);if(node.querySelectorAll){Array.prototype.forEach.call(node.querySelectorAll('[src],[href],[data]'),rewriteNode);}}});}).observe(document.documentElement,{childList:true,subtree:true});}catch(_error){}"
+      + "})(\"" + safeOrigin + "\");<\/script>";
     if (/<head[^>]*>/i.test(html)) {
       return html.replace(/<head([^>]*)>/i, "<head$1>" + base + context);
     }
@@ -139,7 +155,16 @@
     stopManager();
     status.textContent = "Opening Controller Player...";
     retry.textContent = target;
-    loadControllerPlayer(target);
+    var startedFrom = window.location.href;
+    try {
+      window.location.href = target;
+    } catch (_error) {
+      loadControllerPlayer(target);
+      return;
+    }
+    window.setTimeout(function () {
+      if (window.location.href === startedFrom) loadControllerPlayer(target);
+    }, 1500);
   }
 
   function showPlayer() {
