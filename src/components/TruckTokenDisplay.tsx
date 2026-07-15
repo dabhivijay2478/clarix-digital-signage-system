@@ -15,8 +15,6 @@ import { TRUCK_DISPLAY_CRITICAL_CSS } from './truck-display-critical-styles'
 
 type QueueMode = 'loading' | 'waiting'
 
-const AMNS_LOGO_SRC = '/company-logo/AMNS_Logo_Mid.png?v=transparent-20260716'
-
 interface TruckTokenDisplayProps {
   trucks: Truck[]
   className?: string
@@ -78,13 +76,14 @@ function DisplayTime({ text }: { text: string }) {
 }
 
 const MAX_QUEUE_ROWS = 4
+const PER_GATE_ROWS = 2
 
 function buildBalancedQueueRows(source: Truck[], gates: string[], maxRows = MAX_QUEUE_ROWS): Truck[] {
   if (gates.length === 0) {
     return source.slice(0, maxRows)
   }
 
-  const perGate = Math.max(1, Math.floor(maxRows / gates.length))
+  const perGate = Math.min(PER_GATE_ROWS, Math.max(1, Math.floor(maxRows / gates.length)))
 
   return gates
     .flatMap((gate) => {
@@ -94,6 +93,20 @@ function buildBalancedQueueRows(source: Truck[], gates: string[], maxRows = MAX_
         .slice(0, perGate)
     })
     .slice(0, maxRows)
+}
+
+/** Short board labels so large type fits column widths on 4K. */
+function boardStatusLabel(statusLabel: string): string {
+  switch (statusLabel) {
+    case 'Waiting':
+      return 'WAITING'
+    case 'Loading in.':
+      return 'LOADING'
+    case 'Loading Out.':
+      return 'OUT'
+    default:
+      return statusLabel.toUpperCase()
+  }
 }
 
 function DisplayStatCard({
@@ -154,6 +167,21 @@ function formatTimeOfDay(dateStr: string | null): string {
   } catch {
     return '-'
   }
+}
+
+function getEstWaitLabel(
+  truck: Truck,
+  displayTrucks: Truck[],
+  gateSettings: GateQueueSettings[],
+): string {
+  if (!truck.waiting_at) return '-'
+  const baseTime = new Date(truck.waiting_at)
+  if (Number.isNaN(baseTime.getTime())) return '-'
+  const cyclesWaitMins = getEstimatedWaitMinsForTruck(displayTrucks, truck, gateSettings)
+  const defaultMins = getGateLoadingDurationMins(truck.gate_no, gateSettings)
+  const totalWaitMins = cyclesWaitMins + defaultMins
+  const expectedTime = new Date(baseTime.getTime() + totalWaitMins * 60000)
+  return formatTimeOfDay(expectedTime.toISOString())
 }
 
 function getStatusStyle(statusLabel: string): React.CSSProperties {
@@ -439,7 +467,7 @@ export default function TruckTokenDisplay({
             <div className={`mg-truck-grid${mode === 'waiting' ? ' mg-truck-grid--waiting' : ''}`}>
               <div className="mg-truck-grid-head">
                 <div className="mg-truck-col-gate mg-truck-col-label">Gate</div>
-                <div className="mg-truck-col-plate mg-truck-col-label">Truck Number / License Plate</div>
+                <div className="mg-truck-col-plate mg-truck-col-label">Plate</div>
                 <div className="mg-truck-col-status mg-truck-col-label">Status</div>
                 {mode === 'waiting' && (
                   <div className="mg-truck-col-est mg-truck-col-label">Est. Wait</div>
@@ -487,23 +515,14 @@ export default function TruckTokenDisplay({
                         </div>
                         <div className="mg-truck-col-status">
                           <DisplayStatus
-                            text={statusLabel}
+                            text={boardStatusLabel(statusLabel)}
                             color={getStatusStyle(statusLabel).color ?? '#4b5563'}
                           />
                         </div>
                         {mode === 'waiting' && (
                           <div className="mg-truck-col-est">
                             <DisplayTime
-                              text={(() => {
-                                if (!truck.waiting_at) return '-'
-                                const baseTime = new Date(truck.waiting_at)
-                                if (Number.isNaN(baseTime.getTime())) return '-'
-                                const cyclesWaitMins = getEstimatedWaitMinsForTruck(displayTrucks, truck, resolvedGateSettings)
-                                const defaultMins = getGateLoadingDurationMins(truck.gate_no, resolvedGateSettings)
-                                const totalWaitMins = cyclesWaitMins + defaultMins
-                                const expectedTime = new Date(baseTime.getTime() + totalWaitMins * 60000)
-                                return formatTimeOfDay(expectedTime.toISOString())
-                              })()}
+                              text={getEstWaitLabel(truck, displayTrucks, resolvedGateSettings)}
                             />
                           </div>
                         )}
