@@ -366,7 +366,7 @@ export default function TruckTokenDisplay({
         overflow: 'hidden',
         background: '#f4f6f8',
         color: '#111827',
-        padding: '6px 8px 8px',
+        padding: 0,
         boxSizing: 'border-box',
       }}
     >
