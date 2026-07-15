@@ -1,7 +1,6 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import Image from 'next/image'
 
 import { getTruckStatusInfo } from '@/lib/truck-alerts'
 import {
@@ -14,6 +13,8 @@ import { useGateStore } from '@/store/gateStore'
 import { TRUCK_DISPLAY_CRITICAL_CSS } from './truck-display-critical-styles'
 
 type QueueMode = 'loading' | 'waiting'
+
+const AMNS_LOGO_SRC = '/company-logo/AMNS_Logo_Mid.png?v=transparent-20260716'
 
 interface TruckTokenDisplayProps {
   trucks: Truck[]
@@ -563,11 +564,9 @@ export default function TruckTokenDisplay({
           pointerEvents: 'none',
         }}
       >
-        <Image
-          src="/company-logo/AMNS_Logo_Mid.png"
+        <img
+          src={AMNS_LOGO_SRC}
           alt="AMNS India logo"
-          width={250}
-          height={105}
           style={{ display: 'block', height: '90px', width: 'auto', objectFit: 'contain' }}
         />
       </div>
