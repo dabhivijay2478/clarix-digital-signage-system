@@ -8,7 +8,7 @@
     "tizen:configure": "npm --prefix tizen/clarix-player-receiver run configure",
     "tizen:test": "npm --prefix tizen/clarix-player-receiver test",
     "tizen:package": "npm --prefix tizen/clarix-player-receiver run package:wgt",
-    "sync-player": "next build && cp -r out/. src-tauri/target/debug/browser-player/",
+    "sync-player": "bun scripts/ensure-out.mjs dev",
     "start": "next start --hostname 0.0.0.0",
     "lint": "eslint",
     "tauri": "tauri"

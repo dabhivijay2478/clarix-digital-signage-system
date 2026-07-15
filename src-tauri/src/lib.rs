@@ -106,15 +106,27 @@ pub fn run() {
             let bundled_browser_assets = app.path().resource_dir()
                 .map(|directory| directory.join("browser-player"))
                 .ok()
-                .filter(|directory| directory.join("player.html").exists())
-                .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../out"));
+                .filter(|directory| directory.join("player.html").exists());
+            let development_browser_assets =
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../out");
+            let browser_assets = if cfg!(debug_assertions)
+                && development_browser_assets.join("player.html").exists()
+            {
+                development_browser_assets
+            } else {
+                bundled_browser_assets.unwrap_or(development_browser_assets)
+            };
+            tracing::info!(
+                "Serving browser player assets from {}",
+                browser_assets.display()
+            );
 
             // Only a controller accepts inbound traffic. Players connect outward and pull revisions.
             let server_port = if identity.role == DeviceRole::Controller {
                 match tauri::async_runtime::block_on(lan::server::start_controller_server(
                     pool.clone(),
                     app_data.clone(),
-                    bundled_browser_assets,
+                    browser_assets,
                     identity.clone(),
                     event_bus,
                     truck_alert_bus,

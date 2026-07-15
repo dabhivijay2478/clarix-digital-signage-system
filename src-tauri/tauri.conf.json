@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../out",
     "devUrl": "http://127.0.0.1:4200",
-    "beforeDevCommand": "node scripts/ensure-out.mjs && npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeDevCommand": "bun scripts/ensure-out.mjs dev && bun run dev",
+    "beforeBuildCommand": "bun scripts/ensure-out.mjs build"
   },
   "app": {
     "windows": [
