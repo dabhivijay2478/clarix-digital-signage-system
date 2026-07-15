@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils'
 import { useBrandingStore } from '@/store/ui'
 import { useAuthStore } from '@/store/authStore'
 import { usePermissions, type AppPermission } from '@/hooks/usePermissions'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -56,17 +56,27 @@ interface SidebarProps {
 function Brand({ compact = false }: { compact?: boolean }) {
   const { appName, appIcon } = useBrandingStore()
   return (
-    <div className={cn('flex h-16 items-center gap-3 px-4', compact && 'justify-center px-3')}>
-      <Avatar className={cn('rounded-none bg-transparent', compact ? 'size-9' : 'size-10')}>
-        {appIcon && <AvatarImage src={appIcon} alt={`${appName} logo`} className="object-contain" />}
-        <AvatarFallback className="rounded-none bg-transparent font-bold text-foreground text-sm">
-          {appName.charAt(0).toUpperCase()}
-        </AvatarFallback>
-      </Avatar>
+    <div className={cn('flex items-center gap-3 px-4', compact ? 'h-16 justify-center px-3' : 'h-22')}>
+      <div
+        className={cn(
+          'flex shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-border/40',
+          compact ? 'size-16' : 'size-21',
+        )}
+      >
+        {appIcon ? (
+          <img
+            src={appIcon}
+            alt={`${appName} logo`}
+            className="size-full scale-[1.65] object-contain"
+          />
+        ) : (
+          <span className="text-lg font-bold text-foreground">{appName.charAt(0).toUpperCase()}</span>
+        )}
+      </div>
       {!compact && (
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold tracking-tight text-foreground">{appName}</p>
-          <p className="font-mono text-[10px] text-muted-foreground">v{APP_VERSION}</p>
+          <p className="truncate text-base font-semibold tracking-tight text-foreground">{appName}</p>
+          <p className="font-mono text-[11px] text-muted-foreground">v{APP_VERSION}</p>
         </div>
       )}
     </div>
