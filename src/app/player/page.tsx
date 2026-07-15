@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { screensApi, playlistsApi, contentApi, analyticsApi, localNetworkApi, customConfirm, getBrowserControllerOrigin, appConfigApi } from '../../lib/tauri';
 import type { Screen, Playlist, ContentItem, PlaylistItem, TruckScreenAlert, MarqueeSettings, ScreenPurpose } from '../../lib/types';
@@ -1015,7 +1016,7 @@ export default function PlayerPage() {
       {renderTruckAlertOverlay()}
       {renderMarquee()}
 
-      {/* Company Branding Logo */}
+      {/* Company branding — fixed to the bottom-right without decoration. */}
       <div
         className="mg-player-branding"
         style={{
@@ -1036,15 +1037,17 @@ export default function PlayerPage() {
           justifyContent: 'center',
         }}
       >
-        <img
+        <Image
           src="/company-logo/AMNS_Logo_Mid.png"
           alt="AMNS India logo"
+          width={250}
+          height={105}
           style={{
             display: 'block',
             height: '110px',
             width: 'auto',
             objectFit: 'contain',
-            filter: 'drop-shadow(0 6px 14px rgba(0, 0, 0, 0.35))',
+            filter: 'none',
           }}
         />
       </div>

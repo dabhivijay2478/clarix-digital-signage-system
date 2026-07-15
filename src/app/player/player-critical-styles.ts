@@ -47,5 +47,5 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
 @keyframes mg-spin{to{transform:rotate(360deg)}}
 @-webkit-keyframes mg-marquee{from{-webkit-transform:translateX(100%);transform:translateX(100%)}to{-webkit-transform:translateX(-100%);transform:translateX(-100%)}}
 @keyframes mg-marquee{from{transform:translateX(100%)}to{transform:translateX(-100%)}}
-.mg-player-branding{position:fixed;right:20px;bottom:20px;z-index:9999;pointer-events:none;background:transparent!important;border:0!important;border-radius:0!important;padding:0!important;box-shadow:none!important;backdrop-filter:none!important;display:flex;align-items:center;justify-content:center}.mg-player-branding img{display:block;height:80px;width:auto;object-fit:contain;filter:drop-shadow(0 6px 14px rgba(0,0,0,.35))}
+.mg-player-branding{position:fixed;right:20px;bottom:20px;z-index:9999;pointer-events:none;background:transparent!important;border:0!important;border-radius:0!important;padding:0!important;box-shadow:none!important;backdrop-filter:none!important;display:flex;align-items:center;justify-content:center}.mg-player-branding img{display:block;height:80px;width:auto;object-fit:contain;filter:none!important}
 `;
