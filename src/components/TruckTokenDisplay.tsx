@@ -467,7 +467,7 @@ export default function TruckTokenDisplay({
             <div className={`mg-truck-grid${mode === 'waiting' ? ' mg-truck-grid--waiting' : ''}`}>
               <div className="mg-truck-grid-head">
                 <div className="mg-truck-col-gate mg-truck-col-label">Gate</div>
-                <div className="mg-truck-col-plate mg-truck-col-label">Plate</div>
+                <div className="mg-truck-col-plate mg-truck-col-label">Truck Number</div>
                 <div className="mg-truck-col-status mg-truck-col-label">Status</div>
                 {mode === 'waiting' && (
                   <div className="mg-truck-col-est mg-truck-col-label">Est. Wait</div>
