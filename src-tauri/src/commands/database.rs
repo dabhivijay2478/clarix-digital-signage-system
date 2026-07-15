@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::{Manager, State};
 use crate::db::DbPool;
 use serde_json::Value;
 
@@ -195,4 +195,22 @@ pub async fn save_text_file(
     content: String,
 ) -> Result<(), String> {
     std::fs::write(&path, &content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn reset_local_database(app: tauri::AppHandle) -> Result<(), String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .to_string_lossy()
+        .to_string();
+
+    tokio::task::spawn_blocking(move || {
+        crate::db::prepare_reset_on_restart(&app_data).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    app.restart();
 }

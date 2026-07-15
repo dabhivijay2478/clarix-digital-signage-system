@@ -64,6 +64,10 @@ pub fn run() {
 
             tracing::info!("MG Enterprise starting — data dir: {}", app_data);
 
+            if let Err(error) = db::consume_pending_reset(&app_data) {
+                tracing::error!("Failed to apply pending database reset: {error}");
+            }
+
             // ── Initialize Database ─────────────────────────────────
             let app_data_clone = app_data.clone();
             let pool = std::thread::spawn(move || {
@@ -272,6 +276,7 @@ pub fn run() {
             commands::database::export_db_table_to_csv,
             commands::database::backup_content_library_to_zip,
             commands::database::save_text_file,
+            commands::database::reset_local_database,
         ])
         .run(tauri::generate_context!())
         .expect("error running MG Enterprise");

@@ -578,6 +578,7 @@ export const databaseApi = {
   exportTableToCsv: (tableName: string) => tauriInvoke<string>('export_db_table_to_csv', { tableName }),
   backupContentLibraryToZip: (savePath: string) => tauriInvoke<void>('backup_content_library_to_zip', { savePath }),
   saveTextFile: (path: string, content: string) => tauriInvoke<void>('save_text_file', { path, content }),
+  resetLocalDatabase: () => tauriInvoke<void>('reset_local_database'),
 };
 
 // ── Event Listeners ─────────────────────────────────────────────────────────

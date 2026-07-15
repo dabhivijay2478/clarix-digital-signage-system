@@ -261,6 +261,7 @@ Clarix includes two main modules accessible from the sidebar:
 | Item | Details |
 |------|---------|
 | **Database** | Local SQLite (`clarix.db`) — auto-created on first launch in user's app data folder. Runs in WAL mode with 5000ms busy timeout. |
+| **App data (macOS)** | `~/Library/Application Support/com.clarix.app/` — contains `clarix.db`, media library, and local settings. Not bundled into the installer. |
 | **Migrations** | Database schema is initialized and migrated automatically on startup. |
 | **Frontend** | Next.js 16 with Tailwind CSS v4 (CSS-first config, no `tailwind.config.js`). |
 | **Backend** | Rust with Tauri v2, using `rusqlite` + `r2d2` connection pool. |
@@ -283,6 +284,20 @@ Run `xcode-select --install` to install the missing build tools.
 
 ### "error: linker `link.exe` not found" (Windows)
 Install **Visual Studio Build Tools** with the **"Desktop development with C++"** workload.
+
+### App shows old trucks/screens on a new laptop
+The installer does **not** copy your SQLite database. Reinstalling the app also keeps old data because macOS/Windows/Linux store it outside the `.app` bundle.
+
+**Fresh empty database (quit the app first):**
+
+- **macOS:** `rm -rf ~/Library/Application\ Support/com.clarix.app`
+- **Windows:** delete `%APPDATA%\com.clarix.app`
+- **Linux:** `rm -rf ~/.local/share/com.clarix.app`
+- **From this repo:** `npm run db:reset` (or `bun run db:reset`)
+
+Then launch the app again. You should get an empty database with only the seeded admin user from `.env`.
+
+You can also reset from the desktop app: **Database → Reset local database** (requires confirmation; app restarts automatically).
 
 ### Port 3000 already in use
 Another app is using port 3000. Either stop that app, or change the port:

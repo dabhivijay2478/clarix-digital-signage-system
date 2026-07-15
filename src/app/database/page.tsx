@@ -11,6 +11,7 @@ import {
   Download,
   Eye,
   RefreshCw,
+  RotateCcw,
   Search,
   Server,
   ShieldAlert,
@@ -27,6 +28,17 @@ import {
   type VisibilityState,
 } from '@tanstack/react-table'
 import { showToast } from '@/components/Toast'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -61,6 +73,7 @@ export default function DatabasePage() {
   const [selectedTable, setSelectedTable] = useState<string>('screens')
   const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, any>[] }>({ columns: [], rows: [] })
   const [loading, setLoading] = useState(true)
+  const [resetting, setResetting] = useState(false)
 
   // TanStack table state
   const [sorting, setSorting] = useState<SortingState>([])
@@ -300,7 +313,6 @@ export default function DatabasePage() {
     }
   }
 
-  // Backup Content Library to ZIP
   const handleBackupContent = async () => {
     try {
       if (isTauriRuntime()) {
@@ -328,6 +340,23 @@ export default function DatabasePage() {
     }
   }
 
+  const handleResetDatabase = async () => {
+    if (!isTauriRuntime()) {
+      showToast('Database reset is only supported in the desktop app.', 'warning')
+      return
+    }
+
+    setResetting(true)
+    try {
+      showToast('Resetting database… the app will restart.', 'info')
+      await databaseApi.resetLocalDatabase()
+    } catch (err) {
+      console.error('Failed to reset database:', err)
+      showToast(`Database reset failed: ${err}`, 'error')
+      setResetting(false)
+    }
+  }
+
   return (
     <div className="space-y-7 lg:space-y-9">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -339,6 +368,36 @@ export default function DatabasePage() {
           <p className="page-subtitle">Inspect raw relational tables, download database records as CSV, or compress asset libraries.</p>
         </div>
         <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm" disabled={resetting || !isTauriRuntime()}>
+                <RotateCcw className="size-4" /> Reset local database
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Reset local database?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This deletes all local SQLite data, media library files, screens, trucks, and settings on this machine.
+                  The app will restart with an empty database and the seeded admin user from <code>.env</code>.
+                  This cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={resetting}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  variant="destructive"
+                  disabled={resetting}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    void handleResetDatabase()
+                  }}
+                >
+                  {resetting ? 'Resetting…' : 'Reset and restart'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <Button variant="outline" size="sm" onClick={handleBackupContent}>
             <Archive className="size-4" /> Backup Content Zip
           </Button>

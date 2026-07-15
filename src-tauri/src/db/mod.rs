@@ -8,6 +8,37 @@ use crate::models::{DeviceIdentity, DeviceRole, NETWORK_PROTOCOL_VERSION};
 
 pub type DbPool = Pool<SqliteConnectionManager>;
 
+pub const RESET_PENDING_MARKER: &str = ".reset-pending";
+
+/// Remove all local app data (database, media, settings).
+pub fn wipe_app_data(app_data_dir: &str) -> Result<()> {
+    let path = Path::new(app_data_dir);
+    if path.exists() {
+        std::fs::remove_dir_all(path)?;
+    }
+    Ok(())
+}
+
+/// Mark app data for deletion on the next launch (used before app restart).
+pub fn prepare_reset_on_restart(app_data_dir: &str) -> Result<()> {
+    std::fs::create_dir_all(app_data_dir)?;
+    std::fs::write(
+        Path::new(app_data_dir).join(RESET_PENDING_MARKER),
+        b"1",
+    )?;
+    Ok(())
+}
+
+/// If a reset was requested, wipe app data before opening SQLite.
+pub fn consume_pending_reset(app_data_dir: &str) -> Result<()> {
+    let marker = Path::new(app_data_dir).join(RESET_PENDING_MARKER);
+    if marker.exists() {
+        tracing::warn!("Pending database reset detected — wiping app data at {}", app_data_dir);
+        wipe_app_data(app_data_dir)?;
+    }
+    Ok(())
+}
+
 /// Initialize the SQLite database with connection pooling and schema.
 pub fn init_db(app_data_dir: &str) -> Result<DbPool> {
     // Ensure the app data directory exists

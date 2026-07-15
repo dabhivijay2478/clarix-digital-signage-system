@@ -9,6 +9,7 @@
     "tizen:test": "npm --prefix tizen/clarix-player-receiver test",
     "tizen:package": "npm --prefix tizen/clarix-player-receiver run package:wgt",
     "sync-player": "bun scripts/ensure-out.mjs dev",
+    "db:reset": "node scripts/reset-db.mjs",
     "start": "next start --hostname 0.0.0.0",
     "lint": "eslint",
     "tauri": "tauri"
