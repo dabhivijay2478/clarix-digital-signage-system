@@ -12,6 +12,7 @@ import TruckTokenDisplay from '@/components/TruckTokenDisplay';
 import { parseScreenGates } from '@/lib/screen-gates';
 import { useTruckStore } from '@/store/truckStore';
 import { useControllerClock } from '@/hooks/useControllerClock';
+import { Volume2 } from 'lucide-react';
 
 const AMNS_LOGO_SRC = '/company-logo/AMNS_Logo_Mid.png?v=transparent-20260716';
 const PLAYER_SCREEN_STORAGE_KEY = 'clarix_player_screen_id';
@@ -121,6 +122,7 @@ export default function PlayerPage() {
   const [liveTrucks, setLiveTrucks] = useState<Truck[]>([]);
   const [liveGateSettings, setLiveGateSettings] = useState<GateQueueSettings[]>([]);
   const [liveDisplayRotationSecs, setLiveDisplayRotationSecs] = useState<number | undefined>(undefined);
+  const [audioUnlockRequired, setAudioUnlockRequired] = useState(false);
 
   // Active Screen context for orientation and operating hours
   const [activeScreen, setActiveScreen] = useState<Screen | null>(null);
@@ -138,6 +140,8 @@ export default function PlayerPage() {
   const liveTrucksRef = useRef<Truck[]>([]);
   const resolvingSignageRef = useRef(false);
   const revisionSyncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const lastPlaybackAdvanceRef = useRef<{ key: string; at: number }>({ key: '', at: 0 });
 
   useEffect(() => {
     controllerNowRef.current = controllerNow;
@@ -655,6 +659,64 @@ export default function PlayerPage() {
     });
   }, [activePlaylist, isPlaying, isTruckTokenScreenActive, scheduleNow]);
 
+  const advancePlayback = useCallback((contentId: string, itemCount: number) => {
+    const advanceKey = `${contentId}:${currentItemIndex}`;
+    const advanceNow = Date.now();
+    if (
+      lastPlaybackAdvanceRef.current.key === advanceKey &&
+      advanceNow - lastPlaybackAdvanceRef.current.at < 750
+    ) {
+      return;
+    }
+    lastPlaybackAdvanceRef.current = { key: advanceKey, at: advanceNow };
+    setAudioUnlockRequired(false);
+
+    if (screenId) {
+      const dwellSecs = playStartTimeRef.current > 0
+        ? Math.max(Math.round((advanceNow - playStartTimeRef.current) / 1000), 0)
+        : 0;
+      analyticsApi.record(screenId, contentId, 'Complete', dwellSecs).catch((err) => {
+        console.warn('Failed to record analytics Complete event:', err);
+      });
+    }
+
+    if (currentItemIndex === itemCount - 1 && !activePlaylist?.loop_enabled) {
+      setIsPlaying(false);
+      return;
+    }
+    setCurrentItemIndex((current) => (current + 1) % itemCount);
+  }, [activePlaylist?.loop_enabled, currentItemIndex, screenId]);
+
+  const enableVideoSound = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.defaultMuted = false;
+    video.muted = false;
+    video.volume = 1;
+    void video.play().then(() => {
+      setAudioUnlockRequired(false);
+    }).catch((error) => {
+      console.warn('The display still requires a user action before audio can play:', error);
+      video.muted = true;
+      void video.play().catch((playError) => {
+        console.warn('Video playback could not resume after the audio retry:', playError);
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!audioUnlockRequired) return;
+
+    const handleUserGesture = () => enableVideoSound();
+    document.addEventListener('pointerdown', handleUserGesture, true);
+    document.addEventListener('keydown', handleUserGesture, true);
+    return () => {
+      document.removeEventListener('pointerdown', handleUserGesture, true);
+      document.removeEventListener('keydown', handleUserGesture, true);
+    };
+  }, [audioUnlockRequired, enableVideoSound]);
+
   // Handle slide duration and transition loop
   useEffect(() => {
     const playableItems = getPlayableItems();
@@ -696,23 +758,16 @@ export default function PlayerPage() {
       playStartTimeRef.current = Date.now();
     }
 
+    // Let unscheduled videos advance from the real media end. Buffering should
+    // never consume their playback duration on slower signage hardware.
+    if (contentItem.content_type === 'Video' && scheduleRemainingMs === null) {
+      timerRef.current = null;
+      return;
+    }
+
     // Set timer to switch to next slide
     timerRef.current = setTimeout(() => {
-      // Record Analytics COMPLETE Event
-      if (screenId) {
-        const dwellSecs = (Date.now() - playStartTimeRef.current) / 1000;
-        analyticsApi.record(screenId, contentItem.id, 'Complete', Math.round(dwellSecs)).catch((err) => {
-          console.warn('Failed to record analytics Complete event:', err);
-        });
-      }
-
-      // Move to next item
-      if (currentItemIndex === playableItems.length - 1 && !activePlaylist.loop_enabled) {
-        setIsPlaying(false); // End of playlist, looping is disabled
-      } else {
-        const nextIndex = (currentItemIndex + 1) % playableItems.length;
-        setCurrentItemIndex(nextIndex);
-      }
+      advancePlayback(contentItem.id, playableItems.length);
     }, playbackDurationMs);
 
     return () => {
@@ -720,7 +775,7 @@ export default function PlayerPage() {
         clearTimeout(timerRef.current);
       }
     };
-  }, [isPlaying, activePlaylist, currentItemIndex, contentItems, screenId, getPlayableItems]);
+  }, [isPlaying, activePlaylist, currentItemIndex, contentItems, screenId, getPlayableItems, advancePlayback]);
 
   // Get source URL for assets
   const getMediaUrl = (item: ContentItem): string => {
@@ -764,27 +819,46 @@ export default function PlayerPage() {
         <div className={`mg-player-media ${transitionClass}`} style={{ width: '100%', height: '100%' }}>
           <video
             key={`${contentItem.id}-${currentItemIndex}-${src}`}
+            ref={videoRef}
             src={src}
             autoPlay
             playsInline
             preload="auto"
-            loop={playableItems.length === 1}
+            loop={playableItems.length === 1 && activePlaylist?.loop_enabled !== false}
             onLoadedMetadata={(event) => {
               event.currentTarget.currentTime = 0;
+              event.currentTarget.defaultMuted = false;
+              event.currentTarget.volume = 1;
             }}
             onCanPlay={(event) => {
               const video = event.currentTarget;
+              if (video.dataset.playbackStarted === 'true') return;
+              video.dataset.playbackStarted = 'true';
+              video.defaultMuted = false;
               video.muted = false;
-              void video.play().catch((error) => {
+              video.volume = 1;
+              void video.play().then(() => {
+                setAudioUnlockRequired(false);
+              }).catch((error) => {
                 console.warn('Video autoplay with audio was blocked, retrying muted playback:', error);
                 video.muted = true;
+                setAudioUnlockRequired(true);
                 void video.play().catch((mutedError) => {
                   console.warn('Video autoplay failed after muted retry:', mutedError);
                 });
               });
             }}
+            onPlaying={() => {
+              playStartTimeRef.current = Date.now();
+            }}
+            onEnded={() => {
+              advancePlayback(contentItem.id, playableItems.length);
+            }}
             onError={(event) => {
               console.warn('Video failed to load:', event.currentTarget.error);
+              if (playableItems.length > 1) {
+                window.setTimeout(() => advancePlayback(contentItem.id, playableItems.length), 1000);
+              }
             }}
             style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
           />
@@ -1259,6 +1333,18 @@ export default function PlayerPage() {
       </div>
       {renderTruckAlertOverlay()}
       {renderMarquee()}
+
+      {audioUnlockRequired && (
+        <button
+          type="button"
+          className="mg-player-audio-unlock"
+          onClick={enableVideoSound}
+          aria-label="Enable video sound"
+        >
+          <Volume2 aria-hidden="true" />
+          <span>Enable sound</span>
+        </button>
+      )}
 
       {/* Company branding — fixed to the bottom-right without decoration. */}
       <div
