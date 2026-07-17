@@ -379,7 +379,7 @@ export default function TruckTokenDisplay({
   }, [rows])
 
   const statItems: Array<{ line1: string; line2Prefix: string; value: number | string; color: StatColor }> = [
-    { line1: 'Total in', line2Prefix: 'trucks', value: activeTrucks.length, color: 'primary' },
+    { line1: 'Total', line2Prefix: 'trucks', value: activeTrucks.length, color: 'primary' },
     { line1: 'Waiting', line2Prefix: 'trucks', value: waitingTrucks.length, color: 'amber' },
     { line1: 'Loading', line2Prefix: 'trucks', value: loadingTrucks.length, color: 'blue' },
     { line1: 'Dispatched', line2Prefix: 'trucks', value: dispatchSummary?.today ?? 0, color: 'green' },
