@@ -375,10 +375,11 @@ export const contentApi = {
 
   delete: (id: string) => tauriInvoke<void>('delete_content_item', { id }),
 
-  saveLocalFile: async (filename: string, bytes: Uint8Array) => {
+  saveLocalFile: async (filename: string, source: Uint8Array | Blob) => {
     const chunkSize = 512 * 1024;
     let savedPath = '';
-    if (bytes.length === 0) {
+    const totalBytes = source instanceof Blob ? source.size : source.length;
+    if (totalBytes === 0) {
       return tauriInvoke<string>('save_local_content_file_chunk', {
         filename,
         bytes: [],
@@ -386,8 +387,10 @@ export const contentApi = {
       });
     }
 
-    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-      const chunk = bytes.slice(offset, offset + chunkSize);
+    for (let offset = 0; offset < totalBytes; offset += chunkSize) {
+      const chunk = source instanceof Blob
+        ? new Uint8Array(await source.slice(offset, offset + chunkSize).arrayBuffer())
+        : source.slice(offset, offset + chunkSize);
       savedPath = await tauriInvoke<string>('save_local_content_file_chunk', {
         filename,
         bytes: Array.from(chunk),

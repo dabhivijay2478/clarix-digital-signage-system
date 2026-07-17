@@ -215,13 +215,8 @@ export default function ContentPage() {
 
       if (needsFile && selectedFile) {
         showToast('Uploading local asset...', 'info');
-        // Read file bytes
-        const arrayBuffer = await selectedFile.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
-
-        // Save file locally using Tauri backend
         const { contentApi: api } = await import('../../lib/tauri');
-        filePath = await api.saveLocalFile(selectedFile.name, bytes);
+        filePath = await api.saveLocalFile(selectedFile.name, selectedFile);
         if (formType === 'Presentation') {
           showToast('Preparing presentation for screen playback...', 'info');
           filePath = await api.preparePresentation(filePath);

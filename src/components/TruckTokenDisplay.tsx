@@ -4,10 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
 
 import { getTruckStatusInfo } from '@/lib/truck-alerts'
-import {
-  getEstimatedWaitMinsForTruck,
-  getGateLoadingDurationMins,
-} from '@/lib/truck-queue'
+import { getEstimatedWaitMinsForTruck } from '@/lib/truck-queue'
 import { useControllerClock } from '@/hooks/useControllerClock'
 import { APP_TIME_ZONE, getValidTimeZone } from '@/lib/signage-schedule'
 import { truckAlertsApi, trucksApi } from '@/lib/tauri'
@@ -178,19 +175,8 @@ function getEtaClockLabel(
   timeZone: string,
 ): string {
   const nowTime = now.getTime()
-  const gateLoadMins = getGateLoadingDurationMins(truck.gate_no, gateSettings)
   const queueDelayMins = getEstimatedWaitMinsForTruck(displayTrucks, truck, gateSettings)
-  const baseTimeStr = (truck.is_loading || truck.is_in)
-    ? truck.loading_at ?? truck.in_at ?? truck.waiting_at ?? truck.created_at
-    : truck.waiting_at ?? truck.created_at
-  const baseTime = new Date(baseTimeStr)
-  if (Number.isNaN(baseTime.getTime())) return '-'
-  const totalWaitMins = (truck.is_loading || truck.is_in)
-    ? gateLoadMins
-    : gateLoadMins + queueDelayMins
-  const targetTime = baseTime.getTime() + totalWaitMins * 60000
-  const remainingWaitMs = Math.max(0, targetTime - nowTime)
-  const expectedTime = new Date(nowTime + remainingWaitMs)
+  const expectedTime = new Date(nowTime + Math.max(0, queueDelayMins) * 60000)
   return formatTimeOfDay(expectedTime.toISOString(), timeZone)
 }
 

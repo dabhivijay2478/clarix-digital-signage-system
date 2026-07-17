@@ -1065,6 +1065,8 @@ export default function ScreensPage() {
           isOpen={editingItemIndex !== null}
           onClose={() => setEditingItemIndex(null)}
           title="Content Schedule & Rules"
+          contentClassName="sm:max-w-2xl lg:max-w-3xl"
+          bodyClassName="px-4 py-4 sm:px-6 sm:py-5"
           actions={
             <>
               <Button variant="outline" onClick={() => setEditingItemIndex(null)}>
@@ -1076,27 +1078,27 @@ export default function ScreensPage() {
             </>
           }
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', color: 'var(--foreground)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 190px', gap: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '18px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                <span style={{ fontSize: '14px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>This content</span>
+          <div className="flex flex-col gap-5 text-foreground">
+            <div className="grid gap-3 border-b border-border pb-5 md:grid-cols-[minmax(0,1fr)_190px]">
+              <div className="grid gap-2 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-center">
+                <span className="text-sm font-medium text-muted-foreground">This content</span>
                 <select
                   className="input"
                   value={itemSchedTimeRestricted ? 'scheduled' : 'always'}
                   onChange={(e) => setItemSchedTimeRestricted(e.target.value === 'scheduled')}
-                  style={{ width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--foreground)', padding: '8px 12px', fontSize: '13px' }}
+                  style={{ width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--foreground)', padding: '10px 12px', fontSize: '13px' }}
                 >
                   <option value="always" style={{ background: 'var(--bg-primary)' }}>can play whenever playlist runs</option>
                   <option value="scheduled" style={{ background: 'var(--bg-primary)' }}>is allowed during these times</option>
                 </select>
               </div>
               <div>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '5px' }}>Transition</span>
+                <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Transition</span>
                 <select
                   className="input"
                   value={itemSchedTransition}
                   onChange={(e) => setItemSchedTransition(e.target.value as TransitionEffect)}
-                  style={{ background: 'var(--bg-tertiary)', color: 'var(--foreground)', border: '1px solid var(--border)', fontSize: '13px' }}
+                  style={{ width: '100%', background: 'var(--bg-tertiary)', color: 'var(--foreground)', border: '1px solid var(--border)', fontSize: '13px', padding: '10px 12px' }}
                 >
                   <option value="Fade" style={{ background: 'var(--bg-primary)' }}>Fade</option>
                   <option value="Slide" style={{ background: 'var(--bg-primary)' }}>Slide</option>
@@ -1107,43 +1109,43 @@ export default function ScreensPage() {
             </div>
 
             {itemSchedTimeRestricted && (
-              <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '18px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div className="rounded-xl border border-border/70 bg-muted/10 p-3 sm:p-4">
+                <div className="flex max-h-[52vh] flex-col gap-3 overflow-y-auto pr-1">
                   {APP_WEEKDAYS.map((day) => {
                     const daySchedule = itemSchedDayTimes[day] || { enabled: true, start: '09:00', end: '17:00' };
                     const dayWindows = getPlaylistItemDayScheduleWindows(daySchedule);
                     return (
-                      <div key={day} style={{ display: 'grid', gridTemplateColumns: '140px minmax(0, 1fr)', alignItems: 'start', gap: '12px' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', fontWeight: 600, color: daySchedule.enabled ? 'var(--foreground)' : 'var(--text-muted)', paddingTop: '9px' }}>
+                      <div key={day} className="grid gap-3 rounded-lg border border-border/50 bg-background/35 p-3 lg:grid-cols-[140px_minmax(0,1fr)] lg:items-start">
+                        <label className={cn('flex items-center gap-3 text-sm font-semibold lg:pt-2', daySchedule.enabled ? 'text-foreground' : 'text-muted-foreground')}>
                           <input
                             type="checkbox"
                             checked={daySchedule.enabled}
                             onChange={(e) => updateItemSchedDay(day, (current) => ({ ...current, enabled: e.target.checked }))}
-                            style={{ width: '16px', height: '16px', accentColor: 'var(--accent-primary)' }}
+                            className="size-4 shrink-0 accent-primary"
                           />
                           {ITEM_SCHEDULE_DAY_LABELS[day]}
                         </label>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: daySchedule.enabled ? 1 : 0.45 }}>
+                        <div className={cn('flex flex-col gap-2', !daySchedule.enabled && 'opacity-50')}>
                           {dayWindows.map((window, windowIndex) => (
-                            <div key={`${day}-${windowIndex}`} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 36px', gap: '8px', alignItems: 'center' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '7px 10px' }}>
-                                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Start</span>
+                            <div key={`${day}-${windowIndex}`} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px] sm:items-center">
+                              <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
+                                <span className="shrink-0 text-[11px] text-muted-foreground">Start</span>
                                 <input
                                   type="time"
                                   value={window.start}
                                   disabled={!daySchedule.enabled}
                                   onChange={(e) => updateItemSchedWindow(day, windowIndex, 'start', e.target.value)}
-                                  style={{ background: 'transparent', border: 'none', color: 'var(--foreground)', width: '100%', fontSize: '13px', outline: 'none', colorScheme: 'dark' }}
+                                  className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-foreground outline-none [color-scheme:dark]"
                                 />
                               </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '7px 10px' }}>
-                                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>End</span>
+                              <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
+                                <span className="shrink-0 text-[11px] text-muted-foreground">End</span>
                                 <input
                                   type="time"
                                   value={window.end}
                                   disabled={!daySchedule.enabled}
                                   onChange={(e) => updateItemSchedWindow(day, windowIndex, 'end', e.target.value)}
-                                  style={{ background: 'transparent', border: 'none', color: 'var(--foreground)', width: '100%', fontSize: '13px', outline: 'none', colorScheme: 'dark' }}
+                                  className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-foreground outline-none [color-scheme:dark]"
                                 />
                               </div>
                               <button
@@ -1151,7 +1153,10 @@ export default function ScreensPage() {
                                 onClick={() => removeItemSchedWindow(day, windowIndex)}
                                 disabled={!daySchedule.enabled || dayWindows.length === 1}
                                 title="Remove slot"
-                                style={{ width: '36px', height: '36px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: dayWindows.length === 1 ? 'var(--text-muted)' : 'var(--danger)', cursor: dayWindows.length === 1 ? 'not-allowed' : 'pointer', display: 'grid', placeItems: 'center' }}
+                                className={cn(
+                                  'grid h-10 w-full place-items-center rounded-lg border border-border bg-background/40 transition-colors sm:w-10',
+                                  dayWindows.length === 1 ? 'cursor-not-allowed text-muted-foreground' : 'text-destructive hover:bg-destructive/10',
+                                )}
                               >
                                 <Trash2 size={15} />
                               </button>
@@ -1161,7 +1166,7 @@ export default function ScreensPage() {
                             type="button"
                             onClick={() => addItemSchedWindow(day)}
                             disabled={!daySchedule.enabled}
-                            style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: '6px', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg-secondary)', color: 'var(--foreground)', padding: '6px 10px', fontSize: '12px', cursor: daySchedule.enabled ? 'pointer' : 'not-allowed' }}
+                            className="inline-flex w-fit items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <Plus size={14} />
                             Add slot
@@ -1171,28 +1176,28 @@ export default function ScreensPage() {
                     );
                   })}
                 </div>
-                <p style={{ margin: '12px 0 0', fontSize: '11px', color: 'var(--text-muted)' }}>
+                <p className="mt-3 text-xs text-muted-foreground">
                   Content timezone: {controllerTimeZone}. Overnight windows like 10:00 PM to 6:00 AM are supported.
                 </p>
               </div>
             )}
 
             {/* Periodic Date Range */}
-            <div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: 600, fontSize: '14px', marginBottom: '12px' }}>
+            <div className="rounded-xl border border-border/70 bg-muted/10 p-4">
+              <label className="mb-3 flex cursor-pointer items-center gap-3 text-sm font-semibold">
                 <input
                   type="checkbox"
                   checked={itemSchedDateRestricted}
                   onChange={(e) => setItemSchedDateRestricted(e.target.checked)}
-                  style={{ width: '16px', height: '16px', accentColor: 'var(--accent-primary)' }}
+                  className="size-4 accent-primary"
                 />
                 Restrict display by date range (periodic)
               </label>
 
               {itemSchedDateRestricted && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', paddingLeft: '26px' }}>
+                <div className="grid gap-3 sm:grid-cols-2 sm:pl-7">
                   <div>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Start Date</span>
+                    <span className="mb-1 block text-[11px] text-muted-foreground">Start Date</span>
                     <input
                       type="date"
                       className="input"
@@ -1202,7 +1207,7 @@ export default function ScreensPage() {
                     />
                   </div>
                   <div>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>End Date</span>
+                    <span className="mb-1 block text-[11px] text-muted-foreground">End Date</span>
                     <input
                       type="date"
                       className="input"

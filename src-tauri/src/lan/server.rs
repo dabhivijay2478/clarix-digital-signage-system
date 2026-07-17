@@ -1,7 +1,7 @@
-use std::{collections::HashMap, convert::Infallible, path::{Path as FsPath, PathBuf}, time::Duration};
+use std::{collections::HashMap, convert::Infallible, io::Read, path::{Path as FsPath, PathBuf}, time::Duration};
 
 use axum::{
-    body::Body,
+    body::{Body, Bytes},
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{Response, sse::{Event, KeepAlive, Sse}},
@@ -27,6 +27,7 @@ use crate::{
 };
 
 const MAX_MEDIA_RANGE_BYTES: u64 = 8 * 1024 * 1024;
+const STREAM_CHUNK_BYTES: usize = 256 * 1024;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub struct SyncPayload {
@@ -286,11 +287,7 @@ async fn asset(
         Ok(rows.next()?.map(|row| row.get(0)).transpose()?)
     }).await.map_err(internal_error)?.map_err(internal_error)?;
     let path = file_path.ok_or((StatusCode::NOT_FOUND, "Asset not found".to_string()))?;
-    let bytes = tokio::fs::read(&path).await.map_err(internal_error)?;
-    Ok(Response::builder()
-        .header("Content-Type", media_content_type(&path))
-        .body(Body::from(bytes))
-        .map_err(internal_error)?)
+    stream_file_response(PathBuf::from(path), &headers).await
 }
 
 async fn sync_ack(
@@ -452,22 +449,29 @@ async fn legacy_media(
     let safe_name = FsPath::new(&filename).file_name().and_then(|value| value.to_str())
         .ok_or((StatusCode::BAD_REQUEST, "Invalid filename".to_string()))?;
     let media_path = state.media_dir.join(safe_name);
-    let metadata = tokio::fs::metadata(&media_path).await
+    stream_file_response(media_path, &headers).await
+}
+
+async fn stream_file_response(
+    path: PathBuf,
+    headers: &HeaderMap,
+) -> Result<Response, (StatusCode, String)> {
+    let metadata = tokio::fs::metadata(&path).await
         .map_err(|_| (StatusCode::NOT_FOUND, "Media not found".to_string()))?;
     let file_len = metadata.len();
 
-    if let Some((start, end)) = parse_range_header(&headers, file_len)? {
+    if let Some((start, end)) = parse_range_header(headers, file_len)? {
         use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
         let chunk_len = end - start + 1;
-        let mut file = tokio::fs::File::open(&media_path).await.map_err(internal_error)?;
+        let mut file = tokio::fs::File::open(&path).await.map_err(internal_error)?;
         file.seek(std::io::SeekFrom::Start(start)).await.map_err(internal_error)?;
         let mut bytes = vec![0; chunk_len as usize];
         file.read_exact(&mut bytes).await.map_err(internal_error)?;
 
         return Ok(Response::builder()
             .status(StatusCode::PARTIAL_CONTENT)
-            .header("Content-Type", media_content_type(&media_path))
+            .header("Content-Type", media_content_type(&path))
             .header("Accept-Ranges", "bytes")
             .header("Content-Length", chunk_len.to_string())
             .header("Content-Range", format!("bytes {start}-{end}/{file_len}"))
@@ -475,12 +479,22 @@ async fn legacy_media(
             .map_err(internal_error)?);
     }
 
-    let bytes = tokio::fs::read(&media_path).await.map_err(internal_error)?;
+    let file = tokio::fs::File::open(&path).await.map_err(internal_error)?;
+    let stream = futures_util::stream::try_unfold(file, |mut file| async move {
+        let mut buffer = vec![0; STREAM_CHUNK_BYTES];
+        let read = tokio::io::AsyncReadExt::read(&mut file, &mut buffer).await?;
+        if read == 0 {
+            return Ok::<Option<(Bytes, tokio::fs::File)>, std::io::Error>(None);
+        }
+        buffer.truncate(read);
+        Ok::<Option<(Bytes, tokio::fs::File)>, std::io::Error>(Some((Bytes::from(buffer), file)))
+    });
+
     Ok(Response::builder()
-        .header("Content-Type", media_content_type(&media_path))
+        .header("Content-Type", media_content_type(&path))
         .header("Accept-Ranges", "bytes")
         .header("Content-Length", file_len.to_string())
-        .body(Body::from(bytes))
+        .body(Body::from_stream(stream))
         .map_err(internal_error)?)
 }
 
@@ -637,16 +651,16 @@ pub fn build_manifest(pool: &DbPool, screen_id: &str) -> anyhow::Result<SyncMani
         let Some(path) = item.file_path.as_deref() else { continue };
         let file_path = PathBuf::from(path);
         if !file_path.is_file() { continue; }
-        let bytes = std::fs::read(&file_path)?;
-        let sha256 = sha256_bytes(&bytes);
+        let file_size = file_path.metadata()?.len();
+        let sha256 = sha256_file(&file_path)?;
         let filename = file_path.file_name().and_then(|value| value.to_str()).unwrap_or("asset").to_string();
-        assets.push(SyncAsset { content_id: item.id.clone(), sha256: sha256.clone(), filename, size: bytes.len() as u64 });
+        assets.push(SyncAsset { content_id: item.id.clone(), sha256: sha256.clone(), filename, size: file_size });
         conn.execute(
             "INSERT INTO asset_checksums (content_id, sha256, file_path, file_size, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5)
              ON CONFLICT(content_id) DO UPDATE SET sha256=excluded.sha256, file_path=excluded.file_path,
              file_size=excluded.file_size, updated_at=excluded.updated_at",
-            params![item.id, sha256, path, bytes.len() as i64, Utc::now().to_rfc3339()],
+            params![item.id, sha256, path, file_size as i64, Utc::now().to_rfc3339()],
         )?;
     }
     Ok(SyncManifest { revision, screen_id: screen_id.to_string(), payload, assets, force_sync })
@@ -822,12 +836,30 @@ async fn player_sync_once(
         let Some(asset) = asset_by_content.get(&item.id) else { continue };
         let safe_name = FsPath::new(&asset.filename).file_name().and_then(|value| value.to_str()).unwrap_or("asset");
         let destination = media_dir.join(format!("{}-{safe_name}", asset.sha256));
-        let valid_existing = std::fs::read(&destination).map(|bytes| sha256_bytes(&bytes) == asset.sha256).unwrap_or(false);
+        let valid_existing = sha256_file(&destination).map(|hash| hash == asset.sha256).unwrap_or(false);
         if !valid_existing {
-            let bytes = client.get(format!("{base}/v1/assets/{}", asset.sha256)).bearer_auth(&token).send().await?.error_for_status()?.bytes().await?;
-            if sha256_bytes(&bytes) != asset.sha256 { anyhow::bail!("Asset checksum verification failed for {}", asset.filename); }
             let temporary = destination.with_extension("part");
-            tokio::fs::write(&temporary, &bytes).await?;
+            let response = client
+                .get(format!("{base}/v1/assets/{}", asset.sha256))
+                .bearer_auth(&token)
+                .send()
+                .await?
+                .error_for_status()?;
+            let mut stream = response.bytes_stream();
+            let mut file = tokio::fs::File::create(&temporary).await?;
+            let mut hasher = Sha256::new();
+            use tokio::io::AsyncWriteExt;
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk?;
+                hasher.update(&chunk);
+                file.write_all(&chunk).await?;
+            }
+            file.flush().await?;
+            let downloaded_sha = format!("{:x}", hasher.finalize());
+            if downloaded_sha != asset.sha256 {
+                let _ = tokio::fs::remove_file(&temporary).await;
+                anyhow::bail!("Asset checksum verification failed for {}", asset.filename);
+            }
             tokio::fs::rename(&temporary, &destination).await?;
         }
         item.file_path = Some(destination.to_string_lossy().to_string());
@@ -1092,8 +1124,23 @@ fn parse_date(value: String) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(&value).map(|date| date.with_timezone(&Utc)).unwrap_or_else(|_| Utc::now())
 }
 
+#[cfg(test)]
 fn sha256_bytes(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
+}
+
+fn sha256_file(path: &FsPath) -> anyhow::Result<String> {
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0; STREAM_CHUNK_BYTES];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 fn internal_error(error: impl std::fmt::Display) -> (StatusCode, String) {
