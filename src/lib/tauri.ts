@@ -47,6 +47,7 @@ const browserControllerPort = process.env.NEXT_PUBLIC_CLARIX_CONTROLLER_PORT ?? 
 export interface ControllerTimeResponse {
   server_time_iso: string;
   server_time_ms: number;
+  server_time_zone?: string;
 }
 
 export function getBrowserControllerOrigin(): string {

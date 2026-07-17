@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
 
+import { getTruckStatusInfo } from '@/lib/truck-alerts'
 import {
   getEstimatedWaitMinsForTruck,
   getGateLoadingDurationMins,
@@ -52,12 +53,42 @@ function DisplayPlate({ text }: { text: string }) {
   )
 }
 
+function DisplayStatus({
+  text,
+  color,
+}: {
+  text: string
+  color: string
+}) {
+  return (
+    <span
+      className="mg-truck-status"
+      style={{ color }}
+    >
+      {text}
+    </span>
+  )
+}
+
 function DisplayTime({ text }: { text: string }) {
   return (
     <span className="mg-truck-time">
       {text}
     </span>
   )
+}
+
+function boardStatusLabel(statusLabel: string): string {
+  switch (statusLabel) {
+    case 'Waiting':
+      return 'WAITING'
+    case 'Loading in.':
+      return 'LOADING'
+    case 'Loading Out.':
+      return 'OUT'
+    default:
+      return statusLabel.toUpperCase()
+  }
 }
 
 const MAX_QUEUE_ROWS = 4
@@ -139,24 +170,41 @@ function formatTimeOfDay(dateStr: string | null, timeZone = APP_TIME_ZONE): stri
   }
 }
 
-function getEstWaitLabel(
+function getEtaClockLabel(
   truck: Truck,
   displayTrucks: Truck[],
   gateSettings: GateQueueSettings[],
-  now: Date | null,
+  now: Date,
   timeZone: string,
 ): string {
-  if (!truck.waiting_at) return '-'
-  const baseTime = new Date(truck.waiting_at)
+  const nowTime = now.getTime()
+  const gateLoadMins = getGateLoadingDurationMins(truck.gate_no, gateSettings)
+  const queueDelayMins = getEstimatedWaitMinsForTruck(displayTrucks, truck, gateSettings)
+  const baseTimeStr = (truck.is_loading || truck.is_in)
+    ? truck.loading_at ?? truck.in_at ?? truck.waiting_at ?? truck.created_at
+    : truck.waiting_at ?? truck.created_at
+  const baseTime = new Date(baseTimeStr)
   if (Number.isNaN(baseTime.getTime())) return '-'
-  const nowTime = now?.getTime() ?? Date.now()
-  const cyclesWaitMins = getEstimatedWaitMinsForTruck(displayTrucks, truck, gateSettings)
-  const defaultMins = getGateLoadingDurationMins(truck.gate_no, gateSettings)
-  const totalWaitMins = cyclesWaitMins + defaultMins
+  const totalWaitMins = (truck.is_loading || truck.is_in)
+    ? gateLoadMins
+    : gateLoadMins + queueDelayMins
   const targetTime = baseTime.getTime() + totalWaitMins * 60000
   const remainingWaitMs = Math.max(0, targetTime - nowTime)
   const expectedTime = new Date(nowTime + remainingWaitMs)
   return formatTimeOfDay(expectedTime.toISOString(), timeZone)
+}
+
+function getStatusStyle(statusLabel: string): React.CSSProperties {
+  switch (statusLabel) {
+    case 'Loading Out.':
+      return { color: '#047857' }
+    case 'Loading in.':
+      return { color: '#0e7490' }
+    case 'Waiting':
+      return { color: '#b45309' }
+    default:
+      return { color: '#4b5563' }
+  }
 }
 
 function getGateStyle(gateNo: string | null | undefined): React.CSSProperties {
@@ -222,8 +270,8 @@ export default function TruckTokenDisplay({
   const [remoteTrucks, setRemoteTrucks] = useState<Truck[]>([])
   const [hasLoadedRemoteTrucks, setHasLoadedRemoteTrucks] = useState(false)
   const [dispatchSummary, setDispatchSummary] = useState<TruckDispatchSummary | null>(null)
-  const { now: currentTime } = useControllerClock()
-  const displayTimeZone = getValidTimeZone(timeZone)
+  const { now: currentTime, timeZone: controllerTimeZone } = useControllerClock()
+  const displayTimeZone = getValidTimeZone(timeZone ?? controllerTimeZone)
   const normalizedGateFilters = useMemo(() => {
     const fromList = (gateFilters ?? [])
       .map((gate) => gate.trim().toLowerCase())
@@ -295,7 +343,7 @@ export default function TruckTokenDisplay({
     if (normalizedGateFilters?.length) {
       return normalizedGateFilters.map((gate) => gate.toLowerCase())
     }
-    const configured = (gateSettings ?? gates ?? []).map((gate) => gate?.number).filter(Boolean)
+    const configured = ((gateSettings?.length ? gateSettings : gates) ?? []).map((gate) => gate?.number).filter(Boolean)
     const discovered = displayTrucks
       .map((truck) => (truck?.gate_no ?? '').toLowerCase())
       .filter(Boolean)
@@ -303,7 +351,7 @@ export default function TruckTokenDisplay({
   }, [gateSettings, gates, displayTrucks, normalizedGateFilters])
 
   const resolvedGateSettings = useMemo<GateQueueSettings[]>(
-    () => gateSettings ?? (gates ?? []).map((gate) => ({
+    () => gateSettings?.length ? gateSettings : (gates ?? []).map((gate) => ({
       number: gate?.number || '',
       loadingDurationMins: gate?.loadingDurationMins ?? 30,
     })),
@@ -413,13 +461,12 @@ export default function TruckTokenDisplay({
 
         <div className="mg-truck-panel">
           <div className="mg-truck-table-wrap">
-            <div className={`mg-truck-grid${mode === 'waiting' ? ' mg-truck-grid--waiting' : ''}`}>
+            <div className="mg-truck-grid">
               <div className="mg-truck-grid-head">
                 <div className="mg-truck-col-gate mg-truck-col-label">Gate</div>
                 <div className="mg-truck-col-plate mg-truck-col-label">Truck Number</div>
-                {mode === 'waiting' && (
-                  <div className="mg-truck-col-est mg-truck-col-label">Est. Wait</div>
-                )}
+                <div className="mg-truck-col-status mg-truck-col-label">Status</div>
+                <div className="mg-truck-col-est mg-truck-col-label">Est. Wait</div>
               </div>
 
               <div className="mg-truck-grid-body">
@@ -442,6 +489,7 @@ export default function TruckTokenDisplay({
                     )
                   }
 
+                  const statusLabel = getTruckStatusInfo(truck).status_label
                   return (
                     <div
                       key={`${mode}-${truck.id}`}
@@ -460,13 +508,17 @@ export default function TruckTokenDisplay({
                             text={truck.registration_number.toUpperCase()}
                           />
                         </div>
-                        {mode === 'waiting' && (
-                          <div className="mg-truck-col-est">
-                            <DisplayTime
-                              text={getEstWaitLabel(truck, displayTrucks, resolvedGateSettings, currentTime, displayTimeZone)}
-                            />
-                          </div>
-                        )}
+                        <div className="mg-truck-col-status">
+                          <DisplayStatus
+                            text={boardStatusLabel(statusLabel)}
+                            color={getStatusStyle(statusLabel).color ?? '#4b5563'}
+                          />
+                        </div>
+                        <div className="mg-truck-col-est">
+                          <DisplayTime
+                            text={getEtaClockLabel(truck, displayTrucks, resolvedGateSettings, currentTime, displayTimeZone)}
+                          />
+                        </div>
                       </div>
                     )
                   })}

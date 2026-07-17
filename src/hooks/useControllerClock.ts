@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { clockApi } from '@/lib/tauri'
+import { APP_TIME_ZONE, getValidTimeZone } from '@/lib/signage-schedule'
 
 const TICK_INTERVAL_MS = 1000
 const RESYNC_INTERVAL_MS = 30000
 
 export interface ControllerClockState {
   now: Date
+  timeZone: string
   isSynced: boolean
   lastSyncedAt: Date | null
   syncError: string | null
@@ -18,6 +20,7 @@ export interface ControllerClockState {
 export function useControllerClock(): ControllerClockState {
   const offsetMsRef = useRef(0)
   const [nowMs, setNowMs] = useState(() => Date.now())
+  const [timeZone, setTimeZone] = useState(APP_TIME_ZONE)
   const [isSynced, setIsSynced] = useState(false)
   const [lastSyncedAtMs, setLastSyncedAtMs] = useState<number | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
@@ -33,6 +36,7 @@ export function useControllerClock(): ControllerClockState {
       const requestMidpoint = requestStartedAt + (responseReceivedAt - requestStartedAt) / 2
 
       offsetMsRef.current = controllerTime.server_time_ms - requestMidpoint
+      setTimeZone(getValidTimeZone(controllerTime.server_time_zone))
       setNowMs(getControllerNowMs())
       setIsSynced(true)
       setLastSyncedAtMs(responseReceivedAt)
@@ -72,9 +76,10 @@ export function useControllerClock(): ControllerClockState {
 
   return useMemo(() => ({
     now: new Date(nowMs),
+    timeZone,
     isSynced,
     lastSyncedAt: lastSyncedAtMs === null ? null : new Date(lastSyncedAtMs),
     syncError,
     syncNow,
-  }), [isSynced, lastSyncedAtMs, nowMs, syncError, syncNow])
+  }), [isSynced, lastSyncedAtMs, nowMs, syncError, syncNow, timeZone])
 }

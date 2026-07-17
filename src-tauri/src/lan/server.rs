@@ -167,9 +167,14 @@ async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
 
 async fn read_controller_time() -> Json<serde_json::Value> {
     let now = Utc::now();
+    let time_zone = std::env::var("CLARIX_TIME_ZONE")
+        .ok()
+        .or_else(|| std::env::var("TZ").ok())
+        .unwrap_or_else(|| "Asia/Calcutta".to_string());
     Json(serde_json::json!({
         "server_time_iso": now.to_rfc3339(),
         "server_time_ms": now.timestamp_millis(),
+        "server_time_zone": time_zone,
     }))
 }
 

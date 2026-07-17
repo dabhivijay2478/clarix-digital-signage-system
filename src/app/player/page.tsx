@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { screensApi, playlistsApi, contentApi, analyticsApi, localNetworkApi, customConfirm, getBrowserControllerOrigin, appConfigApi, trucksApi } from '../../lib/tauri';
-import type { Screen, Playlist, ContentItem, PlaylistItem, TruckScreenAlert, MarqueeSettings, ScreenPurpose, Truck } from '../../lib/types';
+import type { Screen, Playlist, ContentItem, PlaylistItem, TruckScreenAlert, MarqueeSettings, ScreenPurpose, Truck, GateQueueSettings } from '../../lib/types';
 import { isPlaylistItemScheduleActive, isScreenWithinOperatingHours } from '../../lib/signage-schedule';
 import { showToast } from '../../components/Toast';
 import { convertFileSrc } from '@tauri-apps/api/core';
@@ -11,6 +11,7 @@ import { useGateStore } from '@/store/gateStore';
 import TruckTokenDisplay from '@/components/TruckTokenDisplay';
 import { parseScreenGates } from '@/lib/screen-gates';
 import { useTruckStore } from '@/store/truckStore';
+import { useControllerClock } from '@/hooks/useControllerClock';
 
 const AMNS_LOGO_SRC = '/company-logo/AMNS_Logo_Mid.png?v=transparent-20260716';
 const PLAYER_SCREEN_STORAGE_KEY = 'clarix_player_screen_id';
@@ -51,25 +52,49 @@ function getScreenSelectionTags(screen: Screen): string[] {
 }
 
 function getScreenGateNumbers(screen: Screen | null | undefined): string[] {
-  return parseScreenGates(screen?.gate);
+  const configuredGates = parseScreenGates(screen?.gate);
+  if (configuredGates.length > 0) return configuredGates;
+
+  return [...new Set([
+    ...parseScreenGates(screen?.name),
+    ...parseScreenGates(screen?.location),
+  ])];
 }
 
 function isTruckTokenScreen(screen: Screen): boolean {
   return screen.purpose === 'truck_gate' || getScreenGateNumbers(screen).length > 0;
 }
 
-function pickDefaultPlayerScreen(screens: Screen[], storedId?: string | null): Screen | null {
+function pickDefaultPlayerScreen(screens: Screen[], storedId?: string | null, activeTrucks: Truck[] = []): Screen | null {
   const storedScreen = storedId ? screens.find((screen) => screen.id === storedId) ?? null : null;
-  if (storedScreen) return storedScreen;
+  if (storedScreen && isTruckTokenScreen(storedScreen)) return storedScreen;
+
+  const activeGate = activeTrucks
+    .find((truck) => !truck.is_out && (truck.is_loading || truck.is_in || truck.is_waiting) && truck.gate_no)
+    ?.gate_no?.toLowerCase();
+  if (activeGate) {
+    const matchingTruckScreen = screens.find((screen) =>
+      isTruckTokenScreen(screen) && getScreenGateNumbers(screen).includes(activeGate)
+    );
+    if (matchingTruckScreen) return matchingTruckScreen;
+  }
 
   const truckScreen = screens.find(isTruckTokenScreen);
   if (truckScreen) return truckScreen;
+
+  if (storedScreen) return storedScreen;
 
   return screens.length === 1 ? screens[0] : null;
 }
 
 export default function PlayerPage() {
   const branding = useBrandingStore();
+  const { now: controllerNow } = useControllerClock();
+  const controllerMinuteMs = Math.floor(controllerNow.getTime() / 60000) * 60000;
+  const scheduleNow = useMemo(
+    () => new Date(controllerMinuteMs),
+    [controllerMinuteMs],
+  );
   const trucks = useTruckStore((state) => state.trucks);
   const appName = branding.appName;
   const appLogo = branding.appIcon;
@@ -94,6 +119,8 @@ export default function PlayerPage() {
   const [activeTruckGates, setActiveTruckGates] = useState<string[]>([]);
   const [isTruckTokenScreenActive, setIsTruckTokenScreenActive] = useState<boolean>(false);
   const [liveTrucks, setLiveTrucks] = useState<Truck[]>([]);
+  const [liveGateSettings, setLiveGateSettings] = useState<GateQueueSettings[]>([]);
+  const [liveDisplayRotationSecs, setLiveDisplayRotationSecs] = useState<number | undefined>(undefined);
 
   // Active Screen context for orientation and operating hours
   const [activeScreen, setActiveScreen] = useState<Screen | null>(null);
@@ -145,6 +172,11 @@ export default function PlayerPage() {
     try {
       const data = await screensApi.getAll();
       setScreensList(data);
+      const activeTrucks = await trucksApi.getActive().catch((error) => {
+        console.warn('Failed to load active trucks during player boot:', error);
+        return [] as Truck[];
+      });
+      setLiveTrucks(activeTrucks);
 
       const params = new URLSearchParams(window.location.search);
       const queryId = params.get('screenId') || params.get('id');
@@ -155,7 +187,7 @@ export default function PlayerPage() {
       }
 
       const storedId = localStorage.getItem(PLAYER_SCREEN_STORAGE_KEY);
-      const selectedScreen = pickDefaultPlayerScreen(data, storedId);
+      const selectedScreen = pickDefaultPlayerScreen(data, storedId, activeTrucks);
       if (selectedScreen) {
         setScreenId(selectedScreen.id);
         localStorage.setItem(PLAYER_SCREEN_STORAGE_KEY, selectedScreen.id);
@@ -183,7 +215,6 @@ export default function PlayerPage() {
   const handleSelectScreen = (id: string) => {
     localStorage.setItem(PLAYER_SCREEN_STORAGE_KEY, id);
     setScreenId(id);
-    setLiveTrucks([]);
 
     const selected = screensList.find((screen) => screen.id === id);
     if (selected && isTruckTokenScreen(selected)) {
@@ -282,34 +313,21 @@ export default function PlayerPage() {
     syncRemoteFullscreen();
   }, [activeScreen]);
 
-  // Time formatting helper
-  const getLocalTimeStr = (): string => {
-    const now = new Date();
-    const h = String(now.getHours()).padStart(2, '0');
-    const m = String(now.getMinutes()).padStart(2, '0');
-    return `${h}:${m}`;
-  };
-
-  // Keep track of current day, time, and evaluate screen blanking limits
+  // Keep track of controller time and evaluate screen blanking limits
   useEffect(() => {
-    const updateTime = () => {
-      setCurrentTimeStr(getLocalTimeStr());
+    setCurrentTimeStr(controllerNow.toISOString());
 
-      if (activeScreen && activeScreen.operating_hours) {
-        const oh = activeScreen.operating_hours;
-        if (oh.blank_when_not_in_use) {
-          if (!isScreenWithinOperatingHours(oh, new Date())) {
-            setIsScreenBlanked(true);
-            return;
-          }
+    if (activeScreen && activeScreen.operating_hours) {
+      const oh = activeScreen.operating_hours;
+      if (oh.blank_when_not_in_use) {
+        if (!isScreenWithinOperatingHours(oh, controllerNow)) {
+          setIsScreenBlanked(true);
+          return;
         }
       }
-      setIsScreenBlanked(false);
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 5000); // check time every 5 seconds
-    return () => clearInterval(interval);
-  }, [activeScreen]);
+    }
+    setIsScreenBlanked(false);
+  }, [activeScreen, controllerNow]);
 
   // Resolve schedule slot & active playlist
   const resolveActiveSignage = useCallback(async (resetPlayback = false) => {
@@ -331,6 +349,7 @@ export default function PlayerPage() {
         const fallbackScreen = pickDefaultPlayerScreen(
           screens,
           typeof window !== 'undefined' ? localStorage.getItem(PLAYER_SCREEN_STORAGE_KEY) : null,
+          liveTrucks,
         );
         if (fallbackScreen) {
           localStorage.setItem(PLAYER_SCREEN_STORAGE_KEY, fallbackScreen.id);
@@ -447,7 +466,7 @@ export default function PlayerPage() {
     } catch (err) {
       console.error('Error resolving signage slots:', err);
     }
-  }, [screenId, activePlaylist, isPlaying]);
+  }, [screenId, activePlaylist, isPlaying, liveTrucks]);
 
   useEffect(() => {
     appConfigApi.getMarquee()
@@ -544,6 +563,19 @@ export default function PlayerPage() {
         if (alert.queue_trucks?.length) {
           setLiveTrucks(alert.queue_trucks);
         }
+        if (alert.queue_gates?.length) {
+          setLiveGateSettings(alert.queue_gates);
+        }
+        if (alert.display_rotation_secs) {
+          setLiveDisplayRotationSecs(alert.display_rotation_secs);
+        }
+
+        if (activeScreen && isTruckTokenScreen(activeScreen)) {
+          setIsTruckTokenScreenActive(true);
+          setActiveTruckGates(getScreenGateNumbers(activeScreen).map((gate) => gate.toLowerCase()));
+          setTruckAlert(null);
+          return;
+        }
 
         if (isTruckTokenScreenActive) return;
 
@@ -565,7 +597,7 @@ export default function PlayerPage() {
         truckAlertTimeoutRef.current = null;
       }
     };
-  }, [isTruckTokenScreenActive]);
+  }, [activeScreen, isTruckTokenScreenActive]);
 
   const activeScreenDefaultContentId = isTruckTokenScreenActive
     ? null
@@ -574,14 +606,14 @@ export default function PlayerPage() {
   // Derived helper for active items matching schedule
   const getPlayableItems = useCallback((): PlaylistItem[] => {
     if (activePlaylist) {
-      const scheduled = activePlaylist.items.filter((item) => isPlaylistItemScheduleActive(item.display_schedule));
+      const scheduled = activePlaylist.items.filter((item) => isPlaylistItemScheduleActive(item.display_schedule, scheduleNow));
       if (scheduled.length > 0) return scheduled;
     }
     if (activeScreenDefaultContentId) {
       return [{ content_id: activeScreenDefaultContentId, order: 0, override_duration: null, display_schedule: null }];
     }
     return [];
-  }, [activePlaylist, activeScreenDefaultContentId]);
+  }, [activePlaylist, activeScreenDefaultContentId, scheduleNow]);
 
   const hasScheduledPlaylistOverride = useCallback((): boolean => {
     if (!activePlaylist || !isPlaying || !isTruckTokenScreenActive) return false;
@@ -590,9 +622,9 @@ export default function PlayerPage() {
       if (!schedule || (typeof schedule === 'object' && Object.keys(schedule).length === 0)) {
         return false;
       }
-      return isPlaylistItemScheduleActive(schedule);
+      return isPlaylistItemScheduleActive(schedule, scheduleNow);
     });
-  }, [activePlaylist, isPlaying, isTruckTokenScreenActive]);
+  }, [activePlaylist, isPlaying, isTruckTokenScreenActive, scheduleNow]);
 
   // Handle slide duration and transition loop
   useEffect(() => {
@@ -760,8 +792,8 @@ export default function PlayerPage() {
     return (
       <TruckTokenDisplay
         trucks={truckAlert.queue_trucks ?? trucks}
-        gateSettings={truckAlert.queue_gates}
-        displayRotationSecs={truckAlert.display_rotation_secs}
+        gateSettings={truckAlert.queue_gates ?? liveGateSettings}
+        displayRotationSecs={truckAlert.display_rotation_secs ?? liveDisplayRotationSecs}
         title="Truck Token Alert"
         className="z-100"
         showHeader={false}
@@ -1006,9 +1038,11 @@ export default function PlayerPage() {
       >
         <TruckTokenDisplay
           trucks={liveTrucks.length > 0 ? liveTrucks : trucks}
+          gateSettings={liveGateSettings}
           gateFilters={activeTruckGates.length > 0 ? activeTruckGates : undefined}
           timeZone={activeScreen?.operating_hours?.timezone}
           loadRemoteSnapshot={liveTrucks.length === 0}
+          displayRotationSecs={liveDisplayRotationSecs}
           showBackButton={!isReceiverMode}
           onBack={handleBackToScreenSelection}
         />
