@@ -127,7 +127,7 @@ h1 {
 
 .controller-input:focus,
 .control-button:focus {
-  outline: 3px solid #f8fafc;
+  outline: 4px solid #0284c7;
   outline-offset: 3px;
 }
 

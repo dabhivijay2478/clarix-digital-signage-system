@@ -9,7 +9,9 @@
   var controllerForm = document.getElementById("controller-form");
   var controllerIpInput = document.getElementById("controller-ip");
   var editIpButton = document.getElementById("edit-ip-button");
+  var connectButton = document.getElementById("connect-button");
   var retryButton = document.getElementById("retry-button");
+  var focusableControls = [controllerIpInput, editIpButton, connectButton, retryButton];
   var manager = null;
   var trusted = null;
   var activeConfig = null;
@@ -139,7 +141,16 @@
     stopManager();
     status.textContent = "Opening Controller Player...";
     retry.textContent = target;
-    loadControllerPlayer(target);
+    var startedFrom = window.location.href;
+    try {
+      window.location.href = target;
+    } catch (_error) {
+      loadControllerPlayer(target);
+      return;
+    }
+    window.setTimeout(function () {
+      if (window.location.href === startedFrom) loadControllerPlayer(target);
+    }, 1500);
   }
 
   function showPlayer() {
@@ -217,6 +228,13 @@
     try { controllerIpInput.click(); } catch (_error) {}
   }
 
+  function moveFocus(delta) {
+    var current = focusableControls.indexOf(document.activeElement);
+    if (current === -1) current = 0;
+    var next = (current + delta + focusableControls.length) % focusableControls.length;
+    focusableControls[next].focus();
+  }
+
   function loadConfiguration() {
     var saved = readSavedController();
     if (saved && saved.controllerIp) {
@@ -233,11 +251,31 @@
 
   editIpButton.addEventListener("click", openTvKeyboard);
   retryButton.addEventListener("click", retryNow);
+  controllerIpInput.addEventListener("click", focusInputEnd);
+  controllerIpInput.addEventListener("mousedown", focusInputEnd);
+  controllerIpInput.addEventListener("touchstart", focusInputEnd);
 
   document.addEventListener("contextmenu", function (event) { event.preventDefault(); });
   document.addEventListener("dragstart", function (event) { event.preventDefault(); });
   document.addEventListener("keydown", function (event) {
-    if (event.target === controllerIpInput) return;
+    if (event.target === controllerIpInput) {
+      if (event.keyCode === 13) {
+        event.preventDefault();
+        if (controllerForm.requestSubmit) controllerForm.requestSubmit();
+        else connectButton.click();
+      }
+      return;
+    }
+    if (event.keyCode === 37 || event.keyCode === 38) {
+      event.preventDefault();
+      moveFocus(-1);
+      return;
+    }
+    if (event.keyCode === 39 || event.keyCode === 40) {
+      event.preventDefault();
+      moveFocus(1);
+      return;
+    }
     var blocked = [8, 27, 116, 166, 167];
     if (blocked.indexOf(event.keyCode) !== -1 || event.altKey || event.metaKey || event.ctrlKey) {
       event.preventDefault();

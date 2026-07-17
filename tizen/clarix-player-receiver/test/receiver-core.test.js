@@ -44,12 +44,15 @@ test("keeps the manifest, CSP, and controller player navigation controlled", () 
 
   assert.match(manifest, /<access origin="\*" subdomains="true"\/>/);
   assert.match(manifest, /<tizen:content-security-policy>[^<]*'unsafe-inline'[^<]*'unsafe-eval'[^<]*frame-src 'self' http: https: about: data:[^<]*<\/tizen:content-security-policy>/);
-  assert.match(manifest, /<tizen:allow-navigation>http:\/\/\*\/\*<\/tizen:allow-navigation>/);
+  assert.match(manifest, /<tizen:allow-navigation>\*<\/tizen:allow-navigation>/);
   assert.match(html, /script-src 'self' http: https: 'unsafe-inline' 'unsafe-eval'/);
   assert.match(html, /connect-src 'self' http: https: ws: wss:/);
   assert.match(html, /frame-src 'self' http: https: about: data:/);
   assert.match(html, /<div id="controller" class="controller-address">Not set<\/div>/);
   assert.match(html, /placeholder="Controller IP"/);
+  assert.match(html, /autofocus required/);
+  assert.match(html, /id="connect-button"/);
+  assert.doesNotMatch(html, /inputmode="numeric"/);
   assert.match(main, /trusted\.isAllowed\(target\)/);
   assert.match(main, /openControllerPlayer\(\)/);
   assert.match(main, /loadControllerPlayer\(target\)/);
@@ -59,6 +62,10 @@ test("keeps the manifest, CSP, and controller player navigation controlled", () 
   assert.doesNotMatch(main, /\?receiver=tizen/);
   assert.match(main, /clarix_receiver_controller/);
   assert.match(main, /Enter controller IP/);
+  assert.match(main, /focusableControls/);
+  assert.match(main, /moveFocus/);
+  assert.match(main, /controllerForm\.requestSubmit/);
+  assert.match(main, /connectButton\.click\(\)/);
   assert.doesNotMatch(packageScript, /receiver-config\.json/);
   assert.doesNotMatch(main, /receiver-config\.json/);
   assert.doesNotMatch(main, /requestJson\("\/api\/screens"/);
