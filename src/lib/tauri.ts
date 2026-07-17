@@ -44,6 +44,11 @@ function isTauriRuntime(): boolean {
 
 const browserControllerPort = process.env.NEXT_PUBLIC_CLARIX_CONTROLLER_PORT ?? process.env.NEXT_PUBLIC_SIGNALOS_CONTROLLER_PORT ?? '7420';
 
+export interface ControllerTimeResponse {
+  server_time_iso: string;
+  server_time_ms: number;
+}
+
 export function getBrowserControllerOrigin(): string {
   if (typeof window === 'undefined') return `http://localhost:${browserControllerPort}`;
   const controllerOrigin = (window as typeof window & { __CLARIX_CONTROLLER_ORIGIN__?: string }).__CLARIX_CONTROLLER_ORIGIN__;
@@ -422,6 +427,25 @@ export const trucksApi = {
   getActive: () => tauriInvoke<Truck[]>('get_active_trucks'),
   saveActiveSnapshot: (trucks: Truck[]) =>
     tauriInvoke<void>('save_active_trucks', { trucks }),
+};
+
+export const clockApi = {
+  getControllerTime: async (): Promise<ControllerTimeResponse> => {
+    const response = await fetch(`${getBrowserControllerOrigin()}/api/time`, {
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      throw new Error(`Controller time request failed: ${response.status}`);
+    }
+
+    const data = await response.json() as ControllerTimeResponse;
+    if (!Number.isFinite(data.server_time_ms) || !data.server_time_iso) {
+      throw new Error('Controller time response is invalid');
+    }
+
+    return data;
+  },
 };
 
 // ── Local Admin Auth API ───────────────────────────────────────────────────

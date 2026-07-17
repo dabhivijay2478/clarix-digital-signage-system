@@ -9,31 +9,78 @@
   var controllerForm = document.getElementById("controller-form");
   var controllerIpInput = document.getElementById("controller-ip");
   var editIpButton = document.getElementById("edit-ip-button");
+  var connectButton = document.getElementById("connect-button");
   var retryButton = document.getElementById("retry-button");
+  var focusableControls = [controllerIpInput, editIpButton, connectButton, retryButton];
   var manager = null;
   var trusted = null;
   var activeConfig = null;
   var storageKey = "clarix_receiver_controller";
+  var playerScreenStorageKey = "clarix_player_screen_id";
   var defaultConfig = { controllerIp: "", port: 7420, playerPath: "/player" };
 
-  function readSavedController() {
+  function readJsonStore(key) {
+    var value = null;
     try {
-      return JSON.parse(localStorage.getItem(storageKey) || "null");
+      if (window.tizen && tizen.preference && tizen.preference.exists(key)) {
+        value = tizen.preference.getValue(key);
+      }
+    } catch (_error) {}
+    if (!value) {
+      try { value = localStorage.getItem(key); } catch (_error) {}
+    }
+    if (!value && window.widget && window.widget.preferences) {
+      try { value = window.widget.preferences.getItem(key); } catch (_error) {}
+    }
+    if (!value) return null;
+    try {
+      return JSON.parse(value);
     } catch (_error) {
       return null;
     }
   }
 
-  function saveController(config) {
+  function writeJsonStore(key, payload) {
+    var value = JSON.stringify(payload);
+    try { localStorage.setItem(key, value); } catch (_error) {}
     try {
-      localStorage.setItem(storageKey, JSON.stringify({
-        controllerIp: config.controllerIp,
-        port: config.port,
-        playerPath: config.playerPath
-      }));
-    } catch (_error) {
-      // Some TV firmware can disable storage; the current session still works.
-    }
+      if (window.tizen && tizen.preference) tizen.preference.setValue(key, value);
+    } catch (_error) {}
+    try {
+      if (window.widget && window.widget.preferences) window.widget.preferences.setItem(key, value);
+    } catch (_error) {}
+  }
+
+  function removeStore(key) {
+    try { localStorage.removeItem(key); } catch (_error) {}
+    try {
+      if (window.tizen && tizen.preference && tizen.preference.exists(key)) tizen.preference.remove(key);
+    } catch (_error) {}
+    try {
+      if (window.widget && window.widget.preferences) window.widget.preferences.removeItem(key);
+    } catch (_error) {}
+  }
+
+  function readStringStore(key) {
+    var payload = readJsonStore(key);
+    return typeof payload === "string" && payload ? payload : "";
+  }
+
+  function writeStringStore(key, value) {
+    if (value) writeJsonStore(key, value);
+    else removeStore(key);
+  }
+
+  function readSavedController() {
+    return readJsonStore(storageKey);
+  }
+
+  function saveController(config) {
+    writeJsonStore(storageKey, {
+      controllerIp: config.controllerIp,
+      port: config.port,
+      playerPath: config.playerPath
+    });
   }
 
   function composeConfig(override) {
@@ -75,15 +122,27 @@
     return activeConfig ? activeConfig.origin : "";
   }
 
+  function playerTargetUrl() {
+    var target = trusted.playerUrl();
+    var savedScreenId = readStringStore(playerScreenStorageKey);
+    if (!savedScreenId || /[?&](?:screenId|id)=/.test(target)) return target;
+    return target + (target.indexOf("?") === -1 ? "?" : "&") + "screenId=" + encodeURIComponent(savedScreenId);
+  }
+
   function injectControllerContext(html, origin) {
     var base = "<base href=\"" + origin + "/\">";
     var safeOrigin = origin.replace(/"/g, "%22");
+    var savedScreenId = readStringStore(playerScreenStorageKey).replace(/"/g, "%22");
     var context = "<script>(function(origin){"
       + "window.__CLARIX_CONTROLLER_ORIGIN__=origin;"
+      + "window.__CLARIX_PLAYER_SCREEN_ID__=\"" + savedScreenId + "\";"
       + "function fixUrl(value){"
       + "if(typeof value!=='string')return value;"
       + "return value.replace(/^http:\\/\\/(?::7420|undefined:7420|null:7420)(\\/|$)/,origin+'$1');"
       + "}"
+      + "function rememberScreen(value){try{if(value){localStorage.setItem('clarix_player_screen_id',value);parent.postMessage({type:'clarix-player-screen-id',value:value},'*');}}catch(_error){}}"
+      + "rememberScreen(window.__CLARIX_PLAYER_SCREEN_ID__);"
+      + "try{var originalSet=localStorage.setItem.bind(localStorage);localStorage.setItem=function(key,value){originalSet(key,value);if(key==='clarix_player_screen_id')rememberScreen(String(value||''));};var originalRemove=localStorage.removeItem.bind(localStorage);localStorage.removeItem=function(key){originalRemove(key);if(key==='clarix_player_screen_id')parent.postMessage({type:'clarix-player-screen-id',value:''},'*');};}catch(_error){}"
       + "var originalFetch=window.fetch;"
       + "if(originalFetch){window.fetch=function(input,init){"
       + "if(typeof input==='string')return originalFetch.call(this,fixUrl(input),init);"
@@ -92,6 +151,16 @@
       + "var OriginalEventSource=window.EventSource;"
       + "if(OriginalEventSource){window.EventSource=function(url,config){return new OriginalEventSource(fixUrl(url),config);};window.EventSource.prototype=OriginalEventSource.prototype;}"
       + "function rewriteNode(node){if(!node||!node.getAttribute)return;['src','href','data'].forEach(function(name){var value=node.getAttribute(name);var next=fixUrl(value);if(next!==value)node.setAttribute(name,next);});}"
+      + "function isEditable(el){return el&&(/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)||el.isContentEditable);}"
+      + "function key(e){return e.key||e.keyIdentifier||'';}"
+      + "function direction(e){var k=key(e);if(e.keyCode===37||e.keyCode===38||k==='ArrowLeft'||k==='ArrowUp'||k==='Left'||k==='Up')return-1;if(e.keyCode===39||e.keyCode===40||k==='ArrowRight'||k==='ArrowDown'||k==='Right'||k==='Down')return 1;return 0;}"
+      + "function activate(e){var k=key(e);return e.keyCode===13||k==='Enter'||k==='OK'||k==='Accept';}"
+      + "function visible(el){var r=el.getBoundingClientRect();var s=getComputedStyle(el);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';}"
+      + "function controls(){var q='button,[href],input,select,textarea,[tabindex]:not([tabindex=\"-1\"]),[role=\"button\"],[role=\"link\"],[onclick]';var list=Array.prototype.slice.call(document.querySelectorAll(q)).filter(visible);list.forEach(function(el){if(!el.hasAttribute('tabindex')){try{el.tabIndex=0;}catch(_error){}}});return list;}"
+      + "function focusBy(delta){var list=controls();if(!list.length)return;var index=list.indexOf(document.activeElement);index=index<0?0:(index+delta+list.length)%list.length;list[index].focus();}"
+      + "document.addEventListener('keydown',function(e){var d=direction(e);if(activate(e)&&!isEditable(document.activeElement)&&document.activeElement&&document.activeElement.click){e.preventDefault();document.activeElement.click();return;}if(d&&!isEditable(document.activeElement)){e.preventDefault();focusBy(d);}},true);"
+      + "document.addEventListener('click',function(e){var el=e.target&&e.target.closest&&e.target.closest('button,[href],input,select,textarea,[tabindex],[role=\"button\"],[role=\"link\"],[onclick]');if(el&&el.focus)el.focus();},true);"
+      + "setTimeout(function(){var list=controls();if(list.length&&!isEditable(document.activeElement))list[0].focus();},500);"
       + "try{new MutationObserver(function(records){records.forEach(function(record){for(var i=0;i<record.addedNodes.length;i++){var node=record.addedNodes[i];rewriteNode(node);if(node.querySelectorAll){Array.prototype.forEach.call(node.querySelectorAll('[src],[href],[data]'),rewriteNode);}}});}).observe(document.documentElement,{childList:true,subtree:true});}catch(_error){}"
       + "})(\"" + safeOrigin + "\");<\/script>";
     if (/<head[^>]*>/i.test(html)) {
@@ -147,7 +216,7 @@
   }
 
   function openControllerPlayer() {
-    var target = trusted.playerUrl();
+    var target = playerTargetUrl();
     if (!trusted.isAllowed(target)) {
       showOffline("Blocked untrusted player address.");
       return;
@@ -242,6 +311,31 @@
     try { controllerIpInput.click(); } catch (_error) {}
   }
 
+  function keyName(event) {
+    return event.key || event.keyIdentifier || "";
+  }
+
+  function isActivationKey(event) {
+    var key = keyName(event);
+    return event.keyCode === 13 || key === "Enter" || key === "OK" || key === "Accept";
+  }
+
+  function directionFromKey(event) {
+    var key = keyName(event);
+    if (event.keyCode === 37 || key === "ArrowLeft" || key === "Left") return -1;
+    if (event.keyCode === 38 || key === "ArrowUp" || key === "Up") return -1;
+    if (event.keyCode === 39 || key === "ArrowRight" || key === "Right") return 1;
+    if (event.keyCode === 40 || key === "ArrowDown" || key === "Down") return 1;
+    return 0;
+  }
+
+  function moveFocus(delta) {
+    var current = focusableControls.indexOf(document.activeElement);
+    if (current === -1) current = 0;
+    var next = (current + delta + focusableControls.length) % focusableControls.length;
+    focusableControls[next].focus();
+  }
+
   function loadConfiguration() {
     var saved = readSavedController();
     if (saved && saved.controllerIp) {
@@ -258,11 +352,33 @@
 
   editIpButton.addEventListener("click", openTvKeyboard);
   retryButton.addEventListener("click", retryNow);
+  controllerIpInput.addEventListener("click", focusInputEnd);
+  controllerIpInput.addEventListener("mousedown", focusInputEnd);
+  controllerIpInput.addEventListener("touchstart", focusInputEnd);
+  window.addEventListener("message", function (event) {
+    if (!event.data || event.data.type !== "clarix-player-screen-id") return;
+    writeStringStore(playerScreenStorageKey, String(event.data.value || ""));
+  });
 
   document.addEventListener("contextmenu", function (event) { event.preventDefault(); });
   document.addEventListener("dragstart", function (event) { event.preventDefault(); });
   document.addEventListener("keydown", function (event) {
-    if (event.target === controllerIpInput) return;
+    var direction = directionFromKey(event);
+    if (event.target === controllerIpInput) {
+      // Samsung's native IME requires input key events to remain unmodified.
+      // The form's native Go/Enter action submits the controller address.
+      return;
+    }
+    if (isActivationKey(event) && document.activeElement && document.activeElement.click) {
+      event.preventDefault();
+      document.activeElement.click();
+      return;
+    }
+    if (direction !== 0) {
+      event.preventDefault();
+      moveFocus(direction);
+      return;
+    }
     var blocked = [8, 27, 116, 166, 167];
     if (blocked.indexOf(event.keyCode) !== -1 || event.altKey || event.metaKey || event.ctrlKey) {
       event.preventDefault();

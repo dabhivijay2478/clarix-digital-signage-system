@@ -4,12 +4,14 @@ import { Suspense } from 'react'
 
 import TruckTokenDisplay from '@/components/TruckTokenDisplay'
 import PlayerThemeLock from '@/app/player/PlayerThemeLock'
+import { getControllerTimeZone } from '@/lib/signage-schedule'
 import { useTruckStore } from '@/store/truckStore'
 
 function GateDisplayContent() {
   const trucks = useTruckStore((state) => state.trucks)
+  const controllerTimeZone = getControllerTimeZone()
 
-  return <TruckTokenDisplay trucks={trucks} />
+  return <TruckTokenDisplay trucks={trucks} timeZone={controllerTimeZone} />
 }
 
 export default function GateDisplayPage() {

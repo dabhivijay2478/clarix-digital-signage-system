@@ -140,6 +140,7 @@ export interface PlaylistItemSchedule {
   start_date: string;
   end_date: string;
   transition: TransitionEffect;
+  timezone?: string;
 }
 
 // ── Schedule ────────────────────────────────────────────────────────────────

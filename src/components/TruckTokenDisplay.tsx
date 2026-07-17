@@ -3,11 +3,12 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
 
-import { getTruckStatusInfo } from '@/lib/truck-alerts'
 import {
   getEstimatedWaitMinsForTruck,
   getGateLoadingDurationMins,
 } from '@/lib/truck-queue'
+import { useControllerClock } from '@/hooks/useControllerClock'
+import { APP_TIME_ZONE, getValidTimeZone } from '@/lib/signage-schedule'
 import { truckAlertsApi, trucksApi } from '@/lib/tauri'
 import type { GateQueueSettings, Truck, TruckDispatchSummary } from '@/lib/types'
 import { useGateStore } from '@/store/gateStore'
@@ -23,6 +24,7 @@ interface TruckTokenDisplayProps {
   gateSettings?: GateQueueSettings[]
   gateFilter?: string | null
   gateFilters?: string[] | null
+  timeZone?: string | null
   loadRemoteSnapshot?: boolean
   /** Override the loading ↔ waiting rotation interval (seconds). */
   displayRotationSecs?: number
@@ -47,23 +49,6 @@ function DisplayPlate({ text }: { text: string }) {
     <p className="mg-truck-plate">
       {text}
     </p>
-  )
-}
-
-function DisplayStatus({
-  text,
-  color,
-}: {
-  text: string
-  color: string
-}) {
-  return (
-    <span
-      className="mg-truck-status"
-      style={{ color }}
-    >
-      {text}
-    </span>
   )
 }
 
@@ -93,20 +78,6 @@ function buildBalancedQueueRows(source: Truck[], gates: string[], maxRows = MAX_
         .slice(0, perGate)
     })
     .slice(0, maxRows)
-}
-
-/** Short board labels so large type fits column widths on 4K. */
-function boardStatusLabel(statusLabel: string): string {
-  switch (statusLabel) {
-    case 'Waiting':
-      return 'WAITING'
-    case 'Loading in.':
-      return 'LOADING'
-    case 'Loading Out.':
-      return 'OUT'
-    default:
-      return statusLabel.toUpperCase()
-  }
 }
 
 function DisplayStatCard({
@@ -152,18 +123,17 @@ const GATE_PALETTE = [
   { border: '#f97316', bg: '#fff7ed', text: '#c2410c' },
 ]
 
-function formatTimeOfDay(dateStr: string | null): string {
+function formatTimeOfDay(dateStr: string | null, timeZone = APP_TIME_ZONE): string {
   if (!dateStr) return '-'
   try {
     const d = new Date(dateStr)
     if (Number.isNaN(d.getTime())) return '-'
-    let hours = d.getHours()
-    const minutes = d.getMinutes()
-    const ampm = hours >= 12 ? 'PM' : 'AM'
-    hours = hours % 12
-    hours = hours ? hours : 12
-    const minStr = minutes.toString().padStart(2, '0')
-    return `${hours}:${minStr} ${ampm}`
+    return new Intl.DateTimeFormat('en-IN', {
+      timeZone: getValidTimeZone(timeZone),
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(d).toUpperCase()
   } catch {
     return '-'
   }
@@ -174,6 +144,7 @@ function getEstWaitLabel(
   displayTrucks: Truck[],
   gateSettings: GateQueueSettings[],
   now: Date | null,
+  timeZone: string,
 ): string {
   if (!truck.waiting_at) return '-'
   const baseTime = new Date(truck.waiting_at)
@@ -182,23 +153,10 @@ function getEstWaitLabel(
   const cyclesWaitMins = getEstimatedWaitMinsForTruck(displayTrucks, truck, gateSettings)
   const defaultMins = getGateLoadingDurationMins(truck.gate_no, gateSettings)
   const totalWaitMins = cyclesWaitMins + defaultMins
-  const elapsedWaitMins = Math.max(0, (nowTime - baseTime.getTime()) / 60000)
-  const remainingWaitMins = Math.max(0, totalWaitMins - elapsedWaitMins)
-  const expectedTime = new Date(nowTime + remainingWaitMins * 60000)
-  return formatTimeOfDay(expectedTime.toISOString())
-}
-
-function getStatusStyle(statusLabel: string): React.CSSProperties {
-  switch (statusLabel) {
-    case 'Loading Out.':
-      return { borderColor: '#10b981', background: '#ecfdf5', color: '#047857' }
-    case 'Loading in.':
-      return { borderColor: '#06b6d4', background: '#ecfeff', color: '#0e7490' }
-    case 'Waiting':
-      return { borderColor: '#f59e0b', background: '#fffbeb', color: '#b45309' }
-    default:
-      return { borderColor: '#d1d5db', background: '#f9fafb', color: '#4b5563' }
-  }
+  const targetTime = baseTime.getTime() + totalWaitMins * 60000
+  const remainingWaitMs = Math.max(0, targetTime - nowTime)
+  const expectedTime = new Date(nowTime + remainingWaitMs)
+  return formatTimeOfDay(expectedTime.toISOString(), timeZone)
 }
 
 function getGateStyle(gateNo: string | null | undefined): React.CSSProperties {
@@ -256,6 +214,7 @@ export default function TruckTokenDisplay({
   displayRotationSecs: displayRotationSecsProp,
   showBackButton = false,
   onBack,
+  timeZone,
 }: TruckTokenDisplayProps) {
   const gates = useGateStore((state) => state.gates)
   const storedRotationSecs = useGateStore((state) => state.displayRotationSecs)
@@ -263,7 +222,8 @@ export default function TruckTokenDisplay({
   const [remoteTrucks, setRemoteTrucks] = useState<Truck[]>([])
   const [hasLoadedRemoteTrucks, setHasLoadedRemoteTrucks] = useState(false)
   const [dispatchSummary, setDispatchSummary] = useState<TruckDispatchSummary | null>(null)
-  const [currentTime, setCurrentTime] = useState<Date | null>(null)
+  const { now: currentTime } = useControllerClock()
+  const displayTimeZone = getValidTimeZone(timeZone)
   const normalizedGateFilters = useMemo(() => {
     const fromList = (gateFilters ?? [])
       .map((gate) => gate.trim().toLowerCase())
@@ -279,14 +239,6 @@ export default function TruckTokenDisplay({
     }
     return trucks
   }, [loadRemoteSnapshot, hasLoadedRemoteTrucks, remoteTrucks, trucks])
-
-  useEffect(() => {
-    setCurrentTime(new Date())
-    const timer = setInterval(() => {
-      setCurrentTime(new Date())
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [])
 
   useEffect(() => {
     let disposed = false
@@ -414,6 +366,7 @@ export default function TruckTokenDisplay({
               <button
                 type="button"
                 className="mg-truck-back-btn"
+                data-tv-back
                 onClick={onBack}
                 aria-label="Back to screen selection"
                 title="Change screen"
@@ -445,24 +398,16 @@ export default function TruckTokenDisplay({
                   <div className="mg-truck-clock-wrap">
                     <span className="mg-truck-clock-time">
                       {currentTime.toLocaleTimeString(undefined, {
+                        timeZone: displayTimeZone,
                         hour: '2-digit',
                         minute: '2-digit',
                         hour12: true,
-                      })}
+                      }).toUpperCase()}
                     </span>
                   </div>
                 </div>
               </>
             )}
-          </div>
-          <div className="mg-truck-branding">
-            <Image
-              src="/company-logo/AMNS_Logo_Mid.png"
-              alt="AMNS India logo"
-              width={250}
-              height={105}
-              style={{ display: 'block', height: '100%', width: 'auto', objectFit: 'contain' }}
-            />
           </div>
         </div>
 
@@ -472,7 +417,6 @@ export default function TruckTokenDisplay({
               <div className="mg-truck-grid-head">
                 <div className="mg-truck-col-gate mg-truck-col-label">Gate</div>
                 <div className="mg-truck-col-plate mg-truck-col-label">Truck Number</div>
-                <div className="mg-truck-col-status mg-truck-col-label">Status</div>
                 {mode === 'waiting' && (
                   <div className="mg-truck-col-est mg-truck-col-label">Est. Wait</div>
                 )}
@@ -498,7 +442,6 @@ export default function TruckTokenDisplay({
                     )
                   }
 
-                  const statusLabel = getTruckStatusInfo(truck).status_label
                   return (
                     <div
                       key={`${mode}-${truck.id}`}
@@ -517,16 +460,10 @@ export default function TruckTokenDisplay({
                             text={truck.registration_number.toUpperCase()}
                           />
                         </div>
-                        <div className="mg-truck-col-status">
-                          <DisplayStatus
-                            text={boardStatusLabel(statusLabel)}
-                            color={getStatusStyle(statusLabel).color ?? '#4b5563'}
-                          />
-                        </div>
                         {mode === 'waiting' && (
                           <div className="mg-truck-col-est">
                             <DisplayTime
-                              text={getEstWaitLabel(truck, displayTrucks, resolvedGateSettings, currentTime)}
+                              text={getEstWaitLabel(truck, displayTrucks, resolvedGateSettings, currentTime, displayTimeZone)}
                             />
                           </div>
                         )}
@@ -537,6 +474,16 @@ export default function TruckTokenDisplay({
             </div>
           </div>
         </div>
+      </div>
+      <div className="mg-truck-branding" aria-hidden="true">
+        <Image
+          src="/company-logo/AMNS_Logo_Mid.png"
+          alt="AMNS India logo"
+          width={250}
+          height={105}
+          priority
+          style={{ display: 'block', height: '100%', width: 'auto', objectFit: 'contain' }}
+        />
       </div>
     </div>
   )

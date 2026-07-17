@@ -7,9 +7,69 @@ import type {
 } from './types';
 
 export const APP_WEEKDAYS: AppWeekday[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+export const APP_TIME_ZONE = 'Asia/Calcutta';
 
 const JS_DAY_TO_APP_WEEKDAY: AppWeekday[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const JS_DAY_TO_FULL_WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+export function getValidTimeZone(timeZone?: string | null): string {
+  if (timeZone) {
+    try {
+      new Intl.DateTimeFormat('en-GB', { timeZone }).format(new Date());
+      return timeZone;
+    } catch {
+      // Fall through to the packaged app default for older or invalid data.
+    }
+  }
+  return APP_TIME_ZONE;
+}
+
+export function getControllerTimeZone(): string {
+  if (typeof Intl === 'undefined') return APP_TIME_ZONE;
+  return getValidTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+}
+
+function getZonedDateInfo(date: Date, timeZone?: string | null): {
+  dateKey: string;
+  today: AppWeekday;
+  previousDay: AppWeekday;
+  todayFull: string;
+  previousFull: string;
+  nowMinutes: number;
+} {
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: getValidTimeZone(timeZone),
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  });
+  const parts = Object.fromEntries(
+    formatter.formatToParts(date)
+      .filter((part) => part.type !== 'literal')
+      .map((part) => [part.type, part.value])
+  );
+  const year = Number.parseInt(parts.year, 10);
+  const month = Number.parseInt(parts.month, 10);
+  const day = Number.parseInt(parts.day, 10);
+  const hours = Number.parseInt(parts.hour, 10);
+  const minutes = Number.parseInt(parts.minute, 10);
+  const zonedMiddayUtc = Date.UTC(year, month - 1, day, 12);
+  const previousMiddayUtc = zonedMiddayUtc - 86400000;
+  const todayIndex = new Date(zonedMiddayUtc).getUTCDay();
+  const previousIndex = new Date(previousMiddayUtc).getUTCDay();
+
+  return {
+    dateKey: `${parts.year}-${parts.month}-${parts.day}`,
+    today: JS_DAY_TO_APP_WEEKDAY[todayIndex],
+    previousDay: JS_DAY_TO_APP_WEEKDAY[previousIndex],
+    todayFull: JS_DAY_TO_FULL_WEEKDAY[todayIndex],
+    previousFull: JS_DAY_TO_FULL_WEEKDAY[previousIndex],
+    nowMinutes: hours * 60 + minutes,
+  };
+}
 
 export function defaultPlaylistItemDayTimes(
   start = '09:00',
@@ -37,6 +97,7 @@ export function defaultPlaylistItemSchedule(): PlaylistItemSchedule {
     start_date: '',
     end_date: '',
     transition: 'Fade',
+    timezone: APP_TIME_ZONE,
   };
 }
 
@@ -72,6 +133,7 @@ export function normalizePlaylistItemSchedule(
     days: enabledDays,
     day_times: dayTimes,
     transition: schedule?.transition ?? fallback.transition,
+    timezone: getValidTimeZone(schedule?.timezone ?? fallback.timezone),
   };
 }
 
@@ -99,41 +161,25 @@ export function isOvernightWindow(startTime: string, endTime: string): boolean {
   return start !== null && end !== null && start > end;
 }
 
-function getLocalDateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function getPreviousDay(date: Date): Date {
-  const previous = new Date(date);
-  previous.setDate(date.getDate() - 1);
-  return previous;
-}
-
 export function isPlaylistItemScheduleActive(
   schedule?: Partial<PlaylistItemSchedule> | null,
   date = new Date()
 ): boolean {
   if (!schedule) return true;
   const normalized = normalizePlaylistItemSchedule(schedule);
+  const zonedDate = getZonedDateInfo(date, normalized.timezone);
 
   if (normalized.date_restricted) {
-    const today = getLocalDateKey(date);
-    if (normalized.start_date && today < normalized.start_date) return false;
-    if (normalized.end_date && today > normalized.end_date) return false;
+    if (normalized.start_date && zonedDate.dateKey < normalized.start_date) return false;
+    if (normalized.end_date && zonedDate.dateKey > normalized.end_date) return false;
   }
 
   if (!normalized.time_restricted) return true;
 
   if (normalized.days.length === 0) return false;
 
-  const nowMinutes = date.getHours() * 60 + date.getMinutes();
-  const today = JS_DAY_TO_APP_WEEKDAY[date.getDay()];
-  const previousDay = JS_DAY_TO_APP_WEEKDAY[getPreviousDay(date).getDay()];
-  const todaySchedule = normalized.day_times?.[today];
-  const previousSchedule = normalized.day_times?.[previousDay];
+  const todaySchedule = normalized.day_times?.[zonedDate.today];
+  const previousSchedule = normalized.day_times?.[zonedDate.previousDay];
 
   const isAllowedForDay = (daySchedule: PlaylistItemDaySchedule | undefined, mode: 'current' | 'previous') => {
     if (!daySchedule?.enabled) return false;
@@ -142,9 +188,9 @@ export function isPlaylistItemScheduleActive(
     if (start === null || end === null) return false;
     if (start === end) return mode === 'current';
     if (start < end) {
-      return mode === 'current' && nowMinutes >= start && nowMinutes <= end;
+      return mode === 'current' && zonedDate.nowMinutes >= start && zonedDate.nowMinutes <= end;
     }
-    return mode === 'current' ? nowMinutes >= start : nowMinutes <= end;
+    return mode === 'current' ? zonedDate.nowMinutes >= start : zonedDate.nowMinutes <= end;
   };
 
   return isAllowedForDay(todaySchedule, 'current') || isAllowedForDay(previousSchedule, 'previous');
@@ -157,6 +203,16 @@ function compactDaySummary(days: AppWeekday[]): string {
   if (joined === 'Mon,Tue,Wed,Thu,Fri') return 'Mon-Fri';
   if (joined === 'Sat,Sun') return 'Sat-Sun';
   return days.join(', ');
+}
+
+export function formatScheduleTime(time?: string | null): string {
+  const minutes = parseTimeToMinutes(time);
+  if (minutes === null) return time || '-';
+  const hours24 = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  const suffix = hours24 >= 12 ? 'PM' : 'AM';
+  const hours12 = hours24 % 12 || 12;
+  return `${hours12}:${String(mins).padStart(2, '0')} ${suffix}`;
 }
 
 export function formatPlaylistScheduleSummary(schedule?: Partial<PlaylistItemSchedule> | null): string {
@@ -173,7 +229,7 @@ export function formatPlaylistScheduleSummary(schedule?: Partial<PlaylistItemSch
 
     if (first && hasSingleWindow) {
       const overnight = isOvernightWindow(first.start, first.end) ? ' overnight' : '';
-      parts.push(`${compactDaySummary(normalized.days)} · ${first.start}-${first.end}${overnight}`);
+      parts.push(`${compactDaySummary(normalized.days)} · ${formatScheduleTime(first.start)}-${formatScheduleTime(first.end)}${overnight}`);
     } else {
       parts.push(`${compactDaySummary(normalized.days)} · custom times`);
     }
@@ -210,7 +266,7 @@ export function validatePlaylistItemSchedule(schedule: PlaylistItemSchedule): st
 
 function isWithinOperatingDayWindow(
   dayHours: ScreenOperatingHoursDay | undefined,
-  date: Date,
+  nowMinutes: number,
   compareMode: 'current' | 'previous'
 ): boolean {
   if (!dayHours) return false;
@@ -218,7 +274,6 @@ function isWithinOperatingDayWindow(
   const end = parseTimeToMinutes(dayHours.end || '23:59');
   if (start === null || end === null) return false;
 
-  const nowMinutes = date.getHours() * 60 + date.getMinutes();
   if (start === end) return true;
   if (start < end) {
     return compareMode === 'current' && nowMinutes >= start && nowMinutes <= end;
@@ -231,12 +286,10 @@ export function isScreenWithinOperatingHours(
   date = new Date()
 ): boolean {
   if (!operatingHours?.days) return true;
-  const todayName = JS_DAY_TO_FULL_WEEKDAY[date.getDay()];
-  const previousDay = getPreviousDay(date);
-  const previousName = JS_DAY_TO_FULL_WEEKDAY[previousDay.getDay()];
+  const zonedDate = getZonedDateInfo(date, operatingHours.timezone);
 
   return (
-    isWithinOperatingDayWindow(operatingHours.days[todayName], date, 'current') ||
-    isWithinOperatingDayWindow(operatingHours.days[previousName], date, 'previous')
+    isWithinOperatingDayWindow(operatingHours.days[zonedDate.todayFull], zonedDate.nowMinutes, 'current') ||
+    isWithinOperatingDayWindow(operatingHours.days[zonedDate.previousFull], zonedDate.nowMinutes, 'previous')
   );
 }

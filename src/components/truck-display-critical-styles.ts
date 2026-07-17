@@ -10,28 +10,27 @@ export const TRUCK_DISPLAY_CRITICAL_CSS = `
 .mg-truck-clock-time{font-family:monospace;font-size:clamp(1.5rem,2.2vw,3.25rem);font-weight:800;letter-spacing:0;color:#059669;white-space:nowrap;line-height:1;margin:0;padding:0;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .mg-truck-stats{display:flex;flex-wrap:nowrap;width:100%;min-width:0;flex:1 1 auto;overflow:hidden;align-items:stretch;margin:0;padding:0;height:100%;gap:0}
 .mg-truck-stat-cell{flex:1 1 0;min-width:0;display:flex;justify-content:center;align-items:center;overflow:hidden;height:100%;margin:0;padding:0}
-.mg-truck-clock-cell{flex:0 0 9vw;min-width:0;max-width:10vw;display:flex;justify-content:center;align-items:center;overflow:hidden;height:100%;margin:0;padding:0}
+.mg-truck-clock-cell{flex:0 0 14vw;min-width:12vw;max-width:16vw;display:flex;justify-content:center;align-items:center;overflow:hidden;height:100%;margin:0;padding:0}
 .mg-truck-stat{display:flex;flex-direction:column;align-items:center;justify-content:center;border:none;background:transparent;overflow:hidden;margin:0;padding:0;text-align:center;height:100%;width:100%}
 .mg-truck-stat-title{margin:0;padding:0;font-size:clamp(1.25rem,1.85vw,2.5rem);font-weight:800;color:#111827;line-height:1.05;white-space:nowrap}
 .mg-truck-stat-value-line{margin:0;padding:0;display:flex;align-items:baseline;justify-content:center;line-height:1;white-space:nowrap;overflow:hidden}
 .mg-truck-stat-suffix{font-size:clamp(1rem,1.45vw,2rem);font-weight:700;color:#4b5563;line-height:1;white-space:nowrap;margin:0 0.35vw 0 0;padding:0}
 .mg-truck-stat-num{font-size:clamp(2rem,3.5vw,5.5rem);font-weight:900;line-height:1;margin:0;padding:0}
-.mg-truck-branding{flex:0 0 auto;display:flex;align-items:center;justify-content:flex-end;height:62%;max-height:8vh;margin:0;padding:0;border:none;overflow:hidden}
-.mg-truck-branding img{display:block;height:100%;max-height:8vh;width:auto;object-fit:contain}
-.mg-truck-panel{position:relative;min-height:0;width:100%;overflow:hidden;display:flex;flex-direction:column;margin:0;padding:0 0.8vw}
+.mg-truck-branding{position:fixed;right:2vw;bottom:2.4vh;z-index:20;display:flex;align-items:center;justify-content:flex-end;height:clamp(58px,8vh,120px);max-width:22vw;margin:0;padding:0;border:none;overflow:hidden;pointer-events:none}
+.mg-truck-branding img{display:block;height:100%;width:auto;object-fit:contain}
+.mg-truck-panel{position:relative;min-height:0;width:100%;overflow:hidden;display:flex;flex-direction:column;margin:0;padding:0 0.8vw 10vh}
 .mg-truck-table-wrap{flex:1 1 auto;min-height:0;width:100%;overflow:hidden;display:flex;flex-direction:column;margin:0;padding:0}
 .mg-truck-grid{display:flex;flex-direction:column;height:100%;width:100%;overflow:hidden;min-height:0;gap:0;margin:0;padding:0}
-.mg-truck-grid-head{flex:0 0 auto;display:grid;grid-template-columns:10% 46% 44%;align-items:end;border:none;width:100%;margin:0;padding:0;gap:0}
-.mg-truck-grid--waiting .mg-truck-grid-head{grid-template-columns:10% 46% 24% 20%}
+.mg-truck-grid-head{flex:0 0 auto;display:grid;grid-template-columns:12% 88%;align-items:end;border:none;width:100%;margin:0;padding:0;gap:0}
+.mg-truck-grid--waiting .mg-truck-grid-head{grid-template-columns:12% 58% 30%}
 .mg-truck-grid-head .mg-truck-col-label{font-size:clamp(1.1rem,1.6vw,2rem);font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#6b7280;white-space:nowrap;line-height:1;margin:0;padding:0 0 0.8vh;overflow:hidden}
 .mg-truck-grid-body{position:relative;flex:1 1 auto;min-height:0;width:100%;overflow:hidden;display:grid;grid-template-rows:repeat(4,minmax(0,1fr));margin:0;padding:0;gap:0}
-.mg-truck-grid-row{display:grid;grid-template-columns:10% 46% 44%;align-items:center;border:none;width:100%;margin:0;padding:0;gap:0;min-height:0;height:100%;overflow:hidden}
-.mg-truck-grid--waiting .mg-truck-grid-row{grid-template-columns:10% 46% 24% 20%}
+.mg-truck-grid-row{display:grid;grid-template-columns:12% 88%;align-items:center;border:none;width:100%;margin:0;padding:0;gap:0;min-height:0;height:100%;overflow:hidden}
+.mg-truck-grid--waiting .mg-truck-grid-row{grid-template-columns:12% 58% 30%}
 .mg-truck-grid-row--placeholder{visibility:hidden;pointer-events:none}
-.mg-truck-col-gate,.mg-truck-col-plate,.mg-truck-col-status,.mg-truck-col-est{overflow:hidden;min-width:0;margin:0;padding:0}
+.mg-truck-col-gate,.mg-truck-col-plate,.mg-truck-col-est{overflow:hidden;min-width:0;margin:0;padding:0}
 .mg-truck-gate{display:block;width:100%;font-size:clamp(3.5rem,8.5vh,6.5vw);font-weight:900;letter-spacing:0;text-transform:uppercase;white-space:nowrap;line-height:1;margin:0;padding:0;overflow:hidden}
 .mg-truck-plate{margin:0;padding:0;width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-weight:900;color:#111827;letter-spacing:0;line-height:1;font-size:clamp(3.25rem,8vh,5.2vw);white-space:nowrap;overflow:hidden;text-overflow:clip}
-.mg-truck-status{display:block;width:100%;font-size:clamp(2.75rem,7vh,4.2vw);font-weight:900;letter-spacing:0;text-transform:uppercase;white-space:nowrap;line-height:1;margin:0;padding:0;overflow:hidden;text-overflow:clip}
 .mg-truck-time{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;display:block;width:100%;font-size:clamp(2.75rem,7vh,4.2vw);font-weight:900;color:#1f2937;white-space:nowrap;line-height:1;margin:0;padding:0;text-align:left;overflow:hidden;text-overflow:clip}
 .mg-truck-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;margin:0;padding:0;text-align:center;pointer-events:none;gap:0.5vh}
 .mg-truck-empty-title{margin:0;padding:0;font-size:clamp(1.75rem,2.8vw,3.75rem);font-weight:800;color:#9ca3af;line-height:1}

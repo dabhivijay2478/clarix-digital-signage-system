@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { screensApi, playlistsApi, contentApi, analyticsApi, localNetworkApi, customConfirm, getBrowserControllerOrigin, appConfigApi, trucksApi } from '../../lib/tauri';
 import type { Screen, Playlist, ContentItem, PlaylistItem, TruckScreenAlert, MarqueeSettings, ScreenPurpose, Truck } from '../../lib/types';
 import { isPlaylistItemScheduleActive, isScreenWithinOperatingHours } from '../../lib/signage-schedule';
@@ -61,19 +60,15 @@ function isTruckTokenScreen(screen: Screen): boolean {
 
 function pickDefaultPlayerScreen(screens: Screen[], storedId?: string | null): Screen | null {
   const storedScreen = storedId ? screens.find((screen) => screen.id === storedId) ?? null : null;
-  const storedIsTruckToken = storedScreen ? isTruckTokenScreen(storedScreen) : false;
-
-  if (storedIsTruckToken) return storedScreen;
+  if (storedScreen) return storedScreen;
 
   const truckScreen = screens.find(isTruckTokenScreen);
   if (truckScreen) return truckScreen;
 
-  if (storedScreen) return storedScreen;
   return screens.length === 1 ? screens[0] : null;
 }
 
 export default function PlayerPage() {
-  const router = useRouter();
   const branding = useBrandingStore();
   const trucks = useTruckStore((state) => state.trucks);
   const appName = branding.appName;
@@ -125,18 +120,6 @@ export default function PlayerPage() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Escape key handler to return to dashboard
-  useEffect(() => {
-    if (isReceiverMode) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        router.push('/');
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isReceiverMode, router]);
-
   // Load screen port
   useEffect(() => {
     localNetworkApi.getServerPort().then(setPort).catch((err) => {
@@ -176,9 +159,11 @@ export default function PlayerPage() {
       if (selectedScreen) {
         setScreenId(selectedScreen.id);
         localStorage.setItem(PLAYER_SCREEN_STORAGE_KEY, selectedScreen.id);
-      } else {
+      } else if (storedId) {
+        // Keep retrying the saved screen while the controller restores its data.
+        setScreenId(storedId);
+      } else if (!storedId) {
         setScreenId(null);
-        localStorage.removeItem(PLAYER_SCREEN_STORAGE_KEY);
       }
     } catch (err) {
       console.error('Failed to load player screen:', err);
@@ -224,6 +209,32 @@ export default function PlayerPage() {
     setActivePlaylist(null);
     loadScreensList();
   }, [loadScreensList]);
+
+  // Escape key stays inside /player and returns to the player screen picker.
+  useEffect(() => {
+    if (isReceiverMode) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleBackToScreenSelection();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleBackToScreenSelection, isReceiverMode]);
+
+  useEffect(() => {
+    const handleRemoteBack = (event: Event) => {
+      event.preventDefault();
+      if (screenId) {
+        handleBackToScreenSelection();
+      } else {
+        void loadScreensList();
+      }
+    };
+    window.addEventListener('tv-remote-back', handleRemoteBack);
+    return () => window.removeEventListener('tv-remote-back', handleRemoteBack);
+  }, [loadScreensList, screenId, handleBackToScreenSelection]);
 
   // Helper to disconnect screen representation
   const handleDisconnectScreen = async () => {
@@ -328,8 +339,8 @@ export default function PlayerPage() {
           return;
         }
 
-        localStorage.removeItem(PLAYER_SCREEN_STORAGE_KEY);
-        setScreenId(null);
+        // Keep the persisted ID while the controller is still restoring its data.
+        // A later refresh can resolve the same screen without user intervention.
         setLoading(false);
         return;
       }
@@ -755,6 +766,7 @@ export default function PlayerPage() {
         className="z-100"
         showHeader={false}
         gateFilter={truckAlert.gate}
+        timeZone={activeScreen?.operating_hours?.timezone}
         loadRemoteSnapshot={false}
         showBackButton={!isReceiverMode}
         onBack={handleBackToScreenSelection}
@@ -935,9 +947,12 @@ export default function PlayerPage() {
                 <button
                   type="button"
                   className="mg-player-btn"
-                  onClick={() => router.push('/screens')}
+                  onClick={() => {
+                    setLoading(true);
+                    void loadScreensList();
+                  }}
                 >
-                  Go to Dashboard
+                  Refresh Screens
                 </button>
               )}
             </div>
@@ -970,8 +985,8 @@ export default function PlayerPage() {
           <div className="mg-player-footer">
             <span>{port > 0 ? `Controller-hosted browser player · ${port}` : 'Packaged offline player'}</span>
             {!isReceiverMode && (
-              <button type="button" onClick={() => router.push('/')}>
-                ← Back to Main
+              <button type="button" onClick={handleBackToScreenSelection}>
+                ← Player Home
               </button>
             )}
           </div>
@@ -992,6 +1007,7 @@ export default function PlayerPage() {
         <TruckTokenDisplay
           trucks={liveTrucks.length > 0 ? liveTrucks : trucks}
           gateFilters={activeTruckGates.length > 0 ? activeTruckGates : undefined}
+          timeZone={activeScreen?.operating_hours?.timezone}
           loadRemoteSnapshot={liveTrucks.length === 0}
           showBackButton={!isReceiverMode}
           onBack={handleBackToScreenSelection}
@@ -1077,8 +1093,8 @@ export default function PlayerPage() {
                 Disconnect Screen
               </button>
               <span style={{ margin: '0 16px', color: 'rgba(255,255,255,0.1)' }}>|</span>
-              <button type="button" onClick={() => router.push('/')}>
-                Exit Player (Esc)
+              <button type="button" onClick={handleBackToScreenSelection}>
+                Player Home (Esc)
               </button>
             </div>
           )}

@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "../components/ThemeProvider";
 import { APP_LOGO, APP_TITLE } from "@/lib/branding";
+import TvRemoteNavigation from "@/components/TvRemoteNavigation";
 
 export const metadata: Metadata = {
   title: APP_TITLE,
@@ -33,6 +34,7 @@ export default function RootLayout({
         />
       </head>
       <body>
+        <TvRemoteNavigation />
         <ThemeProvider attribute="class" defaultTheme="dark">
           <TooltipProvider>
             <AppLayoutWrapper>{children}</AppLayoutWrapper>

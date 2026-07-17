@@ -1,6 +1,6 @@
 {
   "name": "clarix-player-receiver-tizen",
-  "version": "1.0.27",
+  "version": "1.0.29",
   "private": true,
   "scripts": {
     "configure": "node scripts/configure.mjs",

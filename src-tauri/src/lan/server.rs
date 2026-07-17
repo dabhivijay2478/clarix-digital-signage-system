@@ -109,6 +109,7 @@ pub async fn start_controller_server(
         .route("/api/playlists", get(read_playlists))
         .route("/api/content", get(read_content))
         .route("/api/schedule", get(read_schedule))
+        .route("/api/time", get(read_controller_time))
         .route("/api/marquee", get(read_marquee))
         .route("/api/trucks", get(read_active_trucks).post(write_active_trucks))
         .route("/api/trucks/dispatch-summary", get(read_truck_dispatch_summary))
@@ -161,6 +162,14 @@ async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
         "protocol_version": state.identity.protocol_version,
         "port": state.identity.service_port,
         "revision": current_revision(&state.pool).unwrap_or(0),
+    }))
+}
+
+async fn read_controller_time() -> Json<serde_json::Value> {
+    let now = Utc::now();
+    Json(serde_json::json!({
+        "server_time_iso": now.to_rfc3339(),
+        "server_time_ms": now.timestamp_millis(),
     }))
 }
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { 
@@ -19,9 +19,17 @@ import { showToast } from '@/components/Toast'
 import { Badge } from '@/components/ui/badge'
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { playlistsApi, scheduleApi, screensApi } from '@/lib/tauri'
-import type { ScheduleSlot } from '@/lib/types'
+import { contentApi, playlistsApi, scheduleApi, screensApi } from '@/lib/tauri'
+import type { AppWeekday, ContentItem, Playlist, ScheduleSlot, Screen } from '@/lib/types'
+import {
+  APP_WEEKDAYS,
+  formatScheduleTime,
+  getControllerTimeZone,
+  normalizePlaylistItemSchedule,
+  parseTimeToMinutes,
+} from '@/lib/signage-schedule'
 import { cn } from '@/lib/utils'
+import type { ScheduleTimelineSlot } from '@/components/ScheduleTimeline'
 
 const ScheduleTimeline = dynamic(() => import('@/components/ScheduleTimeline'), {
   loading: () => (
@@ -32,17 +40,133 @@ const ScheduleTimeline = dynamic(() => import('@/components/ScheduleTimeline'), 
   ),
 })
 
+function getNextWeekday(day: AppWeekday): AppWeekday {
+  const index = APP_WEEKDAYS.indexOf(day)
+  return APP_WEEKDAYS[(index + 1) % APP_WEEKDAYS.length]
+}
+
+function minutesToTime(minutes: number): string {
+  const clamped = Math.max(0, Math.min(minutes, 1439))
+  return `${String(Math.floor(clamped / 60)).padStart(2, '0')}:${String(clamped % 60).padStart(2, '0')}`
+}
+
+function addTimelineWindow(
+  slots: ScheduleTimelineSlot[],
+  slotBase: Omit<ScheduleTimelineSlot, 'start_time' | 'duration_mins' | 'days_of_week'>,
+  day: AppWeekday,
+  start: string,
+  end: string,
+) {
+  const startMinutes = parseTimeToMinutes(start)
+  const endMinutes = parseTimeToMinutes(end)
+  if (startMinutes === null || endMinutes === null) return
+
+  if (startMinutes === endMinutes) {
+    slots.push({
+      ...slotBase,
+      id: `${slotBase.id}-${day}-all-day`,
+      start_time: '00:00',
+      duration_mins: 24 * 60,
+      days_of_week: [day],
+    })
+    return
+  }
+
+  if (startMinutes < endMinutes) {
+    slots.push({
+      ...slotBase,
+      id: `${slotBase.id}-${day}`,
+      start_time: start,
+      duration_mins: endMinutes - startMinutes,
+      days_of_week: [day],
+    })
+    return
+  }
+
+  slots.push({
+    ...slotBase,
+    id: `${slotBase.id}-${day}-late`,
+    start_time: start,
+    duration_mins: 24 * 60 - startMinutes,
+    days_of_week: [day],
+  })
+
+  if (endMinutes > 0) {
+    slots.push({
+      ...slotBase,
+      id: `${slotBase.id}-${day}-early`,
+      start_time: '00:00',
+      duration_mins: endMinutes,
+      days_of_week: [getNextWeekday(day)],
+    })
+  }
+}
+
+function buildDashboardTimelineSlots(
+  screens: Screen[],
+  playlists: Playlist[],
+  schedules: ScheduleSlot[],
+  contentItems: ContentItem[],
+): ScheduleTimelineSlot[] {
+  const slots: ScheduleTimelineSlot[] = schedules.map((slot) => ({
+    id: `schedule-${slot.id}`,
+    name: slot.name,
+    start_time: slot.start_time,
+    duration_mins: slot.duration_mins,
+    days_of_week: slot.days_of_week,
+    description: `${slot.name} (${formatScheduleTime(slot.start_time)} · ${slot.duration_mins} mins)`,
+  }))
+  const playlistsById = new Map(playlists.map((playlist) => [playlist.id, playlist]))
+  const contentById = new Map(contentItems.map((item) => [item.id, item]))
+
+  for (const screen of screens) {
+    if (!screen.playlist_id) continue
+    const playlist = playlistsById.get(screen.playlist_id)
+    if (!playlist) continue
+
+    playlist.items.forEach((item, itemIndex) => {
+      const schedule = normalizePlaylistItemSchedule(item.display_schedule)
+      if (!schedule.time_restricted) return
+      const contentName = contentById.get(item.content_id)?.name ?? `Item ${itemIndex + 1}`
+      const name = `${screen.name} · ${contentName}`
+      const dateText = schedule.date_restricted
+        ? ` · ${schedule.start_date || 'Any start'} to ${schedule.end_date || 'Any end'}`
+        : ''
+
+      for (const day of APP_WEEKDAYS) {
+        const daySchedule = schedule.day_times?.[day]
+        if (!daySchedule?.enabled) continue
+        addTimelineWindow(
+          slots,
+          {
+            id: `playlist-${screen.id}-${playlist.id}-${itemIndex}`,
+            name,
+            description: `${screen.name} · ${playlist.name} · ${contentName} (${formatScheduleTime(daySchedule.start)}-${formatScheduleTime(daySchedule.end)}${dateText})`,
+          },
+          day,
+          daySchedule.start,
+          daySchedule.end,
+        )
+      }
+    })
+  }
+
+  return slots
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const [time, setTime] = useState('')
   const [screensCount, setScreensCount] = useState(0)
   const [playlistsCount, setPlaylistsCount] = useState(0)
-  const [scheduleSlots, setScheduleSlots] = useState<ScheduleSlot[]>([])
+  const [timelineSlots, setTimelineSlots] = useState<ScheduleTimelineSlot[]>([])
   const [loading, setLoading] = useState(true)
+  const controllerTimeZone = getControllerTimeZone()
 
   useEffect(() => {
     const update = () => {
       setTime(new Date().toLocaleTimeString('en-US', { 
+        timeZone: controllerTimeZone,
         hour: '2-digit', 
         minute: '2-digit', 
         second: '2-digit',
@@ -52,27 +176,37 @@ export default function DashboardPage() {
     update()
     const interval = setInterval(update, 1000)
     return () => clearInterval(interval)
+  }, [controllerTimeZone])
+
+  const loadDashboardData = useCallback(async () => {
+    try {
+      const [screens, playlists, schedules, contentItems] = await Promise.all([
+        screensApi.getAll(),
+        playlistsApi.getAll(),
+        scheduleApi.getAll(),
+        contentApi.getAll(),
+      ])
+      setScreensCount(screens.length)
+      setPlaylistsCount(playlists.length)
+      setTimelineSlots(buildDashboardTimelineSlots(screens, playlists, schedules, contentItems))
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => {
-    const loadDashboardData = async () => {
-      try {
-        const [screens, playlists, schedules] = await Promise.all([
-          screensApi.getAll(), 
-          playlistsApi.getAll(), 
-          scheduleApi.getAll()
-        ])
-        setScreensCount(screens.length)
-        setPlaylistsCount(playlists.length)
-        setScheduleSlots(schedules)
-      } catch (error) {
-        console.error('Failed to load dashboard data:', error)
-      } finally {
-        setLoading(false)
-      }
+    void loadDashboardData()
+  }, [loadDashboardData])
+
+  useEffect(() => {
+    const refreshOnFocus = () => {
+      void loadDashboardData()
     }
-    loadDashboardData()
-  }, [])
+    window.addEventListener('focus', refreshOnFocus)
+    return () => window.removeEventListener('focus', refreshOnFocus)
+  }, [loadDashboardData])
 
 
 
@@ -193,7 +327,7 @@ export default function DashboardPage() {
           </Card>
 
           {/* Schedule Timeline */}
-          <ScheduleTimeline slots={scheduleSlots} />
+          <ScheduleTimeline slots={timelineSlots} />
         </>
       )}
     </div>

@@ -14,6 +14,8 @@ import {
   defaultPlaylistItemDayTimes,
   defaultPlaylistItemSchedule,
   formatPlaylistScheduleSummary,
+  formatScheduleTime,
+  getControllerTimeZone,
   normalizePlaylistItemSchedule,
   validatePlaylistItemSchedule,
 } from '../../lib/signage-schedule';
@@ -81,9 +83,9 @@ function nextWeekday(day: AppWeekday): AppWeekday {
 function formatTimeRange(range: [number, number]): string {
   const format = (minutes: number) => {
     const clamped = Math.min(minutes, 1439);
-    return `${String(Math.floor(clamped / 60)).padStart(2, '0')}:${String(clamped % 60).padStart(2, '0')}`;
+    return formatScheduleTime(`${String(Math.floor(clamped / 60)).padStart(2, '0')}:${String(clamped % 60).padStart(2, '0')}`);
   };
-  return `${format(range[0])}-${range[1] === 1440 ? '24:00' : format(range[1])}`;
+  return `${format(range[0])}-${range[1] === 1440 ? '12:00 AM' : format(range[1])}`;
 }
 
 function getScheduleDateRange(schedule: PlaylistItemSchedule): { start: string; end: string } {
@@ -178,6 +180,7 @@ export default function ScreensPage() {
   const { gates, assignments, addGate, removeGate, assignScreenToGates: assignScreenToGatesInStore, getAllAssignedScreenIds, unassignScreenFromAll, getAssignedGatesForScreen, updateGateLoadingDuration } = useGateStore();
   const authUser = useAuthStore((s) => s.user);
   const { hasPermission, isSuperAdmin } = usePermissions();
+  const controllerTimeZone = useMemo(() => getControllerTimeZone(), []);
   const [showAddGate, setShowAddGate] = useState(false);
   const [newGateNumber, setNewGateNumber] = useState('');
   const [selectedGateForAssign, setSelectedGateForAssign] = useState<string | null>(null);
@@ -189,7 +192,7 @@ export default function ScreensPage() {
   const [pickerNewIp, setPickerNewIp] = useState('');
   const [pickerCreating, setPickerCreating] = useState(false);
 
-  const assignedScreenIds = useMemo(() => new Set(getAllAssignedScreenIds()), [assignments, getAllAssignedScreenIds]);
+  const assignedScreenIds = useMemo(() => new Set(getAllAssignedScreenIds()), [getAllAssignedScreenIds]);
   const unassignedScreens = useMemo(() => screens.filter((s) => !assignedScreenIds.has(s.id)), [screens, assignedScreenIds]);
   const [formLocation, setFormLocation] = useState('');
   const [formIp, setFormIp] = useState('');
@@ -314,7 +317,7 @@ export default function ScreensPage() {
       content_id: contentId,
       order: nextOrder,
       override_duration: null,
-      display_schedule: defaultPlaylistItemSchedule()
+      display_schedule: { ...defaultPlaylistItemSchedule(), timezone: controllerTimeZone }
     };
     setLocalPlaylistItems(prev => [...prev, newItem]);
     setHasUnsavedChanges(true);
@@ -373,6 +376,7 @@ export default function ScreensPage() {
       start_date: itemSchedStartDate,
       end_date: itemSchedEndDate,
       transition: itemSchedTransition,
+      timezone: controllerTimeZone,
     };
   };
 
@@ -391,7 +395,7 @@ export default function ScreensPage() {
     items.map((item, index) => ({
       ...item,
       order: index,
-      display_schedule: normalizePlaylistItemSchedule(item.display_schedule),
+      display_schedule: { ...normalizePlaylistItemSchedule(item.display_schedule), timezone: controllerTimeZone },
     }));
 
   const handleSavePlaylist = async () => {
@@ -677,7 +681,7 @@ export default function ScreensPage() {
         mode: hoursMode,
         days: hoursDays,
         blank_when_not_in_use: hoursBlank,
-        timezone: 'Asia/Calcutta',
+        timezone: controllerTimeZone,
       };
       await updateOperatingHours(hoursScreen.id, payload);
       showToast(`Operating hours for "${hoursScreen.name}" updated`, 'success');
@@ -1102,7 +1106,7 @@ export default function ScreensPage() {
                   })}
                 </div>
                 <p style={{ margin: '12px 0 0', fontSize: '11px', color: 'var(--text-muted)' }}>
-                  Content timezone: Asia/Calcutta. Overnight windows like 10:00 PM to 6:00 AM are supported.
+                  Content timezone: {controllerTimeZone}. Overnight windows like 10:00 PM to 6:00 AM are supported.
                 </p>
               </div>
             )}
@@ -1312,7 +1316,7 @@ export default function ScreensPage() {
             </div>
 
             <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px' }}>
-              Screen timezone: Asia/Calcutta
+              Screen timezone: {controllerTimeZone}
             </div>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', marginTop: '8px', fontSize: '13px' }}>
@@ -1379,7 +1383,6 @@ export default function ScreensPage() {
                     <th className="px-4 py-3 text-left font-medium">Name</th>
                     <th className="px-4 py-3 text-left font-medium">Location</th>
                     <th className="px-4 py-3 text-left font-medium">Gates</th>
-                    <th className="px-4 py-3 text-left font-medium">Status</th>
                     <th className="px-4 py-3 text-right font-medium">Actions</th>
                   </tr>
                 </thead>
@@ -1400,14 +1403,6 @@ export default function ScreensPage() {
                           getAssignedGatesForScreen(screen.id).length > 0
                             ? getAssignedGatesForScreen(screen.id)
                             : parseScreenGates(screen.gate),
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge variant={screen.is_online ? 'default' : 'secondary'} className="text-xs">
-                          {screen.is_online ? 'Online' : 'Offline'}
-                        </Badge>
-                        {syncingScreenIds.includes(screen.id) && (
-                          <span className="ml-2 text-xs text-primary">Syncing...</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -1749,7 +1744,7 @@ export default function ScreensPage() {
           </div>
 
           <div className="text-[10px] text-muted-foreground border-t border-border/50 pt-2 font-mono">
-            Screen timezone: Asia/Calcutta
+            Screen timezone: {controllerTimeZone}
           </div>
 
           <label className="flex items-center gap-2 cursor-pointer text-xs font-medium">

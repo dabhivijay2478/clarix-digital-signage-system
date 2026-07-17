@@ -28,8 +28,15 @@ if (!/^[a-z0-9._ -]+$/i.test(signingProfile)) {
   process.exit(2);
 }
 
+function quoteWindowsShellArg(value) {
+  return `"${String(value).replace(/"/g, '\\"')}"`;
+}
+
 function run(command, args, cwd = projectDir, useWindowsShell = false) {
-  const result = spawnSync(command, args, {
+  const commandLine = isWindows && useWindowsShell
+    ? [command, ...args.map(quoteWindowsShellArg)].join(" ")
+    : command;
+  const result = spawnSync(commandLine, isWindows && useWindowsShell ? [] : args, {
     cwd,
     stdio: "inherit",
     shell: isWindows && useWindowsShell
