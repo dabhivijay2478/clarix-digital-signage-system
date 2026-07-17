@@ -723,10 +723,15 @@ export default function PlayerPage() {
           <video
             src={src}
             autoPlay
-            muted
             playsInline
             preload="auto"
             loop={playableItems.length === 1}
+            onCanPlay={(event) => {
+              event.currentTarget.muted = false;
+              void event.currentTarget.play().catch((error) => {
+                console.warn('Video autoplay with audio was blocked:', error);
+              });
+            }}
             style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
           />
         </div>

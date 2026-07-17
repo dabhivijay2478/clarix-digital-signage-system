@@ -587,7 +587,7 @@ export default function TrucksPage() {
               </SelectContent>
             </Select>
           ) : (
-            <Input placeholder="e.g., d1" value={fGateNo} onChange={(e) => setFGateNo(e.target.value)} />
+            <Input placeholder="e.g., E, C, 1, D1" value={fGateNo} onChange={(e) => setFGateNo(e.target.value)} />
           )}
         </div>
       </div>

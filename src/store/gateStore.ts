@@ -9,7 +9,7 @@ import type { ScreenPurpose } from '@/lib/types'
 
 export interface Gate {
   id: string
-  number: string // e.g. "d1", "d2", "g10" — letter prefix + numeric suffix
+  number: string // e.g. "e", "c", "1", "d1", "abc2"
   purpose: ScreenPurpose
   productionDashboardId: string | null
   playlistId: string | null
@@ -46,9 +46,9 @@ function uid(): string {
   })
 }
 
-/** Gate number must start with a letter and be followed by one or more digits (case-insensitive). e.g. d1, D2, g10 */
+/** Gate codes are short plant identifiers, e.g. e, c, 1, d1, abc2. */
 export function isValidGateNumber(value: string): boolean {
-  return /^[a-zA-Z]\d+$/.test(value.trim())
+  return /^[a-zA-Z0-9]{1,4}$/.test(value.trim())
 }
 
 /** Normalize gate number to lowercase */

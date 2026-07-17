@@ -613,7 +613,7 @@ export default function ScreensPage() {
     }
     for (const gateNumber of normalizedEditGates) {
       if (!isValidGateNumber(gateNumber)) {
-        showToast('Gate must use a letter and number, for example D4', 'error');
+        showToast('Gate must be 1-4 letters or numbers, for example E, C, 1, D1, or ABC2', 'error');
         return;
       }
     }
@@ -1457,7 +1457,7 @@ export default function ScreensPage() {
             <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-border rounded-lg">
               <Monitor className="size-10 text-muted-foreground/40 mb-3" />
               <p className="font-medium text-foreground">No gates configured</p>
-              <p className="text-sm text-muted-foreground mt-1">Add a gate to assign screens (e.g. d1, d2).</p>
+              <p className="text-sm text-muted-foreground mt-1">Add a gate to assign screens (e.g. E, C, 1, D1, ABC2).</p>
             </div>
           ) : (
             <div className="border border-border rounded-lg overflow-hidden">
@@ -1770,7 +1770,7 @@ export default function ScreensPage() {
             <Button onClick={() => {
               const trimmed = newGateNumber.trim()
               if (!isValidGateNumber(trimmed)) {
-                showToast('Gate number must start with a letter followed by digits (e.g. d1, g10)', 'error')
+                showToast('Gate must be 1-4 letters or numbers (e.g. E, C, 1, D1, ABC2)', 'error')
                 return
               }
               const result = addGate(trimmed)
@@ -1793,12 +1793,12 @@ export default function ScreensPage() {
             <Input
               value={newGateNumber}
               onChange={(e) => setNewGateNumber(e.target.value)}
-              placeholder="e.g., d1, d2, g10"
+              placeholder="e.g., E, C, 1, D1, ABC2"
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
             />
             <p className="text-xs text-muted-foreground">
-              Must start with a letter and end with number(s) — e.g. <code className="rounded bg-muted px-1">d1</code>, <code className="rounded bg-muted px-1">d2</code>, <code className="rounded bg-muted px-1">g10</code>
+              Use 1-4 letters or numbers, e.g. <code className="rounded bg-muted px-1">E</code>, <code className="rounded bg-muted px-1">C</code>, <code className="rounded bg-muted px-1">1</code>, <code className="rounded bg-muted px-1">D1</code>, <code className="rounded bg-muted px-1">ABC2</code>.
             </p>
           </div>
         </div>
