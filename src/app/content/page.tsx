@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { useContent } from '../../hooks/useContent';
 import ContentCard from '../../components/ContentCard';
@@ -15,7 +15,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import type { ContentItem } from '@/lib/types';
+import { playlistsApi, scheduleApi, screensApi } from '@/lib/tauri';
+import type { ContentItem, Playlist, ScheduleSlot, Screen } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 const contentTypes = ['Image', 'Video', 'Presentation', 'Document', 'Spreadsheet', 'WebApp', 'Ad', 'Slideshow'];
@@ -39,8 +40,18 @@ const typeStyles: Record<string, string> = {
   Spreadsheet: 'border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400',
 };
 
+type ContentUsage = {
+  playlists: string[];
+  schedules: string[];
+  screens: string[];
+};
+
+function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+
 export default function ContentPage() {
-  const { items, loading, search, setSearch, addItem, deleteItem } = useContent();
+  const { items, allItems, loading, search, setSearch, addItem, deleteItem } = useContent();
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [previewItem, setPreviewItem] = useState<ContentItem | null>(null);
@@ -53,6 +64,35 @@ export default function ContentPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [screens, setScreens] = useState<Screen[]>([]);
+  const [scheduleSlots, setScheduleSlots] = useState<ScheduleSlot[]>([]);
+
+  useEffect(() => {
+    let disposed = false;
+
+    const loadUsageData = async () => {
+      try {
+        const [nextPlaylists, nextScreens, nextScheduleSlots] = await Promise.all([
+          playlistsApi.getAll(),
+          screensApi.getAll(),
+          scheduleApi.getAll(),
+        ]);
+        if (!disposed) {
+          setPlaylists(nextPlaylists);
+          setScreens(nextScreens);
+          setScheduleSlots(nextScheduleSlots);
+        }
+      } catch (error) {
+        console.warn('Failed to load content usage data:', error);
+      }
+    };
+
+    void loadUsageData();
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   const filtered = useMemo(() => {
     let result = items;
@@ -61,6 +101,60 @@ export default function ContentPage() {
     }
     return result;
   }, [items, activeFilter]);
+
+  const contentUsageById = useMemo(() => {
+    const usage = new Map<string, ContentUsage>();
+
+    const ensure = (contentId: string) => {
+      const existing = usage.get(contentId);
+      if (existing) return existing;
+      const next = { playlists: [], schedules: [], screens: [] };
+      usage.set(contentId, next);
+      return next;
+    };
+
+    for (const playlist of playlists) {
+      for (const item of playlist.items ?? []) {
+        ensure(item.content_id).playlists.push(playlist.name);
+      }
+    }
+
+    for (const slot of scheduleSlots) {
+      const playlist = playlists.find((entry) => entry.id === slot.playlist_id);
+      if (!playlist) continue;
+      for (const item of playlist.items ?? []) {
+        ensure(item.content_id).schedules.push(slot.name);
+      }
+    }
+
+    for (const screen of screens) {
+      if (screen.default_content_id) {
+        ensure(screen.default_content_id).screens.push(screen.name);
+      }
+      const playlist = screen.playlist_id ? playlists.find((entry) => entry.id === screen.playlist_id) : null;
+      if (playlist) {
+        for (const item of playlist.items ?? []) {
+          ensure(item.content_id).screens.push(screen.name);
+        }
+      }
+    }
+
+    for (const [contentId, value] of usage) {
+      usage.set(contentId, {
+        playlists: uniqueSorted(value.playlists),
+        schedules: uniqueSorted(value.schedules),
+        screens: uniqueSorted(value.screens),
+      });
+    }
+
+    return usage;
+  }, [playlists, scheduleSlots, screens]);
+
+  const deleteItemDetails = deleteId ? allItems.find((item) => item.id === deleteId) ?? null : null;
+  const deleteUsage = deleteId ? contentUsageById.get(deleteId) ?? null : null;
+  const isDeleteBlocked = Boolean(deleteUsage && (
+    deleteUsage.playlists.length > 0 || deleteUsage.schedules.length > 0 || deleteUsage.screens.length > 0
+  ));
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -367,16 +461,40 @@ export default function ContentPage() {
       <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete content?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This permanently removes &quot;{items.find((item) => item.id === deleteId)?.name}&quot;.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{isDeleteBlocked ? 'Content is in use' : 'Delete content?'}</AlertDialogTitle>
+            {isDeleteBlocked && deleteUsage ? (
+              <AlertDialogDescription asChild>
+                <div className="space-y-3 text-sm text-muted-foreground">
+                  <p>
+                    &quot;{deleteItemDetails?.name}&quot; cannot be deleted because it is used for playback.
+                    Remove it from these playlists, schedules, or screens first.
+                  </p>
+                  <div className="space-y-1.5">
+                    {deleteUsage.playlists.length > 0 && (
+                      <p><span className="font-medium text-foreground">Playlists:</span> {deleteUsage.playlists.join(', ')}</p>
+                    )}
+                    {deleteUsage.schedules.length > 0 && (
+                      <p><span className="font-medium text-foreground">Schedules:</span> {deleteUsage.schedules.join(', ')}</p>
+                    )}
+                    {deleteUsage.screens.length > 0 && (
+                      <p><span className="font-medium text-foreground">Screens:</span> {deleteUsage.screens.join(', ')}</p>
+                    )}
+                  </div>
+                </div>
+              </AlertDialogDescription>
+            ) : (
+              <AlertDialogDescription>
+                This permanently removes &quot;{deleteItemDetails?.name}&quot;.
+              </AlertDialogDescription>
+            )}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => deleteId && handleDelete(deleteId)}>
-              Delete
-            </AlertDialogAction>
+            {!isDeleteBlocked && (
+              <AlertDialogAction onClick={() => deleteId && handleDelete(deleteId)}>
+                Delete
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -26,6 +26,8 @@ use crate::{
     },
 };
 
+const MAX_MEDIA_RANGE_BYTES: u64 = 8 * 1024 * 1024;
+
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub struct SyncPayload {
     pub screen: Option<Screen>,
@@ -444,15 +446,40 @@ async fn read_production_dataset(
 
 async fn legacy_media(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(filename): Path<String>,
 ) -> Result<Response, (StatusCode, String)> {
     let safe_name = FsPath::new(&filename).file_name().and_then(|value| value.to_str())
         .ok_or((StatusCode::BAD_REQUEST, "Invalid filename".to_string()))?;
     let media_path = state.media_dir.join(safe_name);
-    let bytes = tokio::fs::read(&media_path).await
+    let metadata = tokio::fs::metadata(&media_path).await
         .map_err(|_| (StatusCode::NOT_FOUND, "Media not found".to_string()))?;
+    let file_len = metadata.len();
+
+    if let Some((start, end)) = parse_range_header(&headers, file_len)? {
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
+
+        let chunk_len = end - start + 1;
+        let mut file = tokio::fs::File::open(&media_path).await.map_err(internal_error)?;
+        file.seek(std::io::SeekFrom::Start(start)).await.map_err(internal_error)?;
+        let mut bytes = vec![0; chunk_len as usize];
+        file.read_exact(&mut bytes).await.map_err(internal_error)?;
+
+        return Ok(Response::builder()
+            .status(StatusCode::PARTIAL_CONTENT)
+            .header("Content-Type", media_content_type(&media_path))
+            .header("Accept-Ranges", "bytes")
+            .header("Content-Length", chunk_len.to_string())
+            .header("Content-Range", format!("bytes {start}-{end}/{file_len}"))
+            .body(Body::from(bytes))
+            .map_err(internal_error)?);
+    }
+
+    let bytes = tokio::fs::read(&media_path).await.map_err(internal_error)?;
     Ok(Response::builder()
         .header("Content-Type", media_content_type(&media_path))
+        .header("Accept-Ranges", "bytes")
+        .header("Content-Length", file_len.to_string())
         .body(Body::from(bytes))
         .map_err(internal_error)?)
 }
@@ -485,15 +512,64 @@ fn media_content_type(path: impl AsRef<FsPath>) -> &'static str {
         "gif" => "image/gif",
         "webp" => "image/webp",
         "svg" => "image/svg+xml",
-        "mp4" => "video/mp4",
+        "mp4" | "m4v" => "video/mp4",
         "webm" => "video/webm",
         "mov" => "video/quicktime",
+        "mkv" => "video/x-matroska",
+        "avi" => "video/x-msvideo",
         "mp3" => "audio/mpeg",
         "wav" => "audio/wav",
         "txt" => "text/plain; charset=utf-8",
         "csv" => "text/csv; charset=utf-8",
         _ => "application/octet-stream",
     }
+}
+
+fn parse_range_header(headers: &HeaderMap, file_len: u64) -> Result<Option<(u64, u64)>, (StatusCode, String)> {
+    if file_len == 0 {
+        return Ok(None);
+    }
+    let Some(range) = headers.get("range").and_then(|value| value.to_str().ok()) else {
+        return Ok(None);
+    };
+    let Some(raw_range) = range.strip_prefix("bytes=") else {
+        return Err((StatusCode::RANGE_NOT_SATISFIABLE, "Unsupported range unit".to_string()));
+    };
+    let Some((start_raw, end_raw)) = raw_range.split_once('-') else {
+        return Err((StatusCode::RANGE_NOT_SATISFIABLE, "Invalid range".to_string()));
+    };
+
+    if start_raw.is_empty() {
+        let suffix_len = end_raw
+            .parse::<u64>()
+            .map_err(|_| (StatusCode::RANGE_NOT_SATISFIABLE, "Invalid suffix range".to_string()))?;
+        if suffix_len == 0 {
+            return Err((StatusCode::RANGE_NOT_SATISFIABLE, "Invalid suffix range".to_string()));
+        }
+        let start = file_len.saturating_sub(suffix_len);
+        return Ok(Some((start, file_len - 1)));
+    }
+
+    let start = start_raw
+        .parse::<u64>()
+        .map_err(|_| (StatusCode::RANGE_NOT_SATISFIABLE, "Invalid range start".to_string()))?;
+    if start >= file_len {
+        return Err((StatusCode::RANGE_NOT_SATISFIABLE, "Range start is outside the file".to_string()));
+    }
+    let requested_end = if end_raw.is_empty() {
+        file_len - 1
+    } else {
+        end_raw
+            .parse::<u64>()
+            .map_err(|_| (StatusCode::RANGE_NOT_SATISFIABLE, "Invalid range end".to_string()))?
+            .min(file_len - 1)
+    };
+    let end = requested_end.min(start.saturating_add(MAX_MEDIA_RANGE_BYTES - 1)).min(file_len - 1);
+    if end < start {
+        return Err((StatusCode::RANGE_NOT_SATISFIABLE, "Range end is before start".to_string()));
+    }
+
+    Ok(Some((start, end)))
 }
 
 fn authenticate(pool: &DbPool, headers: &HeaderMap, query_token: Option<&str>) -> Result<PairingRequest, (StatusCode, String)> {

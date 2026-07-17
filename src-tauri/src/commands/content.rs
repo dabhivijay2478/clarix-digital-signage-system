@@ -167,6 +167,94 @@ pub async fn delete_content_item(
             return Err("Content item not found".to_string());
         }
 
+        let playlist_names = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT DISTINCT p.name
+                     FROM playlists p
+                     JOIN playlist_items pi ON pi.playlist_id = p.id
+                     WHERE pi.content_id = ?1
+                     ORDER BY p.name
+                     LIMIT 5",
+                )
+                .map_err(|e| e.to_string())?;
+            let values = stmt.query_map(params![id], |row| row.get::<_, String>(0))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            values
+        };
+        let screen_names = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT DISTINCT name
+                     FROM screens
+                     WHERE default_content_id = ?1
+                     ORDER BY name
+                     LIMIT 5",
+                )
+                .map_err(|e| e.to_string())?;
+            let values = stmt.query_map(params![id], |row| row.get::<_, String>(0))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            values
+        };
+        let screen_default_names = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT DISTINCT s.name
+                     FROM screen_defaults sd
+                     JOIN screens s ON s.id = sd.screen_id
+                     WHERE sd.default_content_id = ?1
+                     ORDER BY s.name
+                     LIMIT 5",
+                )
+                .map_err(|e| e.to_string())?;
+            let values = stmt.query_map(params![id], |row| row.get::<_, String>(0))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            values
+        };
+        let schedule_names = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT DISTINCT ss.name
+                     FROM schedule_slots ss
+                     JOIN playlist_items pi ON pi.playlist_id = ss.playlist_id
+                     WHERE pi.content_id = ?1 AND ss.is_active = 1
+                     ORDER BY ss.name
+                     LIMIT 5",
+                )
+                .map_err(|e| e.to_string())?;
+            let values = stmt.query_map(params![id], |row| row.get::<_, String>(0))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            values
+        };
+
+        if !playlist_names.is_empty() || !screen_names.is_empty() || !screen_default_names.is_empty() || !schedule_names.is_empty() {
+            let mut parts = Vec::new();
+            if !playlist_names.is_empty() {
+                parts.push(format!("playlists: {}", playlist_names.join(", ")));
+            }
+            if !schedule_names.is_empty() {
+                parts.push(format!("schedules: {}", schedule_names.join(", ")));
+            }
+            let mut screens = screen_names;
+            for name in screen_default_names {
+                if !screens.contains(&name) {
+                    screens.push(name);
+                }
+            }
+            if !screens.is_empty() {
+                parts.push(format!("screens: {}", screens.join(", ")));
+            }
+            return Err(format!("Cannot delete content because it is currently used in {}. Remove it from those playlists, schedules, or screens first.", parts.join("; ")));
+        }
+
         let file_path: Option<String> = tx
             .query_row(
                 "SELECT file_path FROM content_items WHERE id = ?1",
@@ -176,22 +264,7 @@ pub async fn delete_content_item(
             .map_err(|e| e.to_string())?;
 
         tx.execute(
-            "DELETE FROM playlist_items WHERE content_id = ?1",
-            params![id],
-        )
-        .map_err(|e| e.to_string())?;
-        tx.execute(
             "DELETE FROM asset_checksums WHERE content_id = ?1",
-            params![id],
-        )
-        .map_err(|e| e.to_string())?;
-        tx.execute(
-            "UPDATE screens SET default_content_id = NULL WHERE default_content_id = ?1",
-            params![id],
-        )
-        .map_err(|e| e.to_string())?;
-        tx.execute(
-            "UPDATE screen_defaults SET default_content_id = NULL WHERE default_content_id = ?1",
             params![id],
         )
         .map_err(|e| e.to_string())?;

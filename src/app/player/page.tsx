@@ -723,7 +723,9 @@ export default function PlayerPage() {
           <video
             src={src}
             autoPlay
+            muted
             playsInline
+            preload="auto"
             loop={playableItems.length === 1}
             style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
           />

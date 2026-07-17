@@ -162,8 +162,27 @@ function getImportValue(row: Record<string, unknown>, names: string[]): string {
   return ''
 }
 
+function getGateFromDeliveryBatch(value: string): string {
+  const match = value.trim().match(/[a-z0-9]$/i)
+  return match ? match[0].toLowerCase() : ''
+}
+
 function mapImportRecordToTruck(row: Record<string, unknown>, normalizeGateNo: (v: string) => string): TruckImportRow {
-  const gate = normalizeGateNo(getImportValue(row, ['gate_no', 'gate', 'gate_number', 'gateno']))
+  const explicitGate = getImportValue(row, ['gate_no', 'gate', 'gate_number', 'gateno'])
+  const deliveryBatchGate = getGateFromDeliveryBatch(getImportValue(row, [
+    'del.batch',
+    'del_batch',
+    'del batch',
+    'del.bacthc',
+    'del_bacthc',
+    'del bacthc',
+    'delivery_batch',
+    'delivery batch',
+    'delivery_batch_no',
+    'delivery batch no',
+    'batch',
+  ]))
+  const gate = normalizeGateNo(explicitGate || deliveryBatchGate)
   return {
     registration_number: getImportValue(row, [
       'registration_number',
@@ -172,6 +191,13 @@ function mapImportRecordToTruck(row: Record<string, unknown>, normalizeGateNo: (
       'reg_number',
       'vehicle_no',
       'vehicle_number',
+      'vehicle',
+      'vechical_number',
+      'vechical number',
+      'vechicle_number',
+      'vechicle number',
+      'vehical_number',
+      'vehical number',
       'truck_no',
       'truck_number',
       'number',
@@ -470,7 +496,7 @@ export default function TrucksPage() {
       }
 
       if (parsed.length === 0) {
-        showToast('No valid truck records found. Ensure truck_number and gate columns exist.', 'error')
+        showToast('No valid truck records found. Use truck_number/gate or vehicle_number/del.batch columns.', 'error')
         return
       }
 
@@ -479,7 +505,7 @@ export default function TrucksPage() {
     } catch (error) {
       showToast(`Import failed: ${error instanceof Error ? error.message : String(error)}`, 'error')
     }
-  }, [])
+  }, [normalizeGateNo])
 
   const handleConfirmImport = () => {
     const count = importTrucks(
@@ -1126,8 +1152,8 @@ export default function TrucksPage() {
             <div>
               <p className="font-medium">Import Format Tip</p>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Your CSV or Excel file should have columns: <code className="rounded bg-muted px-1 font-mono text-[11px]">truck_number, gate</code>.
-                Gate values should be lower-case like <code className="rounded bg-muted px-1 font-mono text-[11px]">d1</code> or <code className="rounded bg-muted px-1 font-mono text-[11px]">d2</code>.
+                Your CSV or Excel file can use <code className="rounded bg-muted px-1 font-mono text-[11px]">truck_number, gate</code> or <code className="rounded bg-muted px-1 font-mono text-[11px]">vehicle_number, del.batch</code>.
+                When <code className="rounded bg-muted px-1 font-mono text-[11px]">del.batch</code> is used, the last character becomes the gate.
               </p>
             </div>
           </div>
