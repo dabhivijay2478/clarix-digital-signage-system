@@ -173,14 +173,18 @@ function getEstWaitLabel(
   truck: Truck,
   displayTrucks: Truck[],
   gateSettings: GateQueueSettings[],
+  now: Date | null,
 ): string {
   if (!truck.waiting_at) return '-'
   const baseTime = new Date(truck.waiting_at)
   if (Number.isNaN(baseTime.getTime())) return '-'
+  const nowTime = now?.getTime() ?? Date.now()
   const cyclesWaitMins = getEstimatedWaitMinsForTruck(displayTrucks, truck, gateSettings)
   const defaultMins = getGateLoadingDurationMins(truck.gate_no, gateSettings)
   const totalWaitMins = cyclesWaitMins + defaultMins
-  const expectedTime = new Date(baseTime.getTime() + totalWaitMins * 60000)
+  const elapsedWaitMins = Math.max(0, (nowTime - baseTime.getTime()) / 60000)
+  const remainingWaitMins = Math.max(0, totalWaitMins - elapsedWaitMins)
+  const expectedTime = new Date(nowTime + remainingWaitMins * 60000)
   return formatTimeOfDay(expectedTime.toISOString())
 }
 
@@ -522,7 +526,7 @@ export default function TruckTokenDisplay({
                         {mode === 'waiting' && (
                           <div className="mg-truck-col-est">
                             <DisplayTime
-                              text={getEstWaitLabel(truck, displayTrucks, resolvedGateSettings)}
+                              text={getEstWaitLabel(truck, displayTrucks, resolvedGateSettings, currentTime)}
                             />
                           </div>
                         )}

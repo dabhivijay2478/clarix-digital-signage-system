@@ -14,6 +14,7 @@ import { parseScreenGates } from '@/lib/screen-gates';
 import { useTruckStore } from '@/store/truckStore';
 
 const AMNS_LOGO_SRC = '/company-logo/AMNS_Logo_Mid.png?v=transparent-20260716';
+const PLAYER_SCREEN_STORAGE_KEY = 'clarix_player_screen_id';
 
 function playlistPlaybackSignature(playlist: Playlist): string {
   return JSON.stringify({
@@ -50,6 +51,27 @@ function getScreenSelectionTags(screen: Screen): string[] {
   return tags;
 }
 
+function getScreenGateNumbers(screen: Screen | null | undefined): string[] {
+  return parseScreenGates(screen?.gate);
+}
+
+function isTruckTokenScreen(screen: Screen): boolean {
+  return screen.purpose === 'truck_gate' || getScreenGateNumbers(screen).length > 0;
+}
+
+function pickDefaultPlayerScreen(screens: Screen[], storedId?: string | null): Screen | null {
+  const storedScreen = storedId ? screens.find((screen) => screen.id === storedId) ?? null : null;
+  const storedIsTruckToken = storedScreen ? isTruckTokenScreen(storedScreen) : false;
+
+  if (storedIsTruckToken) return storedScreen;
+
+  const truckScreen = screens.find(isTruckTokenScreen);
+  if (truckScreen) return truckScreen;
+
+  if (storedScreen) return storedScreen;
+  return screens.length === 1 ? screens[0] : null;
+}
+
 export default function PlayerPage() {
   const router = useRouter();
   const branding = useBrandingStore();
@@ -75,6 +97,7 @@ export default function PlayerPage() {
   const [currentItemIndex, setCurrentItemIndex] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [activeTruckGates, setActiveTruckGates] = useState<string[]>([]);
+  const [isTruckTokenScreenActive, setIsTruckTokenScreenActive] = useState<boolean>(false);
   const [liveTrucks, setLiveTrucks] = useState<Truck[]>([]);
 
   // Active Screen context for orientation and operating hours
@@ -133,46 +156,68 @@ export default function PlayerPage() {
     }
   }, []);
 
-  // Load screen ID from query parameters or storage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
+  const loadInitialPlayerScreen = useCallback(async () => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const data = await screensApi.getAll();
+      setScreensList(data);
+
       const params = new URLSearchParams(window.location.search);
       const queryId = params.get('screenId') || params.get('id');
       if (queryId) {
         setScreenId(queryId);
-        localStorage.setItem('clarix_player_screen_id', queryId);
-      } else {
-        const id = localStorage.getItem('clarix_player_screen_id');
-        if (id) {
-          setScreenId(id);
-        } else {
-          loadScreensList();
-        }
+        localStorage.setItem(PLAYER_SCREEN_STORAGE_KEY, queryId);
+        return;
       }
+
+      const storedId = localStorage.getItem(PLAYER_SCREEN_STORAGE_KEY);
+      const selectedScreen = pickDefaultPlayerScreen(data, storedId);
+      if (selectedScreen) {
+        setScreenId(selectedScreen.id);
+        localStorage.setItem(PLAYER_SCREEN_STORAGE_KEY, selectedScreen.id);
+      } else {
+        setScreenId(null);
+        localStorage.removeItem(PLAYER_SCREEN_STORAGE_KEY);
+      }
+    } catch (err) {
+      console.error('Failed to load player screen:', err);
+      loadScreensList();
+      return;
+    } finally {
+      setLoading(false);
     }
   }, [loadScreensList]);
 
+  // Load screen ID from query parameters or storage, validating cached IDs.
+  useEffect(() => {
+    void loadInitialPlayerScreen();
+  }, [loadInitialPlayerScreen]);
+
   // Screen selection handler
   const handleSelectScreen = (id: string) => {
-    localStorage.setItem('clarix_player_screen_id', id);
+    localStorage.setItem(PLAYER_SCREEN_STORAGE_KEY, id);
     setScreenId(id);
     setLiveTrucks([]);
 
     const selected = screensList.find((screen) => screen.id === id);
-    if (selected?.purpose === 'truck_gate') {
-      const gateNumbers = parseScreenGates(selected.gate);
+    if (selected && isTruckTokenScreen(selected)) {
+      const gateNumbers = getScreenGateNumbers(selected);
+      setIsTruckTokenScreenActive(true);
       setActiveTruckGates(gateNumbers.map((gate) => gate.toLowerCase()));
       setActiveScreen(selected);
       setActivePlaylist(null);
       setIsPlaying(false);
     } else {
+      setIsTruckTokenScreenActive(false);
       setActiveTruckGates([]);
     }
   };
 
   const handleBackToScreenSelection = useCallback(() => {
-    localStorage.removeItem('clarix_player_screen_id');
+    localStorage.removeItem(PLAYER_SCREEN_STORAGE_KEY);
     setScreenId(null);
+    setIsTruckTokenScreenActive(false);
     setActiveTruckGates([]);
     setTruckAlert(null);
     setActiveScreen(null);
@@ -184,8 +229,9 @@ export default function PlayerPage() {
   const handleDisconnectScreen = async () => {
     const confirmed = await customConfirm('Disconnect screen from this Player device?');
     if (confirmed) {
-      localStorage.removeItem('clarix_player_screen_id');
+      localStorage.removeItem(PLAYER_SCREEN_STORAGE_KEY);
       setScreenId(null);
+      setIsTruckTokenScreenActive(false);
       loadScreensList();
     }
   };
@@ -268,16 +314,21 @@ export default function PlayerPage() {
         setActiveScreen(null);
         setActivePlaylist(null);
         setActiveTruckGates([]);
+        setIsTruckTokenScreenActive(false);
         setIsPlaying(false);
 
-        if (screens.length === 1) {
-          localStorage.setItem('clarix_player_screen_id', screens[0].id);
-          setScreenId(screens[0].id);
+        const fallbackScreen = pickDefaultPlayerScreen(
+          screens,
+          typeof window !== 'undefined' ? localStorage.getItem(PLAYER_SCREEN_STORAGE_KEY) : null,
+        );
+        if (fallbackScreen) {
+          localStorage.setItem(PLAYER_SCREEN_STORAGE_KEY, fallbackScreen.id);
+          setScreenId(fallbackScreen.id);
           setLoading(false);
           return;
         }
 
-        localStorage.removeItem('clarix_player_screen_id');
+        localStorage.removeItem(PLAYER_SCREEN_STORAGE_KEY);
         setScreenId(null);
         setLoading(false);
         return;
@@ -294,16 +345,17 @@ export default function PlayerPage() {
       let activePlaylistId: string | null = null
 
       const gateStore = useGateStore.getState()
+      const screenGateNumbers = getScreenGateNumbers(currentScreen)
       const assignedGateNumbers = gateStore.getAssignedGatesForScreen(screenId)
       const assignedGate = assignedGateNumbers[0]
         ? gateStore.gates.find((g) => g.number === assignedGateNumbers[0])
         : null
 
-      if (currentScreen && currentScreen.purpose !== 'playlist') {
-        activePurpose = currentScreen.purpose
-        activeGateNumbers = assignedGateNumbers.length > 0
-          ? assignedGateNumbers
-          : parseScreenGates(currentScreen.gate)
+      if (currentScreen && isTruckTokenScreen(currentScreen)) {
+        activePurpose = 'truck_gate'
+        activeGateNumbers = screenGateNumbers.length > 0
+          ? screenGateNumbers
+          : assignedGateNumbers
         activePlaylistId = currentScreen.playlist_id
       } else if (assignedGate) {
         activePurpose = assignedGate.purpose
@@ -311,7 +363,7 @@ export default function PlayerPage() {
         activePlaylistId = assignedGate.playlistId
       } else if (currentScreen) {
         activePurpose = currentScreen.purpose
-        activeGateNumbers = parseScreenGates(currentScreen.gate)
+        activeGateNumbers = screenGateNumbers
         activePlaylistId = currentScreen.playlist_id
       }
 
@@ -320,7 +372,8 @@ export default function PlayerPage() {
         playlistToPlay = playlists.find((p) => p.id === activePlaylistId) || null;
       }
 
-      if (activePurpose === 'truck_gate' && activeGateNumbers.length > 0) {
+      if (activePurpose === 'truck_gate') {
+        setIsTruckTokenScreenActive(true);
         setActiveTruckGates(activeGateNumbers.map((gate) => gate.toLowerCase()));
         setContentItems(resolvedItems);
         // Still load the playlist if one is assigned — the player needs it to
@@ -349,6 +402,7 @@ export default function PlayerPage() {
         return;
       }
 
+      setIsTruckTokenScreenActive(false);
       setActiveTruckGates([]);
       setContentItems(resolvedItems);
 
@@ -439,7 +493,7 @@ export default function PlayerPage() {
 
   // Keep truck token displays in sync with controller data on load and on every change.
   useEffect(() => {
-    if (!screenId || activeTruckGates.length === 0) {
+    if (!screenId || !isTruckTokenScreenActive) {
       setLiveTrucks([]);
       return;
     }
@@ -466,7 +520,7 @@ export default function PlayerPage() {
       disposed = true;
       clearInterval(interval);
     };
-  }, [screenId, activeTruckGates]);
+  }, [screenId, isTruckTokenScreenActive]);
 
   // Transient truck status alerts are pushed by the controller and overlay playback.
   useEffect(() => {
@@ -480,7 +534,7 @@ export default function PlayerPage() {
           setLiveTrucks(alert.queue_trucks);
         }
 
-        if (activeTruckGates.length > 0) return;
+        if (isTruckTokenScreenActive) return;
 
         setTruckAlert(alert);
         if (truckAlertTimeoutRef.current) {
@@ -500,9 +554,9 @@ export default function PlayerPage() {
         truckAlertTimeoutRef.current = null;
       }
     };
-  }, [activeTruckGates]);
+  }, [isTruckTokenScreenActive]);
 
-  const activeScreenDefaultContentId = activeScreen?.purpose === 'truck_gate'
+  const activeScreenDefaultContentId = isTruckTokenScreenActive
     ? null
     : activeScreen?.default_content_id ?? null;
 
@@ -519,7 +573,7 @@ export default function PlayerPage() {
   }, [activePlaylist, activeScreenDefaultContentId]);
 
   const hasScheduledPlaylistOverride = useCallback((): boolean => {
-    if (!activePlaylist || !isPlaying || activeScreen?.purpose !== 'truck_gate') return false;
+    if (!activePlaylist || !isPlaying || !isTruckTokenScreenActive) return false;
     return activePlaylist.items.some((item) => {
       const schedule = item.display_schedule;
       if (!schedule || (typeof schedule === 'object' && Object.keys(schedule).length === 0)) {
@@ -527,7 +581,7 @@ export default function PlayerPage() {
       }
       return isPlaylistItemScheduleActive(schedule);
     });
-  }, [activePlaylist, isPlaying, activeScreen?.purpose]);
+  }, [activePlaylist, isPlaying, isTruckTokenScreenActive]);
 
   // Handle slide duration and transition loop
   useEffect(() => {
@@ -927,7 +981,7 @@ export default function PlayerPage() {
   }
 
   const shouldShowTruckDisplay =
-    Boolean(screenId && activeTruckGates.length > 0 && !hasScheduledPlaylistOverride());
+    Boolean(screenId && isTruckTokenScreenActive && !hasScheduledPlaylistOverride());
 
   if (shouldShowTruckDisplay) {
     return (
@@ -937,7 +991,7 @@ export default function PlayerPage() {
       >
         <TruckTokenDisplay
           trucks={liveTrucks.length > 0 ? liveTrucks : trucks}
-          gateFilters={activeTruckGates}
+          gateFilters={activeTruckGates.length > 0 ? activeTruckGates : undefined}
           loadRemoteSnapshot={liveTrucks.length === 0}
           showBackButton={!isReceiverMode}
           onBack={handleBackToScreenSelection}
