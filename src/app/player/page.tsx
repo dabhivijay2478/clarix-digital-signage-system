@@ -133,10 +133,27 @@ export default function PlayerPage() {
   const playStartTimeRef = useRef<number>(0);
   const truckAlertTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const controllerNowRef = useRef<Date>(controllerNow);
+  const activePlaylistRef = useRef<Playlist | null>(null);
+  const isPlayingRef = useRef(false);
+  const liveTrucksRef = useRef<Truck[]>([]);
+  const resolvingSignageRef = useRef(false);
+  const revisionSyncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     controllerNowRef.current = controllerNow;
   }, [controllerNow]);
+
+  useEffect(() => {
+    activePlaylistRef.current = activePlaylist;
+  }, [activePlaylist]);
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  useEffect(() => {
+    liveTrucksRef.current = liveTrucks;
+  }, [liveTrucks]);
 
   // Detect physical viewport aspect ratio (landscape vs portrait)
   useEffect(() => {
@@ -332,6 +349,8 @@ export default function PlayerPage() {
   // Resolve schedule slot & active playlist
   const resolveActiveSignage = useCallback(async (resetPlayback = false) => {
     if (!screenId) return;
+    if (resolvingSignageRef.current) return;
+    resolvingSignageRef.current = true;
 
     try {
       // 1. Fetch data
@@ -349,7 +368,7 @@ export default function PlayerPage() {
         const fallbackScreen = pickDefaultPlayerScreen(
           screens,
           typeof window !== 'undefined' ? localStorage.getItem(PLAYER_SCREEN_STORAGE_KEY) : null,
-          liveTrucks,
+          liveTrucksRef.current,
         );
         if (fallbackScreen) {
           localStorage.setItem(PLAYER_SCREEN_STORAGE_KEY, fallbackScreen.id);
@@ -443,10 +462,11 @@ export default function PlayerPage() {
         };
 
         const nextSignature = playlistPlaybackSignature(sortedPlaylist);
-        const currentSignature = activePlaylist ? playlistPlaybackSignature(activePlaylist) : '';
+        const currentActivePlaylist = activePlaylistRef.current;
+        const currentSignature = currentActivePlaylist ? playlistPlaybackSignature(currentActivePlaylist) : '';
 
         if (resetPlayback || nextSignature !== currentSignature) {
-          const playlistChanged = activePlaylist?.id !== sortedPlaylist.id;
+          const playlistChanged = currentActivePlaylist?.id !== sortedPlaylist.id;
           setActivePlaylist(sortedPlaylist);
           if (resetPlayback || playlistChanged) {
             setCurrentItemIndex(0);
@@ -455,7 +475,7 @@ export default function PlayerPage() {
           }
         }
 
-        if (!isPlaying) {
+        if (!isPlayingRef.current) {
           setCurrentItemIndex(0);
         }
         setIsPlaying(true);
@@ -465,8 +485,10 @@ export default function PlayerPage() {
       }
     } catch (err) {
       console.error('Error resolving signage slots:', err);
+    } finally {
+      resolvingSignageRef.current = false;
     }
-  }, [screenId, activePlaylist, isPlaying, liveTrucks]);
+  }, [screenId]);
 
   useEffect(() => {
     appConfigApi.getMarquee()
@@ -504,21 +526,28 @@ export default function PlayerPage() {
     truckAlertRef.current = truckAlert;
   }, [truckAlert]);
 
-  // Controller-hosted browser players refresh immediately when a revision is published.
+  // Controller-hosted browser players refresh content in place when a revision is published.
   useEffect(() => {
     if (!screenId || typeof window === 'undefined' || !window.location.protocol.startsWith('http')) return;
     const events = new EventSource(`${getBrowserControllerOrigin()}/v1/browser/events`);
     events.addEventListener('revision', () => {
-      if (truckAlertRef.current) {
-        // Wait for the 3-second alert to finish before reloading
-        setTimeout(() => {
-          window.location.reload();
-        }, 3500);
-      } else {
-        window.location.reload();
+      if (revisionSyncTimeoutRef.current) {
+        clearTimeout(revisionSyncTimeoutRef.current);
       }
+      revisionSyncTimeoutRef.current = setTimeout(
+        () => {
+          void resolveActiveSignage(true);
+        },
+        truckAlertRef.current ? 3500 : 250,
+      );
     });
-    return () => events.close();
+    return () => {
+      events.close();
+      if (revisionSyncTimeoutRef.current) {
+        clearTimeout(revisionSyncTimeoutRef.current);
+        revisionSyncTimeoutRef.current = null;
+      }
+    };
   }, [screenId, resolveActiveSignage]);
 
   // Keep truck token displays in sync with controller data on load and on every change.
@@ -734,16 +763,28 @@ export default function PlayerPage() {
       return (
         <div className={`mg-player-media ${transitionClass}`} style={{ width: '100%', height: '100%' }}>
           <video
+            key={`${contentItem.id}-${currentItemIndex}-${src}`}
             src={src}
             autoPlay
             playsInline
             preload="auto"
             loop={playableItems.length === 1}
+            onLoadedMetadata={(event) => {
+              event.currentTarget.currentTime = 0;
+            }}
             onCanPlay={(event) => {
-              event.currentTarget.muted = false;
-              void event.currentTarget.play().catch((error) => {
-                console.warn('Video autoplay with audio was blocked:', error);
+              const video = event.currentTarget;
+              video.muted = false;
+              void video.play().catch((error) => {
+                console.warn('Video autoplay with audio was blocked, retrying muted playback:', error);
+                video.muted = true;
+                void video.play().catch((mutedError) => {
+                  console.warn('Video autoplay failed after muted retry:', mutedError);
+                });
               });
+            }}
+            onError={(event) => {
+              console.warn('Video failed to load:', event.currentTarget.error);
             }}
             style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
           />
