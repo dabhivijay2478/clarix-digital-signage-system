@@ -9,7 +9,6 @@ const outDir = resolve(projectRoot, "out");
 const nextDir = resolve(projectRoot, ".next");
 const debugPlayerDir = resolve(projectRoot, "src-tauri/target/debug/browser-player");
 const releasePlayerDir = resolve(projectRoot, "src-tauri/target/release/browser-player");
-const releaseBundleDir = resolve(projectRoot, "src-tauri/target/release/bundle");
 
 const listeningProcesses = (port) => {
   try {
@@ -73,7 +72,6 @@ if (mode === "dev") {
   removeGenerated(debugPlayerDir);
 } else {
   removeGenerated(releasePlayerDir);
-  removeGenerated(releaseBundleDir);
 }
 
 console.log(`[tauri:${mode}] Building the active branch with Bun...`);
