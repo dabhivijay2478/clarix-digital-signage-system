@@ -461,12 +461,14 @@ export default function TruckTokenDisplay({
 
         <div className="mg-truck-panel">
           <div className="mg-truck-table-wrap">
-            <div className="mg-truck-grid">
+            <div className={`mg-truck-grid mg-truck-grid--${mode}`}>
               <div className="mg-truck-grid-head">
                 <div className="mg-truck-col-gate mg-truck-col-label">Gate</div>
                 <div className="mg-truck-col-plate mg-truck-col-label">Truck Number</div>
                 <div className="mg-truck-col-status mg-truck-col-label">Status</div>
-                <div className="mg-truck-col-est mg-truck-col-label">Est. Wait</div>
+                {mode === 'waiting' && (
+                  <div className="mg-truck-col-est mg-truck-col-label">Est. Wait</div>
+                )}
               </div>
 
               <div className="mg-truck-grid-body">
@@ -514,11 +516,13 @@ export default function TruckTokenDisplay({
                             color={getStatusStyle(statusLabel).color ?? '#4b5563'}
                           />
                         </div>
-                        <div className="mg-truck-col-est">
-                          <DisplayTime
-                            text={getEtaClockLabel(truck, displayTrucks, resolvedGateSettings, currentTime, displayTimeZone)}
-                          />
-                        </div>
+                        {mode === 'waiting' && (
+                          <div className="mg-truck-col-est">
+                            <DisplayTime
+                              text={getEtaClockLabel(truck, displayTrucks, resolvedGateSettings, currentTime, displayTimeZone)}
+                            />
+                          </div>
+                        )}
                       </div>
                     )
                   })}

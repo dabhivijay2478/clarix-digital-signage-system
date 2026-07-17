@@ -21,10 +21,12 @@ export const TRUCK_DISPLAY_CRITICAL_CSS = `
 .mg-truck-panel{position:relative;min-height:0;width:100%;overflow:hidden;display:flex;flex-direction:column;margin:0;padding:0 0.8vw 10vh}
 .mg-truck-table-wrap{flex:1 1 auto;min-height:0;width:100%;overflow:hidden;display:flex;flex-direction:column;margin:0;padding:0}
 .mg-truck-grid{display:flex;flex-direction:column;height:100%;width:100%;overflow:hidden;min-height:0;gap:0;margin:0;padding:0}
-.mg-truck-grid-head{flex:0 0 auto;display:grid;grid-template-columns:12% 46% 22% 20%;align-items:end;border:none;width:100%;margin:0;padding:0;gap:0}
+.mg-truck-grid-head{flex:0 0 auto;display:grid;grid-template-columns:12% 58% 30%;align-items:end;border:none;width:100%;margin:0;padding:0;gap:0}
+.mg-truck-grid--waiting .mg-truck-grid-head{grid-template-columns:12% 46% 22% 20%}
 .mg-truck-grid-head .mg-truck-col-label{font-size:clamp(1.1rem,1.6vw,2rem);font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#6b7280;white-space:nowrap;line-height:1;margin:0;padding:0 0 0.8vh;overflow:hidden}
 .mg-truck-grid-body{position:relative;flex:1 1 auto;min-height:0;width:100%;overflow:hidden;display:grid;grid-template-rows:repeat(4,minmax(0,1fr));margin:0;padding:0;gap:0}
-.mg-truck-grid-row{display:grid;grid-template-columns:12% 46% 22% 20%;align-items:center;border:none;width:100%;margin:0;padding:0;gap:0;min-height:0;height:100%;overflow:hidden}
+.mg-truck-grid-row{display:grid;grid-template-columns:12% 58% 30%;align-items:center;border:none;width:100%;margin:0;padding:0;gap:0;min-height:0;height:100%;overflow:hidden}
+.mg-truck-grid--waiting .mg-truck-grid-row{grid-template-columns:12% 46% 22% 20%}
 .mg-truck-grid-row--placeholder{visibility:hidden;pointer-events:none}
 .mg-truck-col-gate,.mg-truck-col-plate,.mg-truck-col-status,.mg-truck-col-est{overflow:hidden;min-width:0;margin:0;padding:0}
 .mg-truck-gate{display:block;width:100%;font-size:clamp(3.5rem,8.5vh,6.5vw);font-weight:900;letter-spacing:0;text-transform:uppercase;white-space:nowrap;line-height:1;margin:0;padding:0;overflow:hidden}

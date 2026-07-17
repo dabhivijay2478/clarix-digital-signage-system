@@ -129,9 +129,6 @@ export default function PlayerPage() {
   const [truckAlert, setTruckAlert] = useState<TruckScreenAlert | null>(null);
   const [marquee, setMarquee] = useState<MarqueeSettings | null>(null);
 
-  // Time tracker for schedules
-  const [currentTimeStr, setCurrentTimeStr] = useState<string>('');
-
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const playStartTimeRef = useRef<number>(0);
   const truckAlertTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -315,8 +312,6 @@ export default function PlayerPage() {
 
   // Keep track of controller time and evaluate screen blanking limits
   useEffect(() => {
-    setCurrentTimeStr(controllerNow.toISOString());
-
     if (activeScreen && activeScreen.operating_hours) {
       const oh = activeScreen.operating_hours;
       if (oh.blank_when_not_in_use) {
