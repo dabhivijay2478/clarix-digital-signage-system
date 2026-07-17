@@ -1,6 +1,7 @@
 import type {
   AppWeekday,
   PlaylistItemDaySchedule,
+  PlaylistItemDayScheduleWindow,
   PlaylistItemSchedule,
   ScreenOperatingHours,
   ScreenOperatingHoursDay,
@@ -81,6 +82,7 @@ export function defaultPlaylistItemDayTimes(
       enabled: enabledDays.includes(day),
       start,
       end,
+      windows: [{ start, end }],
     };
     return days;
   }, {} as Record<AppWeekday, PlaylistItemDaySchedule>);
@@ -118,10 +120,16 @@ export function normalizePlaylistItemSchedule(
     for (const day of APP_WEEKDAYS) {
       const daySchedule = schedule.day_times[day];
       if (!daySchedule) continue;
-      dayTimes[day] = {
-        enabled: Boolean(daySchedule.enabled),
+      const fallbackWindow = {
         start: daySchedule.start || dayTimes[day].start,
         end: daySchedule.end || dayTimes[day].end,
+      };
+      const windows = normalizePlaylistItemDayScheduleWindows(daySchedule, fallbackWindow);
+      dayTimes[day] = {
+        enabled: Boolean(daySchedule.enabled),
+        start: windows[0]?.start || fallbackWindow.start,
+        end: windows[0]?.end || fallbackWindow.end,
+        windows,
       };
     }
   }
@@ -145,6 +153,32 @@ export function parseTimeToMinutes(time?: string | null): number | null {
   if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
   if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
   return hours * 60 + minutes;
+}
+
+function normalizePlaylistItemDayScheduleWindows(
+  daySchedule?: Partial<PlaylistItemDaySchedule> | null,
+  fallback: PlaylistItemDayScheduleWindow = { start: '09:00', end: '17:00' }
+): PlaylistItemDayScheduleWindow[] {
+  const rawWindows = Array.isArray(daySchedule?.windows) && daySchedule.windows.length > 0
+    ? daySchedule.windows
+    : [{ start: daySchedule?.start || fallback.start, end: daySchedule?.end || fallback.end }];
+
+  const windows = rawWindows.map((window) => ({
+    start: window?.start || fallback.start,
+    end: window?.end || fallback.end,
+  }));
+
+  return windows.length > 0 ? windows : [fallback];
+}
+
+export function getPlaylistItemDayScheduleWindows(
+  daySchedule?: PlaylistItemDaySchedule | null
+): PlaylistItemDayScheduleWindow[] {
+  if (!daySchedule) return [];
+  return normalizePlaylistItemDayScheduleWindows(daySchedule, {
+    start: daySchedule.start || '09:00',
+    end: daySchedule.end || '17:00',
+  });
 }
 
 export function isTimeWithinWindow(nowMinutes: number, startMinutes: number, endMinutes: number): boolean {
@@ -183,17 +217,76 @@ export function isPlaylistItemScheduleActive(
 
   const isAllowedForDay = (daySchedule: PlaylistItemDaySchedule | undefined, mode: 'current' | 'previous') => {
     if (!daySchedule?.enabled) return false;
-    const start = parseTimeToMinutes(daySchedule.start);
-    const end = parseTimeToMinutes(daySchedule.end);
-    if (start === null || end === null) return false;
-    if (start === end) return mode === 'current';
-    if (start < end) {
-      return mode === 'current' && zonedDate.nowMinutes >= start && zonedDate.nowMinutes <= end;
-    }
-    return mode === 'current' ? zonedDate.nowMinutes >= start : zonedDate.nowMinutes <= end;
+    return getPlaylistItemDayScheduleWindows(daySchedule).some((window) => {
+      const start = parseTimeToMinutes(window.start);
+      const end = parseTimeToMinutes(window.end);
+      if (start === null || end === null) return false;
+      if (start === end) return mode === 'current';
+      if (start < end) {
+        return mode === 'current' && zonedDate.nowMinutes >= start && zonedDate.nowMinutes <= end;
+      }
+      return mode === 'current' ? zonedDate.nowMinutes >= start : zonedDate.nowMinutes <= end;
+    });
   };
 
   return isAllowedForDay(todaySchedule, 'current') || isAllowedForDay(previousSchedule, 'previous');
+}
+
+export function getPlaylistItemScheduleRemainingMs(
+  schedule?: Partial<PlaylistItemSchedule> | null,
+  date = new Date()
+): number | null {
+  if (!schedule) return null;
+  const normalized = normalizePlaylistItemSchedule(schedule);
+  if (!normalized.time_restricted) return null;
+
+  const zonedDate = getZonedDateInfo(date, normalized.timezone);
+
+  if (normalized.date_restricted) {
+    if (normalized.start_date && zonedDate.dateKey < normalized.start_date) return null;
+    if (normalized.end_date && zonedDate.dateKey > normalized.end_date) return null;
+  }
+
+  const secondsFormatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: normalized.timezone,
+    second: '2-digit',
+  });
+  const secondsPart = secondsFormatter.formatToParts(date).find((part) => part.type === 'second')?.value;
+  const zonedSeconds = Number.parseInt(secondsPart || '0', 10) || 0;
+
+  const remainingForDay = (daySchedule: PlaylistItemDaySchedule | undefined, mode: 'current' | 'previous'): number | null => {
+    if (!daySchedule?.enabled) return null;
+
+    for (const window of getPlaylistItemDayScheduleWindows(daySchedule)) {
+      const start = parseTimeToMinutes(window.start);
+      const end = parseTimeToMinutes(window.end);
+      if (start === null || end === null) continue;
+
+      let remainingMinutes: number | null = null;
+      if (start === end) {
+        remainingMinutes = mode === 'current' ? 1440 - zonedDate.nowMinutes : null;
+      } else if (start < end) {
+        if (mode === 'current' && zonedDate.nowMinutes >= start && zonedDate.nowMinutes <= end) {
+          remainingMinutes = end - zonedDate.nowMinutes;
+        }
+      } else if (mode === 'current' && zonedDate.nowMinutes >= start) {
+        remainingMinutes = 1440 - zonedDate.nowMinutes + end;
+      } else if (mode === 'previous' && zonedDate.nowMinutes <= end) {
+        remainingMinutes = end - zonedDate.nowMinutes;
+      }
+
+      if (remainingMinutes !== null) {
+        return Math.max((remainingMinutes * 60 - zonedSeconds) * 1000, 0);
+      }
+    }
+
+    return null;
+  };
+
+  return (
+    remainingForDay(normalized.day_times?.[zonedDate.today], 'current') ??
+    remainingForDay(normalized.day_times?.[zonedDate.previousDay], 'previous')
+  );
 }
 
 function compactDaySummary(days: AppWeekday[]): string {
@@ -225,10 +318,14 @@ export function formatPlaylistScheduleSummary(schedule?: Partial<PlaylistItemSch
       .filter((day) => normalized.day_times?.[day]?.enabled)
       .map((day) => normalized.day_times?.[day]);
     const first = enabledDayTimes[0];
-    const hasSingleWindow = Boolean(first && enabledDayTimes.every((day) => day?.start === first.start && day?.end === first.end));
+    const firstWindows = first ? getPlaylistItemDayScheduleWindows(first) : [];
+    const hasSingleWindow = Boolean(first && firstWindows.length === 1 && enabledDayTimes.every((day) => {
+      const windows = day ? getPlaylistItemDayScheduleWindows(day) : [];
+      return windows.length === 1 && windows[0].start === firstWindows[0].start && windows[0].end === firstWindows[0].end;
+    }));
 
     if (first && hasSingleWindow) {
-      const overnight = isOvernightWindow(first.start, first.end) ? ' overnight' : '';
+      const overnight = isOvernightWindow(firstWindows[0].start, firstWindows[0].end) ? ' overnight' : '';
       parts.push(`${compactDaySummary(normalized.days)} · ${formatScheduleTime(first.start)}-${formatScheduleTime(first.end)}${overnight}`);
     } else {
       parts.push(`${compactDaySummary(normalized.days)} · custom times`);
@@ -251,8 +348,12 @@ export function validatePlaylistItemSchedule(schedule: PlaylistItemSchedule): st
     for (const day of APP_WEEKDAYS) {
       const daySchedule = normalized.day_times?.[day];
       if (!daySchedule?.enabled) continue;
-      if (parseTimeToMinutes(daySchedule.start) === null || parseTimeToMinutes(daySchedule.end) === null) {
-        return `Enter a valid start and end time for ${day}.`;
+      const windows = getPlaylistItemDayScheduleWindows(daySchedule);
+      if (windows.length === 0) return `Add at least one time slot for ${day}.`;
+      for (const window of windows) {
+        if (parseTimeToMinutes(window.start) === null || parseTimeToMinutes(window.end) === null) {
+          return `Enter a valid start and end time for ${day}.`;
+        }
       }
     }
   }

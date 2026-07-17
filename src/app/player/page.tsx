@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { screensApi, playlistsApi, contentApi, analyticsApi, localNetworkApi, customConfirm, getBrowserControllerOrigin, appConfigApi, trucksApi } from '../../lib/tauri';
 import type { Screen, Playlist, ContentItem, PlaylistItem, TruckScreenAlert, MarqueeSettings, ScreenPurpose, Truck, GateQueueSettings } from '../../lib/types';
-import { isPlaylistItemScheduleActive, isScreenWithinOperatingHours } from '../../lib/signage-schedule';
+import { getPlaylistItemScheduleRemainingMs, isPlaylistItemScheduleActive, isScreenWithinOperatingHours } from '../../lib/signage-schedule';
 import { showToast } from '../../components/Toast';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { useBrandingStore } from '../../store/ui';
@@ -132,6 +132,11 @@ export default function PlayerPage() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const playStartTimeRef = useRef<number>(0);
   const truckAlertTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const controllerNowRef = useRef<Date>(controllerNow);
+
+  useEffect(() => {
+    controllerNowRef.current = controllerNow;
+  }, [controllerNow]);
 
   // Detect physical viewport aspect ratio (landscape vs portrait)
   useEffect(() => {
@@ -643,8 +648,16 @@ export default function PlayerPage() {
       return;
     }
 
-    // Playlist rows no longer expose duration overrides; content owns its playback time.
-    const duration = contentItem.duration_secs ?? 10;
+    const contentDurationMs = Math.max(contentItem.duration_secs ?? 10, 1) * 1000;
+    const scheduleRemainingMs = getPlaylistItemScheduleRemainingMs(
+      playlistItem.display_schedule,
+      controllerNowRef.current
+    );
+    const playbackDurationMs = scheduleRemainingMs === null
+      ? contentDurationMs
+      : contentItem.content_type === 'Video'
+        ? Math.max(scheduleRemainingMs, 1000)
+        : Math.min(contentDurationMs, Math.max(scheduleRemainingMs, 1000));
 
     // Record Analytics PLAY Event
     if (screenId) {
@@ -671,7 +684,7 @@ export default function PlayerPage() {
         const nextIndex = (currentItemIndex + 1) % playableItems.length;
         setCurrentItemIndex(nextIndex);
       }
-    }, duration * 1000);
+    }, playbackDurationMs);
 
     return () => {
       if (timerRef.current) {

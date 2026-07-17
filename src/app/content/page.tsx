@@ -59,7 +59,6 @@ export default function ContentPage() {
   const [formName, setFormName] = useState('');
   const [formType, setFormType] = useState('Image');
   const [formUrl, setFormUrl] = useState('');
-  const [formDuration, setFormDuration] = useState('30');
   const [formTags, setFormTags] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -234,7 +233,7 @@ export default function ContentPage() {
         formType,
         filePath,
         formType === 'WebApp' ? (formUrl || undefined) : undefined,
-        parseInt(formDuration) || 30,
+        30,
         formTags.split(',').map((t) => t.trim()).filter(Boolean)
       );
 
@@ -243,7 +242,6 @@ export default function ContentPage() {
       setFormName('');
       setFormType('Image');
       setFormUrl('');
-      setFormDuration('30');
       setFormTags('');
       setSelectedFile(null);
     } catch (err) {
@@ -597,16 +595,6 @@ export default function ContentPage() {
               />
             </div>
           )}
-
-          <div className="space-y-2">
-            <Label htmlFor="content-duration">Duration (seconds)</Label>
-            <Input id="content-duration"
-              type="number"
-              placeholder="30"
-              value={formDuration}
-              onChange={(e) => setFormDuration(e.target.value)}
-            />
-          </div>
 
           <div className="space-y-2">
             <Label htmlFor="content-tags">Tags (comma-separated)</Label>

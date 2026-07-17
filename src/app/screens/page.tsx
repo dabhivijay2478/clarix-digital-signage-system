@@ -16,6 +16,7 @@ import {
   formatPlaylistScheduleSummary,
   formatScheduleTime,
   getControllerTimeZone,
+  getPlaylistItemDayScheduleWindows,
   normalizePlaylistItemSchedule,
   validatePlaylistItemSchedule,
 } from '../../lib/signage-schedule';
@@ -132,13 +133,15 @@ function buildPlaylistScheduleWindows(item: PlaylistItem, index: number): Playli
     const daySchedule = schedule.day_times?.[day];
     if (!daySchedule?.enabled) return;
 
-    const ranges = expandDayWindow(daySchedule.start, daySchedule.end);
-    ranges.forEach((range, rangeIndex) => {
-      windows.push({
-        index,
-        day: rangeIndex === 1 ? nextWeekday(day) : day,
-        range,
-        dateRange,
+    getPlaylistItemDayScheduleWindows(daySchedule).forEach((dayWindow) => {
+      const ranges = expandDayWindow(dayWindow.start, dayWindow.end);
+      ranges.forEach((range, rangeIndex) => {
+        windows.push({
+          index,
+          day: rangeIndex === 1 ? nextWeekday(day) : day,
+          range,
+          dateRange,
+        });
       });
     });
   });
@@ -244,6 +247,59 @@ export default function ScreensPage() {
   const [itemSchedStartDate, setItemSchedStartDate] = useState('');
   const [itemSchedEndDate, setItemSchedEndDate] = useState('');
   const [itemSchedTransition, setItemSchedTransition] = useState<TransitionEffect>('Fade');
+
+  const updateItemSchedDay = (
+    day: AppWeekday,
+    updater: (current: PlaylistItemDaySchedule) => PlaylistItemDaySchedule
+  ) => {
+    setItemSchedDayTimes((prev) => {
+      const current = prev[day] || {
+        enabled: true,
+        start: '09:00',
+        end: '17:00',
+        windows: [{ start: '09:00', end: '17:00' }],
+      };
+      const next = updater(current);
+      const windows = getPlaylistItemDayScheduleWindows(next);
+      return {
+        ...prev,
+        [day]: {
+          ...next,
+          start: windows[0]?.start || next.start,
+          end: windows[0]?.end || next.end,
+          windows,
+        },
+      };
+    });
+  };
+
+  const updateItemSchedWindow = (
+    day: AppWeekday,
+    index: number,
+    field: 'start' | 'end',
+    value: string
+  ) => {
+    updateItemSchedDay(day, (current) => {
+      const windows = getPlaylistItemDayScheduleWindows(current);
+      windows[index] = { ...(windows[index] || { start: '09:00', end: '17:00' }), [field]: value };
+      return { ...current, windows };
+    });
+  };
+
+  const addItemSchedWindow = (day: AppWeekday) => {
+    updateItemSchedDay(day, (current) => ({
+      ...current,
+      enabled: true,
+      windows: [...getPlaylistItemDayScheduleWindows(current), { start: '09:00', end: '17:00' }],
+    }));
+  };
+
+  const removeItemSchedWindow = (day: AppWeekday, index: number) => {
+    updateItemSchedDay(day, (current) => {
+      const windows = getPlaylistItemDayScheduleWindows(current).filter((_, idx) => idx !== index);
+      return { ...current, windows: windows.length > 0 ? windows : [{ start: current.start, end: current.end }] };
+    });
+  };
 
   const selectedScreen = useMemo(
     () => screens.find((s) => s.id === selectedScreenId) || null,
@@ -1055,51 +1111,61 @@ export default function ScreensPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {APP_WEEKDAYS.map((day) => {
                     const daySchedule = itemSchedDayTimes[day] || { enabled: true, start: '09:00', end: '17:00' };
+                    const dayWindows = getPlaylistItemDayScheduleWindows(daySchedule);
                     return (
-                      <div key={day} style={{ display: 'grid', gridTemplateColumns: '140px 1fr 1fr', alignItems: 'center', gap: '12px' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', fontWeight: 600, color: daySchedule.enabled ? 'var(--foreground)' : 'var(--text-muted)' }}>
+                      <div key={day} style={{ display: 'grid', gridTemplateColumns: '140px minmax(0, 1fr)', alignItems: 'start', gap: '12px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', fontWeight: 600, color: daySchedule.enabled ? 'var(--foreground)' : 'var(--text-muted)', paddingTop: '9px' }}>
                           <input
                             type="checkbox"
                             checked={daySchedule.enabled}
-                            onChange={(e) => {
-                              setItemSchedDayTimes((prev) => ({
-                                ...prev,
-                                [day]: { ...prev[day], enabled: e.target.checked },
-                              }));
-                            }}
+                            onChange={(e) => updateItemSchedDay(day, (current) => ({ ...current, enabled: e.target.checked }))}
                             style={{ width: '16px', height: '16px', accentColor: 'var(--accent-primary)' }}
                           />
                           {ITEM_SCHEDULE_DAY_LABELS[day]}
                         </label>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '7px 10px', opacity: daySchedule.enabled ? 1 : 0.45 }}>
-                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Start</span>
-                          <input
-                            type="time"
-                            value={daySchedule.start}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: daySchedule.enabled ? 1 : 0.45 }}>
+                          {dayWindows.map((window, windowIndex) => (
+                            <div key={`${day}-${windowIndex}`} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 36px', gap: '8px', alignItems: 'center' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '7px 10px' }}>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Start</span>
+                                <input
+                                  type="time"
+                                  value={window.start}
+                                  disabled={!daySchedule.enabled}
+                                  onChange={(e) => updateItemSchedWindow(day, windowIndex, 'start', e.target.value)}
+                                  style={{ background: 'transparent', border: 'none', color: 'var(--foreground)', width: '100%', fontSize: '13px', outline: 'none', colorScheme: 'dark' }}
+                                />
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '7px 10px' }}>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>End</span>
+                                <input
+                                  type="time"
+                                  value={window.end}
+                                  disabled={!daySchedule.enabled}
+                                  onChange={(e) => updateItemSchedWindow(day, windowIndex, 'end', e.target.value)}
+                                  style={{ background: 'transparent', border: 'none', color: 'var(--foreground)', width: '100%', fontSize: '13px', outline: 'none', colorScheme: 'dark' }}
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeItemSchedWindow(day, windowIndex)}
+                                disabled={!daySchedule.enabled || dayWindows.length === 1}
+                                title="Remove slot"
+                                style={{ width: '36px', height: '36px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: dayWindows.length === 1 ? 'var(--text-muted)' : 'var(--danger)', cursor: dayWindows.length === 1 ? 'not-allowed' : 'pointer', display: 'grid', placeItems: 'center' }}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => addItemSchedWindow(day)}
                             disabled={!daySchedule.enabled}
-                            onChange={(e) => {
-                              setItemSchedDayTimes((prev) => ({
-                                ...prev,
-                                [day]: { ...prev[day], start: e.target.value },
-                              }));
-                            }}
-                            style={{ background: 'transparent', border: 'none', color: 'var(--foreground)', width: '100%', fontSize: '13px', outline: 'none', colorScheme: 'dark' }}
-                          />
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '7px 10px', opacity: daySchedule.enabled ? 1 : 0.45 }}>
-                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>End</span>
-                          <input
-                            type="time"
-                            value={daySchedule.end}
-                            disabled={!daySchedule.enabled}
-                            onChange={(e) => {
-                              setItemSchedDayTimes((prev) => ({
-                                ...prev,
-                                [day]: { ...prev[day], end: e.target.value },
-                              }));
-                            }}
-                            style={{ background: 'transparent', border: 'none', color: 'var(--foreground)', width: '100%', fontSize: '13px', outline: 'none', colorScheme: 'dark' }}
-                          />
+                            style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: '6px', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg-secondary)', color: 'var(--foreground)', padding: '6px 10px', fontSize: '12px', cursor: daySchedule.enabled ? 'pointer' : 'not-allowed' }}
+                          >
+                            <Plus size={14} />
+                            Add slot
+                          </button>
                         </div>
                       </div>
                     );

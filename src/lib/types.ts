@@ -124,10 +124,16 @@ export interface PlaylistItem {
 
 export type TransitionEffect = "None" | "Fade" | "Slide" | "Zoom";
 
+export interface PlaylistItemDayScheduleWindow {
+  start: string;
+  end: string;
+}
+
 export interface PlaylistItemDaySchedule {
   enabled: boolean;
   start: string;
   end: string;
+  windows?: PlaylistItemDayScheduleWindow[];
 }
 
 export interface PlaylistItemSchedule {
