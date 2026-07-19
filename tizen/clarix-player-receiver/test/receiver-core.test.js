@@ -60,7 +60,9 @@ test("keeps the manifest, CSP, and controller player navigation controlled", () 
   assert.match(main, /tizen\.preference/);
   assert.match(main, /window\.widget\.preferences/);
   assert.match(main, /clarix-player-screen-id/);
-  assert.match(main, /screenId=/);
+  assert.match(main, /appendQueryParam\(target, "screenId", savedScreenId\)/);
+  assert.match(main, /appendQueryParam\(target, "receiver", "tizen"\)/);
+  assert.match(main, /appendQueryParam\(target, "launch", String\(Date\.now\(\)\)\)/);
   assert.match(main, /playerTargetUrl/);
   assert.match(main, /native IME requires input key events to remain unmodified/);
   assert.match(main, /window\.location\.href = target/);

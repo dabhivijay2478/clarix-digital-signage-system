@@ -122,11 +122,21 @@
     return activeConfig ? activeConfig.origin : "";
   }
 
+  function appendQueryParam(target, name, value) {
+    return target + (target.indexOf("?") === -1 ? "?" : "&")
+      + encodeURIComponent(name) + "=" + encodeURIComponent(value);
+  }
+
   function playerTargetUrl() {
     var target = trusted.playerUrl();
     var savedScreenId = readStringStore(playerScreenStorageKey);
-    if (!savedScreenId || /[?&](?:screenId|id)=/.test(target)) return target;
-    return target + (target.indexOf("?") === -1 ? "?" : "&") + "screenId=" + encodeURIComponent(savedScreenId);
+    if (savedScreenId && !/[?&](?:screenId|id)=/.test(target)) {
+      target = appendQueryParam(target, "screenId", savedScreenId);
+    }
+    if (!/[?&]receiver=/.test(target)) {
+      target = appendQueryParam(target, "receiver", "tizen");
+    }
+    return appendQueryParam(target, "launch", String(Date.now()));
   }
 
   function injectControllerContext(html, origin) {

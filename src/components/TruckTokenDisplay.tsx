@@ -151,20 +151,36 @@ const GATE_PALETTE = [
   { border: '#f97316', bg: '#fff7ed', text: '#c2410c' },
 ]
 
-function formatTimeOfDay(dateStr: string | null, timeZone = APP_TIME_ZONE): string {
-  if (!dateStr) return '-'
+function formatControllerTime(date: Date, timeZone = APP_TIME_ZONE): string {
   try {
-    const d = new Date(dateStr)
-    if (Number.isNaN(d.getTime())) return '-'
-    return new Intl.DateTimeFormat('en-IN', {
+    if (Number.isNaN(date.getTime())) return '-'
+    const formatter = new Intl.DateTimeFormat('en-GB', {
       timeZone: getValidTimeZone(timeZone),
-      hour: 'numeric',
+      hour: '2-digit',
       minute: '2-digit',
-      hour12: true,
-    }).format(d).toUpperCase()
+      hourCycle: 'h23',
+    })
+    const formatted = formatter.format(date)
+    const parts = typeof formatter.formatToParts === 'function' ? formatter.formatToParts(date) : []
+    const fallbackMatch = formatted.match(/(\d{1,2})\D+(\d{2})/)
+    const rawHour = Number(parts.find((part) => part.type === 'hour')?.value ?? fallbackMatch?.[1])
+    const minute = parts.find((part) => part.type === 'minute')?.value ?? fallbackMatch?.[2]
+    if (!Number.isFinite(rawHour) || !minute) return '-'
+
+    // Some Samsung/Tizen Intl implementations emit hour 24 at midnight and
+    // hour 00 with a PM marker. Build the 12-hour label ourselves instead.
+    const hour24 = rawHour % 24
+    const hour12 = hour24 % 12 || 12
+    const period = hour24 >= 12 ? 'PM' : 'AM'
+    return `${String(hour12).padStart(2, '0')}:${minute} ${period}`
   } catch {
     return '-'
   }
+}
+
+function formatTimeOfDay(dateStr: string | null, timeZone = APP_TIME_ZONE): string {
+  if (!dateStr) return '-'
+  return formatControllerTime(new Date(dateStr), timeZone)
 }
 
 function getEtaClockLabel(
@@ -431,12 +447,7 @@ export default function TruckTokenDisplay({
                 <div className="mg-truck-clock-cell">
                   <div className="mg-truck-clock-wrap">
                     <span className="mg-truck-clock-time">
-                      {currentTime.toLocaleTimeString(undefined, {
-                        timeZone: displayTimeZone,
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: true,
-                      }).toUpperCase()}
+                      {formatControllerTime(currentTime, displayTimeZone)}
                     </span>
                   </div>
                 </div>

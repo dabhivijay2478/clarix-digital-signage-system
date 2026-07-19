@@ -3,7 +3,7 @@ use std::{collections::HashMap, convert::Infallible, io::Read, path::{Path as Fs
 use axum::{
     body::{Body, Bytes},
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{header::CACHE_CONTROL, HeaderMap, HeaderValue, StatusCode},
     response::{Response, sse::{Event, KeepAlive, Sse}},
     routing::{get, post},
     Json, Router,
@@ -14,7 +14,11 @@ use rusqlite::params;
 use sha2::{Digest, Sha256};
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
-use tower_http::{cors::CorsLayer, services::{ServeDir, ServeFile}};
+use tower_http::{
+    cors::CorsLayer,
+    services::{ServeDir, ServeFile},
+    set_header::SetResponseHeaderLayer,
+};
 
 use crate::{
     db::{self, DbPool},
@@ -123,6 +127,14 @@ pub async fn start_controller_server(
         .route("/presentation/{filename}", get(presentation_viewer))
         .route("/api/proxy", get(proxy_url));
 
+    let player_routes = Router::new()
+        .route_service("/player", ServeFile::new(browser_assets_dir.join("player.html")))
+        .route_service("/player/", ServeFile::new(browser_assets_dir.join("player.html")))
+        .layer(SetResponseHeaderLayer::overriding(
+            CACHE_CONTROL,
+            HeaderValue::from_static("no-store, no-cache, must-revalidate"),
+        ));
+
     let router = Router::new()
         .route("/v1/pairing/requests", post(create_pairing_request))
         .route("/v1/pairing/requests/{id}", get(get_pairing_request))
@@ -134,8 +146,7 @@ pub async fn start_controller_server(
         .route("/v1/truck-alerts", get(stream_truck_alerts))
         .route("/status", get(health))
         .merge(browser_routes)
-        .route_service("/player", ServeFile::new(browser_assets_dir.join("player.html")))
-        .route_service("/player/", ServeFile::new(browser_assets_dir.join("player.html")))
+        .merge(player_routes)
         .route_service("/production-data/view", ServeFile::new(browser_assets_dir.join("production-data/view.html")))
         .route_service("/production-data/view/", ServeFile::new(browser_assets_dir.join("production-data/view.html")))
         .route_service("/trucks/display", ServeFile::new(browser_assets_dir.join("trucks/display.html")))
