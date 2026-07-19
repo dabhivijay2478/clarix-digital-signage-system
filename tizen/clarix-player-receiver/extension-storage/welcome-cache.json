@@ -1,6 +1,55 @@
 {
-  "packageList": [],
-  "packageCount": 0,
-  "timestamp": 1784440155237,
+  "packageList": [
+    {
+      "id": "TIZEN-CORE-APP",
+      "name": "TIZEN-CORE-APP",
+      "version": "latest",
+      "devGroup": "core-app"
+    },
+    {
+      "id": "TIZEN-COMMONNATIVETOOLCHAIN",
+      "name": "TIZEN-COMMONNATIVETOOLCHAIN",
+      "version": "latest",
+      "devGroup": "CommonNativeToolChain"
+    },
+    {
+      "id": "TIZEN-TIZENCLI",
+      "name": "TIZEN-TIZENCLI",
+      "version": "latest",
+      "devGroup": "TizenCli"
+    },
+    {
+      "id": "TIZEN-NATIVETOOLCHAIN",
+      "name": "TIZEN-NATIVETOOLCHAIN",
+      "version": "latest",
+      "devGroup": "NativeToolChain"
+    },
+    {
+      "id": "TIZEN-TIZEN",
+      "name": "TIZEN-TIZEN",
+      "version": "latest",
+      "devGroup": "Tizen"
+    },
+    {
+      "id": "TIZEN-EMULATOR-CONTROL-PANEL",
+      "name": "TIZEN-EMULATOR-CONTROL-PANEL",
+      "version": "latest",
+      "devGroup": "emulator-control-panel"
+    },
+    {
+      "id": "TIZEN-TV",
+      "name": "TIZEN-TV",
+      "version": "latest",
+      "devGroup": "TV"
+    },
+    {
+      "id": "TIZEN-EMULATOR-RESOURCE",
+      "name": "TIZEN-EMULATOR-RESOURCE",
+      "version": "latest",
+      "devGroup": "emulator-resource"
+    }
+  ],
+  "packageCount": 8,
+  "timestamp": 1784446650433,
   "version": "1.0.0"
 }

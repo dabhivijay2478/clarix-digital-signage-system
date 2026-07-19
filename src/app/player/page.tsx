@@ -12,6 +12,7 @@ import TruckTokenDisplay from '@/components/TruckTokenDisplay';
 import { parseScreenGates } from '@/lib/screen-gates';
 import { useTruckStore } from '@/store/truckStore';
 import { useControllerClock } from '@/hooks/useControllerClock';
+import { ArrowLeft } from 'lucide-react';
 
 const AMNS_LOGO_SRC = '/company-logo/AMNS_Logo_Mid.png?v=transparent-20260716';
 const PLAYER_SCREEN_STORAGE_KEY = 'clarix_player_screen_id';
@@ -922,7 +923,7 @@ export default function PlayerPage() {
         gateFilter={truckAlert.gate}
         timeZone={activeScreen?.operating_hours?.timezone}
         loadRemoteSnapshot={false}
-        showBackButton={!isReceiverMode}
+        showBackButton
         onBack={handleBackToScreenSelection}
       />
     );
@@ -1033,13 +1034,46 @@ export default function PlayerPage() {
     );
   };
 
+  const renderPlayerBackButton = () => {
+    if (!screenId) return null;
+
+    return (
+      <button
+        type="button"
+        onClick={handleBackToScreenSelection}
+        aria-label="Back to screen selection"
+        title="Back to screen selection"
+        style={{
+          position: 'fixed',
+          top: 24,
+          left: 24,
+          zIndex: 10001,
+          width: 48,
+          height: 48,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          border: '1px solid rgba(255, 255, 255, 0.3)',
+          borderRadius: 6,
+          background: 'rgba(0, 0, 0, 0.68)',
+          color: '#fff',
+          cursor: 'pointer',
+        }}
+      >
+        <ArrowLeft size={26} strokeWidth={2.25} aria-hidden="true" />
+      </button>
+    );
+  };
+
   // ── RENDER BLANK STANDBY SCREEN ───────────────────────────────────────────
   if (screenId && isScreenBlanked) {
     return (
       <div
         className="mg-player-stage"
         style={{ background: '#000' }}
-      />
+      >
+        {renderPlayerBackButton()}
+      </div>
     );
   }
 
@@ -1165,7 +1199,7 @@ export default function PlayerPage() {
           timeZone={activeScreen?.operating_hours?.timezone}
           loadRemoteSnapshot={liveTrucks.length === 0}
           displayRotationSecs={liveDisplayRotationSecs}
-          showBackButton={!isReceiverMode}
+          showBackButton
           onBack={handleBackToScreenSelection}
         />
         {renderMarquee()}
@@ -1203,6 +1237,7 @@ export default function PlayerPage() {
       >
         {renderTruckAlertOverlay()}
         {renderMarquee()}
+        {renderPlayerBackButton()}
 
         <div className="mg-player-badge">
           <span className="mg-player-badge-dot" />
@@ -1325,6 +1360,7 @@ export default function PlayerPage() {
       </div>
       {renderTruckAlertOverlay()}
       {renderMarquee()}
+      {renderPlayerBackButton()}
 
       {/* Company branding — fixed to the bottom-right without decoration. */}
       <div
