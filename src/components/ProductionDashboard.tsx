@@ -178,6 +178,9 @@ function AskRateBadge({ value, isPlayer = false }: { value: number; isPlayer?: b
 function PlayerProductionChart({ data }: { data: typeof chartData }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 1920, height: 720 })
+  const chartFontSize = Math.round(Math.max(16, Math.min(28, size.height * 0.035)))
+  const chartLabelSize = Math.round(Math.max(18, Math.min(32, size.height * 0.04)))
+  const legendFontSize = Math.round(Math.max(16, Math.min(28, size.height * 0.034)))
 
   useEffect(() => {
     const el = hostRef.current
@@ -221,19 +224,19 @@ function PlayerProductionChart({ data }: { data: typeof chartData }) {
             dataKey="date"
             tickLine={false}
             axisLine={false}
-            tick={{ fontSize: 14, fill: '#000000' }}
-            label={{ value: 'Date', position: 'insideBottom', offset: -4, fontSize: 14, fontWeight: 600, fill: '#000000' }}
-            height={32}
+            tick={{ fontSize: chartFontSize, fill: '#000000' }}
+            label={{ value: 'Date', position: 'insideBottom', offset: -6, fontSize: chartLabelSize, fontWeight: 700, fill: '#000000' }}
+            height={Math.max(42, chartLabelSize + 18)}
           />
           <YAxis
             tickLine={false}
             axisLine={false}
-            tick={{ fontSize: 14, fill: '#000000' }}
-            label={{ value: 'Qty', angle: -90, position: 'insideLeft', offset: 8, fontSize: 14, fontWeight: 600, fill: '#000000' }}
-            width={48}
+            tick={{ fontSize: chartFontSize, fill: '#000000' }}
+            label={{ value: 'Qty', angle: -90, position: 'insideLeft', offset: 12, fontSize: chartLabelSize, fontWeight: 700, fill: '#000000' }}
+            width={Math.max(58, chartFontSize * 3)}
           />
           <Tooltip />
-          <Legend wrapperStyle={{ fontSize: 14, fontWeight: 600, color: '#000000' }} />
+          <Legend wrapperStyle={{ fontSize: legendFontSize, fontWeight: 700, color: '#000000' }} />
           <Line type="monotone" dataKey="FSL" stroke={LINE_COLORS.FSL} strokeWidth={2.5} dot={{ r: 4, strokeWidth: 0, fill: LINE_COLORS.FSL }} activeDot={{ r: 6 }} name="FSL" />
           <Line type="monotone" dataKey="PSL1" stroke={LINE_COLORS.PSL1} strokeWidth={2.5} dot={{ r: 4, strokeWidth: 0, fill: LINE_COLORS.PSL1 }} activeDot={{ r: 6 }} name="PSL1" />
           <Line type="monotone" dataKey="PSL2" stroke={LINE_COLORS.PSL2} strokeWidth={2.5} dot={{ r: 4, strokeWidth: 0, fill: LINE_COLORS.PSL2 }} activeDot={{ r: 6 }} name="PSL2" />
@@ -317,9 +320,11 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
             <TrendingUp className={cn('h-4 w-4 text-primary', isPlayer && 'mg-prod-card-title-icon text-black')} />
             Production Summary — {monthLabel}
           </CardTitle>
-          <CardDescription className={cn('text-xs', isPlayer && 'mg-prod-card-desc text-black')}>
-            ABP · Monthly Plan · Actual vs Target with Asking Rate &amp; Forecast
-          </CardDescription>
+          {!isPlayer && (
+            <CardDescription className="text-xs">
+              ABP · Monthly Plan · Actual vs Target with Asking Rate &amp; Forecast
+            </CardDescription>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -379,9 +384,11 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
           <CardTitle className={cn('text-center text-base underline decoration-primary/40 underline-offset-4', isPlayer && 'mg-prod-card-title text-black no-underline')}>
             Production trend {monthLabel} (MT)
           </CardTitle>
-          <CardDescription className={cn('text-center text-xs', isPlayer && 'mg-prod-card-desc text-black')}>
-            Daily production quantities for FSL, PSL1 and PSL2
-          </CardDescription>
+          {!isPlayer && (
+            <CardDescription className="text-center text-xs">
+              Daily production quantities for FSL, PSL1 and PSL2
+            </CardDescription>
+          )}
         </CardHeader>
         <CardContent className={cn(isPlayer && 'mg-prod-chart-content')}>
           {isPlayer ? (

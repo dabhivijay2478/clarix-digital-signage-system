@@ -800,7 +800,7 @@ export default function PlayerPage() {
             overflow: 'hidden',
             background: '#ffffff',
             colorScheme: 'light',
-            padding: '0.8vh 1.2vw',
+            padding: 0,
             boxSizing: 'border-box',
             display: 'flex',
             flexDirection: 'column',
