@@ -143,6 +143,38 @@ pub async fn add_content_item(
 }
 
 #[tauri::command]
+pub async fn update_content_duration(
+    id: String,
+    duration_secs: u32,
+    pool: State<'_, DbPool>,
+    events: State<'_, crate::lan::server::SyncEventBus>,
+) -> Result<(), String> {
+    if duration_secs == 0 {
+        return Err("Content duration must be greater than zero".to_string());
+    }
+
+    let pool = pool.inner().clone();
+    let event_bus = events.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let rows = conn
+            .execute(
+                "UPDATE content_items SET duration_secs = ?1 WHERE id = ?2",
+                params![duration_secs as i64, id],
+            )
+            .map_err(|e| e.to_string())?;
+        if rows == 0 {
+            return Err("Content item not found".to_string());
+        }
+        drop(conn);
+        crate::lan::server::publish_revision(&pool, &event_bus).map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub async fn delete_content_item(
     id: String,
     pool: State<'_, DbPool>,

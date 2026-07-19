@@ -43,6 +43,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { formatMediaDuration } from '@/lib/media-duration';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -1044,7 +1045,7 @@ export default function ScreensPage() {
                             {item.name}
                           </span>
                           <span className="text-[10px] text-muted-foreground/80 mt-0.5 block">
-                            {item.content_type} • {item.duration_secs}s
+                            {item.content_type} • {formatMediaDuration(item.duration_secs)}
                           </span>
                         </div>
                         <div className="text-primary font-bold text-base pr-2 group-hover:scale-125 transition-transform duration-100">

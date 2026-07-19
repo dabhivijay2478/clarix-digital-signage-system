@@ -357,9 +357,9 @@ export const contentApi = {
   add: (
     name: string,
     contentType: string,
-    filePath?: string,
-    url?: string,
-    durationSecs: number = 30,
+    filePath: string | undefined,
+    url: string | undefined,
+    durationSecs: number,
     tags: string[] = [],
     metadataJson: Record<string, unknown> = {}
   ) =>
@@ -372,6 +372,9 @@ export const contentApi = {
       tags,
       metadataJson,
     }),
+
+  updateDuration: (id: string, durationSecs: number) =>
+    tauriInvoke<void>('update_content_duration', { id, durationSecs }),
 
   delete: (id: string) => tauriInvoke<void>('delete_content_item', { id }),
 

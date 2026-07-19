@@ -30,9 +30,9 @@ export function useContent() {
     async (
       name: string,
       contentType: string,
-      filePath?: string,
-      url?: string,
-      durationSecs?: number,
+      filePath: string | undefined,
+      url: string | undefined,
+      durationSecs: number,
       tags?: string[]
     ) => {
       try {
@@ -59,6 +59,13 @@ export function useContent() {
     }
   }, []);
 
+  const updateItemDuration = useCallback(async (id: string, durationSecs: number) => {
+    await contentApi.updateDuration(id, durationSecs);
+    setItems((current) => current.map((item) => (
+      item.id === id ? { ...item, duration_secs: durationSecs } : item
+    )));
+  }, []);
+
   const filtered = search
     ? items.filter(
         (i) =>
@@ -75,6 +82,7 @@ export function useContent() {
     search,
     setSearch,
     addItem,
+    updateItemDuration,
     deleteItem,
     refresh: fetchContent,
   };

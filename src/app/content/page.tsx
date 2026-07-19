@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { useContent } from '../../hooks/useContent';
 import ContentCard from '../../components/ContentCard';
@@ -18,6 +18,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { playlistsApi, scheduleApi, screensApi } from '@/lib/tauri';
 import type { ContentItem, Playlist, ScheduleSlot, Screen } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { detectFileMediaDuration, formatMediaDuration, normalizeMediaDurationSeconds } from '@/lib/media-duration';
 
 const contentTypes = ['Image', 'Video', 'Presentation', 'Document', 'Spreadsheet', 'WebApp', 'Ad', 'Slideshow'];
 
@@ -51,7 +52,7 @@ function uniqueSorted(values: string[]): string[] {
 }
 
 export default function ContentPage() {
-  const { items, allItems, loading, search, setSearch, addItem, deleteItem } = useContent();
+  const { items, allItems, loading, search, setSearch, addItem, updateItemDuration, deleteItem } = useContent();
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [previewItem, setPreviewItem] = useState<ContentItem | null>(null);
@@ -61,6 +62,10 @@ export default function ContentPage() {
   const [formUrl, setFormUrl] = useState('');
   const [formTags, setFormTags] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [detectedDurationSecs, setDetectedDurationSecs] = useState<number | null>(null);
+  const [isDetectingDuration, setIsDetectingDuration] = useState(false);
+  const durationDetectionRequestRef = useRef(0);
+  const durationUpdatesPendingRef = useRef(new Set<string>());
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
@@ -160,6 +165,9 @@ export default function ContentPage() {
     if (!file) return;
 
     setSelectedFile(file);
+    setDetectedDurationSecs(null);
+    setIsDetectingDuration(false);
+    const detectionRequest = ++durationDetectionRequestRef.current;
     // Autofill name (strip extension)
     const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
     setFormName(nameWithoutExt);
@@ -176,6 +184,23 @@ export default function ContentPage() {
 
     if (isVideoOrAudio) {
       setFormType('Video');
+      setIsDetectingDuration(true);
+      void detectFileMediaDuration(file)
+        .then((duration) => {
+          if (durationDetectionRequestRef.current === detectionRequest) {
+            setDetectedDurationSecs(duration);
+          }
+        })
+        .catch((error) => {
+          if (durationDetectionRequestRef.current === detectionRequest) {
+            showToast(String(error), 'error');
+          }
+        })
+        .finally(() => {
+          if (durationDetectionRequestRef.current === detectionRequest) {
+            setIsDetectingDuration(false);
+          }
+        });
     } else if (isImage) {
       setFormType('Image');
     } else if (isPresentation) {
@@ -210,6 +235,9 @@ export default function ContentPage() {
 
     setIsAdding(true);
     try {
+      const durationSecs = formType === 'Video' && selectedFile
+        ? detectedDurationSecs ?? await detectFileMediaDuration(selectedFile)
+        : 30;
       let filePath: string | undefined = undefined;
       const needsFile = isUploadType || (isWebType && selectedFile);
 
@@ -228,7 +256,7 @@ export default function ContentPage() {
         formType,
         filePath,
         formType === 'WebApp' ? (formUrl || undefined) : undefined,
-        30,
+        durationSecs,
         formTags.split(',').map((t) => t.trim()).filter(Boolean)
       );
 
@@ -239,12 +267,39 @@ export default function ContentPage() {
       setFormUrl('');
       setFormTags('');
       setSelectedFile(null);
+      setDetectedDurationSecs(null);
+      durationDetectionRequestRef.current += 1;
     } catch (err) {
       showToast(`Failed to add content: ${err}`, 'error');
     } finally {
       setIsAdding(false);
     }
   };
+
+  const handleDetectedDuration = useCallback((id: string, nativeDuration: number) => {
+    let durationSecs: number;
+    try {
+      durationSecs = normalizeMediaDurationSeconds(nativeDuration);
+    } catch {
+      return;
+    }
+    const item = allItems.find((entry) => entry.id === id);
+    if (!item || item.duration_secs === durationSecs || durationUpdatesPendingRef.current.has(id)) return;
+
+    durationUpdatesPendingRef.current.add(id);
+    void updateItemDuration(id, durationSecs)
+      .then(() => {
+        setPreviewItem((current) => (
+          current?.id === id ? { ...current, duration_secs: durationSecs } : current
+        ));
+      })
+      .catch((error) => {
+        console.warn('Failed to update detected video duration:', error);
+      })
+      .finally(() => {
+        durationUpdatesPendingRef.current.delete(id);
+      });
+  }, [allItems, updateItemDuration]);
 
   const handleDelete = async (id: string) => {
     try {
@@ -363,7 +418,13 @@ export default function ContentPage() {
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {filtered.map((item) => (
-            <ContentCard key={item.id} item={item} onDelete={setDeleteId} onView={setPreviewItem} />
+            <ContentCard
+              key={item.id}
+              item={item}
+              onDelete={setDeleteId}
+              onView={setPreviewItem}
+              onDurationDetected={handleDetectedDuration}
+            />
           ))}
         </div>
       ) : (
@@ -420,7 +481,7 @@ export default function ContentPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-muted-foreground">
-                      {item.duration_secs}s
+                      {formatMediaDuration(item.duration_secs)}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
@@ -498,6 +559,9 @@ export default function ContentPage() {
         onClose={() => {
           setShowAdd(false);
           setSelectedFile(null);
+          setDetectedDurationSecs(null);
+          setIsDetectingDuration(false);
+          durationDetectionRequestRef.current += 1;
         }}
         title="Add Content"
         actions={
@@ -505,10 +569,13 @@ export default function ContentPage() {
             <Button variant="outline" onClick={() => {
               setShowAdd(false);
               setSelectedFile(null);
+              setDetectedDurationSecs(null);
+              setIsDetectingDuration(false);
+              durationDetectionRequestRef.current += 1;
             }} disabled={isAdding}>
               Cancel
             </Button>
-            <Button onClick={handleAdd} disabled={isAdding}>
+            <Button onClick={handleAdd} disabled={isAdding || isDetectingDuration}>
               {isAdding ? (
                 <>
                   <Loader2 className="mr-2 size-4 animate-spin" />
@@ -525,8 +592,11 @@ export default function ContentPage() {
           <div className="space-y-2">
             <Label>Content Type</Label>
             <Select value={formType} onValueChange={(value) => {
-                setFormType(value);
-                setSelectedFile(null);
+              setFormType(value);
+              setSelectedFile(null);
+              setDetectedDurationSecs(null);
+              setIsDetectingDuration(false);
+              durationDetectionRequestRef.current += 1;
               }}>
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>{contentTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
@@ -554,6 +624,15 @@ export default function ContentPage() {
                       <p className="max-w-[280px] truncate text-sm font-semibold text-foreground">
                         {selectedFile.name}
                       </p>
+                      {formType === 'Video' && (
+                        <p className="mt-1 text-xs font-medium text-primary">
+                          {isDetectingDuration
+                            ? 'Reading video duration...'
+                            : detectedDurationSecs
+                              ? `Duration ${formatMediaDuration(detectedDurationSecs)}`
+                              : 'Duration unavailable'}
+                        </p>
+                      )}
                       <p className="mt-1 text-xs text-muted-foreground">
                         {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB · Click to change
                       </p>
@@ -628,6 +707,7 @@ export default function ContentPage() {
                   src={previewItem.file_path ? convertFileSrc(previewItem.file_path) : previewItem.url!}
                   controls
                   autoPlay
+                  onLoadedMetadata={(event) => handleDetectedDuration(previewItem.id, event.currentTarget.duration)}
                   className="max-h-[500px] w-full"
                 />
               ) : (
@@ -651,7 +731,7 @@ export default function ContentPage() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Duration</p>
-                <p className="mt-1 font-medium">{previewItem.duration_secs}s</p>
+                <p className="mt-1 font-medium">{formatMediaDuration(previewItem.duration_secs)}</p>
               </div>
               {previewItem.tags && previewItem.tags.length > 0 && (
                 <div className="col-span-2">

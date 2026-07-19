@@ -217,6 +217,7 @@ pub fn run() {
             // Content
             commands::content::get_content_items,
             commands::content::add_content_item,
+            commands::content::update_content_duration,
             commands::content::delete_content_item,
             commands::content::save_local_content_file,
             commands::content::save_local_content_file_chunk,

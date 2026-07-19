@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { formatMediaDuration } from '@/lib/media-duration'
 
 interface PlaylistEditorProps {
   playlist: Playlist
@@ -71,7 +72,7 @@ export default function PlaylistEditor({ playlist, contentItems, onUpdateItems, 
         </div>
         <div className="flex items-center gap-2 bg-zinc-900/80 px-3 py-1.5 rounded-lg border border-white/5 shrink-0">
           <Clock className="h-3.5 w-3.5 text-zinc-400" />
-          <span className="text-xs font-mono font-semibold text-zinc-200">{totalDuration}s total</span>
+          <span className="text-xs font-mono font-semibold text-zinc-200">{formatMediaDuration(totalDuration)} total</span>
         </div>
       </CardHeader>
       
@@ -140,7 +141,7 @@ export default function PlaylistEditor({ playlist, contentItems, onUpdateItems, 
                         <p className="text-[11px] text-zinc-400 mt-0.5 flex items-center gap-1.5">
                           <span className="capitalize">{content.content_type}</span>
                           <span>•</span>
-                          <span>{content.duration_secs}s default</span>
+                          <span>{formatMediaDuration(content.duration_secs)}</span>
                         </p>
                       </div>
 
@@ -238,7 +239,7 @@ export default function PlaylistEditor({ playlist, contentItems, onUpdateItems, 
                         </div>
                         <div className="min-w-0">
                           <p className="truncate text-xs font-semibold text-zinc-200 leading-snug">{content.name}</p>
-                          <p className="text-[10px] text-zinc-500 mt-0.5">{content.duration_secs}s</p>
+                          <p className="text-[10px] text-zinc-500 mt-0.5">{formatMediaDuration(content.duration_secs)}</p>
                         </div>
                       </div>
                       <Button 
