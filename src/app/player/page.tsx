@@ -7,6 +7,7 @@ import type { Screen, Playlist, ContentItem, PlaylistItem, MarqueeSettings } fro
 import { isPlaylistItemScheduleActive, isScreenWithinOperatingHours } from '../../lib/signage-schedule';
 import { showToast } from '../../components/Toast';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { ArrowLeft } from 'lucide-react';
 import { useBrandingStore } from '../../store/ui';
 import { ProductionDashboard } from '@/components/ProductionDashboard';
 
@@ -108,18 +109,6 @@ export default function PlayerPage() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Escape key handler to return to dashboard
-  useEffect(() => {
-    if (isReceiverMode) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        router.push('/');
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isReceiverMode, router]);
-
   // Load screen port
   useEffect(() => {
     localNetworkApi.getServerPort().then(setPort).catch((err) => {
@@ -165,6 +154,52 @@ export default function PlayerPage() {
     localStorage.setItem('clarix_player_screen_id', id);
     setScreenId(id);
   };
+
+  const handleBackToScreenSelection = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+
+    localStorage.removeItem('clarix_player_screen_id');
+    const playerUrl = new URL(window.location.href);
+    playerUrl.searchParams.delete('screenId');
+    playerUrl.searchParams.delete('id');
+    window.history.replaceState(null, '', `${playerUrl.pathname}${playerUrl.search}${playerUrl.hash}`);
+
+    setScreenId(null);
+    setActiveScreen(null);
+    setActivePlaylist(null);
+    setContentItems([]);
+    setPlayableItems([]);
+    setCurrentItemIndex(0);
+    setIsPlaying(false);
+    setIsScreenBlanked(false);
+    setMarquee(null);
+    setLoading(true);
+    void loadScreensList();
+  }, [loadScreensList]);
+
+  useEffect(() => {
+    if (!screenId) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      handleBackToScreenSelection();
+    };
+    const handleRemoteBack = (event: Event) => {
+      event.preventDefault();
+      handleBackToScreenSelection();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('tv-remote-back', handleRemoteBack);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('tv-remote-back', handleRemoteBack);
+    };
+  }, [handleBackToScreenSelection, screenId]);
 
   // Helper to disconnect screen representation
   const handleDisconnectScreen = async () => {
@@ -669,6 +704,23 @@ export default function PlayerPage() {
     </div>
   );
 
+  const renderPlayerBackButton = () => {
+    if (!screenId) return null;
+
+    return (
+      <button
+        type="button"
+        className="mg-player-back-button"
+        data-tv-back
+        aria-label="Back to screen selection"
+        title="Back to screen selection"
+        onClick={handleBackToScreenSelection}
+      >
+        <ArrowLeft aria-hidden="true" size={21} strokeWidth={2.5} />
+      </button>
+    );
+  };
+
   // ── RENDER BLANK STANDBY SCREEN ───────────────────────────────────────────
   if (screenId && isScreenBlanked) {
     return (
@@ -677,6 +729,7 @@ export default function PlayerPage() {
         style={{ background: '#000' }}
       >
         {renderBrandingLogo()}
+        {renderPlayerBackButton()}
       </div>
     );
   }
@@ -811,6 +864,7 @@ export default function PlayerPage() {
             <ProductionDashboard mode="player" />
           </div>
           {renderBrandingLogo()}
+          {renderPlayerBackButton()}
         </div>
       );
     }
@@ -889,6 +943,7 @@ export default function PlayerPage() {
           )}
         </div>
         {renderBrandingLogo()}
+        {renderPlayerBackButton()}
       </div>
     );
   }
@@ -959,6 +1014,7 @@ export default function PlayerPage() {
       </div>
       {renderMarquee()}
       {renderBrandingLogo()}
+      {renderPlayerBackButton()}
     </div>
   );
 }

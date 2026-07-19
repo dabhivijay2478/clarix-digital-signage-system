@@ -117,6 +117,13 @@ function focusInDirection(direction: Direction): void {
 
 export default function TvRemoteNavigation() {
   useEffect(() => {
+    let editingElement: HTMLElement | null = null
+
+    const beginEditing = (element: HTMLElement) => {
+      editingElement = element
+      element.focus()
+    }
+
     const navigateBack = () => {
       const remoteBackEvent = new CustomEvent('tv-remote-back', { cancelable: true })
       if (!window.dispatchEvent(remoteBackEvent)) return true
@@ -136,9 +143,18 @@ export default function TvRemoteNavigation() {
     const handleKeyDown = (event: KeyboardEvent) => {
       const direction = directionForEvent(event)
       const active = document.activeElement
+      const activeElement = active instanceof HTMLElement ? active : null
+      const activeIsEditable = isEditable(active)
 
-      // Samsung IME requires unmodified key events while editing text.
-      if (isEditable(active)) return
+      // Once Enter or a pointer opens an editor, Samsung's native IME owns
+      // every key until that field loses focus.
+      if (event.isComposing || (activeElement && editingElement === activeElement)) return
+
+      if (isActivationEvent(event) && activeElement && activeIsEditable) {
+        document.body.classList.add('tv-remote-navigation')
+        beginEditing(activeElement)
+        return
+      }
 
       if (direction) {
         event.preventDefault()
@@ -167,7 +183,12 @@ export default function TvRemoteNavigation() {
     const handlePointer = (event: Event) => {
       document.body.classList.remove('tv-remote-navigation')
       const target = event.target instanceof Element ? event.target.closest<HTMLElement>(FOCUSABLE_SELECTOR) : null
-      if (target) target.focus()
+      if (!target) return
+      target.focus()
+      editingElement = isEditable(target) ? target : null
+    }
+    const handleFocusOut = (event: FocusEvent) => {
+      if (event.target === editingElement) editingElement = null
     }
     const handleHardwareBack = (event: Event) => {
       const hardwareEvent = event as Event & { keyName?: string }
@@ -181,12 +202,14 @@ export default function TvRemoteNavigation() {
     window.addEventListener('keydown', handleKeyDown, true)
     window.addEventListener('mousedown', handlePointer, true)
     window.addEventListener('touchstart', handlePointer, true)
+    window.addEventListener('focusout', handleFocusOut, true)
     document.addEventListener('tizenhwkey', handleHardwareBack)
     return () => {
       window.clearTimeout(initialFocusTimer)
       window.removeEventListener('keydown', handleKeyDown, true)
       window.removeEventListener('mousedown', handlePointer, true)
       window.removeEventListener('touchstart', handlePointer, true)
+      window.removeEventListener('focusout', handleFocusOut, true)
       document.removeEventListener('tizenhwkey', handleHardwareBack)
     }
   }, [])

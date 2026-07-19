@@ -12,45 +12,54 @@
   var connectButton = document.getElementById("connect-button");
   var retryButton = document.getElementById("retry-button");
   var focusableControls = [controllerIpInput, editIpButton, connectButton, retryButton];
+  var storageKey = "clarix_receiver_controller";
+  var defaultConfig = { controllerIp: "", port: 7420, playerPath: "/player" };
   var manager = null;
   var trusted = null;
   var activeConfig = null;
-  var storageKey = "clarix_receiver_controller";
-  var defaultConfig = { controllerIp: "", port: 7420, playerPath: "/player" };
+  var editingInput = false;
 
-  function readSavedController() {
+  function readStoredValue(key) {
+    var value = null;
     try {
-      return JSON.parse(localStorage.getItem(storageKey) || "null");
-    } catch (_error) {
-      return null;
+      if (window.tizen && tizen.preference && tizen.preference.exists(key)) {
+        value = tizen.preference.getValue(key);
+      }
+    } catch (_error) {}
+    if (!value) {
+      try { value = localStorage.getItem(key); } catch (_error) {}
     }
-  }
-
-  function writeJsonStore(key, payload) {
-    var value = JSON.stringify(payload);
-    try { localStorage.setItem(key, value); } catch (_error) {}
-    try {
-      if (window.tizen && tizen.preference) tizen.preference.setValue(key, value);
-    } catch (_error) {}
-    try {
-      if (window.widget && window.widget.preferences) window.widget.preferences.setItem(key, value);
-    } catch (_error) {}
+    if (!value) {
+      try {
+        if (window.widget && window.widget.preferences) {
+          value = window.widget.preferences.getItem(key);
+        }
+      } catch (_error) {}
+    }
+    return value;
   }
 
   function readSavedController() {
-    return readJsonStore(storageKey);
+    var value = readStoredValue(storageKey);
+    if (!value) return null;
+    try { return JSON.parse(value); } catch (_error) { return null; }
   }
 
   function saveController(config) {
+    var value = JSON.stringify({
+      controllerIp: config.controllerIp,
+      port: config.port,
+      playerPath: config.playerPath
+    });
+    try { localStorage.setItem(storageKey, value); } catch (_error) {}
     try {
-      localStorage.setItem(storageKey, JSON.stringify({
-        controllerIp: config.controllerIp,
-        port: config.port,
-        playerPath: config.playerPath
-      }));
-    } catch (_error) {
-      // Some TV firmware can disable storage; the current session still works.
-    }
+      if (window.tizen && tizen.preference) tizen.preference.setValue(storageKey, value);
+    } catch (_error) {}
+    try {
+      if (window.widget && window.widget.preferences) {
+        window.widget.preferences.setItem(storageKey, value);
+      }
+    } catch (_error) {}
   }
 
   function composeConfig(override) {
@@ -82,14 +91,10 @@
     playerHost.innerHTML = "";
     offline.hidden = false;
     controller.textContent = "Not set";
-    controllerIpInput.value = "";
     status.textContent = message || "Enter controller IP";
     retry.textContent = "Use the controller PC IP, for example 192.168.1.13.";
-    focusInputEnd();
-  }
-
-  function playerTargetUrl() {
-    return trusted.playerUrl();
+    editingInput = false;
+    editIpButton.focus();
   }
 
   function openControllerPlayer() {
@@ -106,10 +111,6 @@
     } catch (_error) {
       showOffline("Controller player page could not open.");
     }
-  }
-
-  function showPlayer() {
-    openControllerPlayer();
   }
 
   function probe(config, done) {
@@ -133,7 +134,7 @@
     };
     xhr.onerror = function () { finish(false); };
     xhr.ontimeout = function () { finish(false); };
-    xhr.send();
+    try { xhr.send(); } catch (_error) { finish(false); }
   }
 
   function start(configValue) {
@@ -153,7 +154,7 @@
     showOffline("Waiting for Controller...");
     manager = new ClarixReceiverCore.ReceiverManager({
       probe: function (done) { probe(config, done); },
-      onOnline: showPlayer,
+      onOnline: openControllerPlayer,
       onOffline: function () { showOffline("Waiting for Controller..."); },
       retryMs: 5000,
       monitorMs: 10000
@@ -165,9 +166,9 @@
     if (manager) {
       retry.textContent = "Checking...";
       manager.check();
-      return;
+    } else if (activeConfig) {
+      start(activeConfig);
     }
-    if (activeConfig) start(activeConfig);
   }
 
   function focusInputEnd() {
@@ -177,17 +178,41 @@
   }
 
   function openTvKeyboard() {
-    offline.hidden = false;
-    playerHost.hidden = true;
+    editingInput = true;
     focusInputEnd();
     try { controllerIpInput.click(); } catch (_error) {}
   }
 
+  function keyName(event) {
+    return event.key || event.keyIdentifier || "";
+  }
+
+  function isActivationKey(event) {
+    var key = keyName(event);
+    return event.keyCode === 13 || key === "Enter" || key === "Return" || key === "OK";
+  }
+
+  function directionFromKey(event) {
+    var key = keyName(event);
+    if (event.keyCode === 37 || event.keyCode === 38 || key === "ArrowLeft" || key === "ArrowUp" || key === "Left" || key === "Up") return -1;
+    if (event.keyCode === 39 || event.keyCode === 40 || key === "ArrowRight" || key === "ArrowDown" || key === "Right" || key === "Down") return 1;
+    return 0;
+  }
+
   function moveFocus(delta) {
+    editingInput = false;
     var current = focusableControls.indexOf(document.activeElement);
     if (current === -1) current = 0;
     var next = (current + delta + focusableControls.length) % focusableControls.length;
     focusableControls[next].focus();
+  }
+
+  function exitApplication() {
+    try {
+      if (window.tizen && tizen.application) {
+        tizen.application.getCurrentApplication().exit();
+      }
+    } catch (_error) {}
   }
 
   function loadConfiguration() {
@@ -196,55 +221,78 @@
       start(composeConfig(saved));
       return;
     }
+    controllerIpInput.value = "";
     showSetup("Enter controller IP");
   }
 
   controllerForm.addEventListener("submit", function (event) {
     event.preventDefault();
+    editingInput = false;
+    controllerIpInput.blur();
     start(composeConfig({ controllerIp: controllerIpInput.value }));
   });
 
   editIpButton.addEventListener("click", openTvKeyboard);
   retryButton.addEventListener("click", retryNow);
-  controllerIpInput.addEventListener("click", focusInputEnd);
-  controllerIpInput.addEventListener("mousedown", focusInputEnd);
-  controllerIpInput.addEventListener("touchstart", focusInputEnd);
+  controllerIpInput.addEventListener("mousedown", function () { editingInput = true; });
+  controllerIpInput.addEventListener("touchstart", function () { editingInput = true; });
+  controllerIpInput.addEventListener("click", function () {
+    editingInput = true;
+    focusInputEnd();
+  });
+  controllerIpInput.addEventListener("blur", function () { editingInput = false; });
+
   document.addEventListener("contextmenu", function (event) { event.preventDefault(); });
   document.addEventListener("dragstart", function (event) { event.preventDefault(); });
   document.addEventListener("keydown", function (event) {
-    if (event.target === controllerIpInput) {
-      if (event.keyCode === 13) {
+    var direction;
+    var active = document.activeElement;
+
+    if (event.target === controllerIpInput && editingInput) {
+      if (event.keyCode === 65376 || keyName(event) === "Done") {
         event.preventDefault();
-        if (controllerForm.requestSubmit) controllerForm.requestSubmit();
-        else connectButton.click();
+        connectButton.click();
       }
       return;
     }
-    if (event.keyCode === 37 || event.keyCode === 38) {
-      event.preventDefault();
-      moveFocus(-1);
+
+    if (isActivationKey(event)) {
+      if (active === controllerIpInput) {
+        openTvKeyboard();
+        return;
+      }
+      if (active && active.click) {
+        event.preventDefault();
+        active.click();
+      } else {
+        editIpButton.focus();
+      }
       return;
     }
-    if (event.keyCode === 39 || event.keyCode === 40) {
+
+    direction = directionFromKey(event);
+    if (direction !== 0) {
       event.preventDefault();
-      moveFocus(1);
-      return;
-    }
-    var blocked = [8, 27, 116, 166, 167];
-    if (blocked.indexOf(event.keyCode) !== -1 || event.altKey || event.metaKey || event.ctrlKey) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  }, true);
-  document.addEventListener("keyup", function (event) {
-    if (event.target !== controllerIpInput) return;
-    var direction = directionFromKey(event);
-    if (direction !== 0 && (event.keyCode === 38 || event.keyCode === 40 || keyName(event) === "ArrowUp" || keyName(event) === "ArrowDown")) {
       moveFocus(direction);
+      return;
+    }
+
+    if (event.keyCode === 10009 || keyName(event) === "Back" || keyName(event) === "XF86Back") {
+      event.preventDefault();
+      exitApplication();
     }
   }, true);
+
   document.addEventListener("tizenhwkey", function (event) {
-    if (event.keyName === "back") event.preventDefault();
+    if (event.keyName !== "back") return;
+    event.preventDefault();
+    if (editingInput) {
+      editingInput = false;
+      controllerIpInput.blur();
+      editIpButton.focus();
+      return;
+    }
+    exitApplication();
   });
   document.addEventListener("visibilitychange", function () {
     if (!document.hidden && manager) manager.check();

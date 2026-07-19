@@ -16,6 +16,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { showToast } from '@/components/Toast'
 import { trucksApi } from '@/lib/tauri'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import TvRemoteNavigation from '@/components/TvRemoteNavigation'
 
 export default function AppLayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -81,6 +82,7 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
           background: '#f4f6f8',
         }}
       >
+        <TvRemoteNavigation />
         {children}
       </div>
     )
