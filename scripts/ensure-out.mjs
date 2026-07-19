@@ -8,8 +8,6 @@ const mode = process.argv[2] === "build" ? "build" : "dev";
 const outDir = resolve(projectRoot, "out");
 const nextDir = resolve(projectRoot, ".next");
 const debugPlayerDir = resolve(projectRoot, "src-tauri/target/debug/browser-player");
-const releasePlayerDir = resolve(projectRoot, "src-tauri/target/release/browser-player");
-const releaseBundleDir = resolve(projectRoot, "src-tauri/target/release/bundle");
 
 const listeningProcesses = (port) => {
   try {
@@ -71,15 +69,20 @@ mkdirSync(outDir, { recursive: true });
 
 if (mode === "dev") {
   removeGenerated(debugPlayerDir);
-} else {
-  removeGenerated(releasePlayerDir);
-  removeGenerated(releaseBundleDir);
 }
 
 console.log(`[tauri:${mode}] Building the active branch with Bun...`);
+const currentNodeOptions = process.env.NODE_OPTIONS?.trim() ?? "";
+const buildNodeOptions = currentNodeOptions.includes("--max-old-space-size")
+  ? currentNodeOptions
+  : `${currentNodeOptions} --max-old-space-size=4096`.trim();
 const build = spawnSync("bun", ["run", "build"], {
   cwd: projectRoot,
   stdio: "inherit",
+  env: {
+    ...process.env,
+    NODE_OPTIONS: buildNodeOptions,
+  },
 });
 
 if (build.error) {
@@ -88,6 +91,13 @@ if (build.error) {
 
 if (build.status !== 0) {
   process.exit(build.status ?? 1);
+}
+
+const requiredExports = ["index.html", "player.html"];
+const missingExports = requiredExports.filter((filename) => !existsSync(resolve(outDir, filename)));
+if (missingExports.length > 0) {
+  console.error(`[tauri:${mode}] Next export is incomplete. Missing: ${missingExports.join(", ")}`);
+  process.exit(1);
 }
 
 const readGitValue = (args, fallback) => {
