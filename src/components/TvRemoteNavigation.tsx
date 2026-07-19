@@ -26,6 +26,7 @@ function isEditable(element: Element | null): boolean {
 
 function visibleFocusableElements(): HTMLElement[] {
   return Array.from(document.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((element) => {
+    if (!(element instanceof HTMLElement)) return false
     const rect = element.getBoundingClientRect()
     const style = window.getComputedStyle(element)
     return rect.width > 0
@@ -60,15 +61,30 @@ function isActivationEvent(event: KeyboardEvent): boolean {
 
 function isBackEvent(event: KeyboardEvent): boolean {
   return event.keyCode === 10009
+    || event.keyCode === 461
+    || event.keyCode === 8
+    || event.keyCode === 27
     || event.key === 'Back'
+    || event.key === 'Backspace'
+    || event.key === 'Escape'
+    || event.key === 'GoBack'
     || event.key === 'XF86Back'
     || event.code === 'BrowserBack'
+}
+
+function focusControl(element: HTMLElement): void {
+  element.focus()
+  try {
+    element.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' })
+  } catch {
+    element.scrollIntoView(false)
+  }
 }
 
 function focusFirstControl(activate = false): boolean {
   const first = visibleFocusableElements()[0]
   if (!first) return false
-  first.focus()
+  focusControl(first)
   if (activate) first.click()
   return true
 }
@@ -81,7 +97,7 @@ function focusInDirection(direction: Direction): void {
     ? document.activeElement
     : null
   if (!active) {
-    elements[0].focus()
+    focusControl(elements[0])
     return
   }
 
@@ -106,13 +122,13 @@ function focusInDirection(direction: Direction): void {
   }
 
   if (best) {
-    best.element.focus()
+    focusControl(best.element)
     return
   }
 
   const currentIndex = elements.indexOf(active)
   const delta = direction === 'left' || direction === 'up' ? -1 : 1
-  elements[(currentIndex + delta + elements.length) % elements.length].focus()
+  focusControl(elements[(currentIndex + delta + elements.length) % elements.length])
 }
 
 export default function TvRemoteNavigation() {
@@ -121,7 +137,7 @@ export default function TvRemoteNavigation() {
 
     const beginEditing = (element: HTMLElement) => {
       editingElement = element
-      element.focus()
+      focusControl(element)
     }
 
     const navigateBack = () => {
@@ -145,6 +161,7 @@ export default function TvRemoteNavigation() {
       const active = document.activeElement
       const activeElement = active instanceof HTMLElement ? active : null
       const activeIsEditable = isEditable(active)
+      const activeMenu = activeElement?.closest('[role="listbox"], [role="menu"]')
 
       // Once Enter or a pointer opens an editor, Samsung's native IME owns
       // every key until that field loses focus.
@@ -156,6 +173,8 @@ export default function TvRemoteNavigation() {
         return
       }
 
+      if (direction && activeMenu) return
+
       if (direction) {
         event.preventDefault()
         document.body.classList.add('tv-remote-navigation')
@@ -164,6 +183,7 @@ export default function TvRemoteNavigation() {
       }
 
       if (isActivationEvent(event)) {
+        if (event.repeat) return
         document.body.classList.add('tv-remote-navigation')
         if (active instanceof HTMLElement && typeof active.click === 'function') {
           event.preventDefault()
@@ -184,7 +204,7 @@ export default function TvRemoteNavigation() {
       document.body.classList.remove('tv-remote-navigation')
       const target = event.target instanceof Element ? event.target.closest<HTMLElement>(FOCUSABLE_SELECTOR) : null
       if (!target) return
-      target.focus()
+      focusControl(target)
       editingElement = isEditable(target) ? target : null
     }
     const handleFocusOut = (event: FocusEvent) => {
@@ -196,21 +216,26 @@ export default function TvRemoteNavigation() {
       document.body.classList.add('tv-remote-navigation')
       if (navigateBack()) event.preventDefault()
     }
-    const initialFocusTimer = window.setTimeout(() => {
+    const focusWhenReady = () => {
+      if (document.activeElement && document.activeElement !== document.body) return
       if (focusFirstControl()) document.body.classList.add('tv-remote-navigation')
-    }, 250)
+    }
+    const initialFocusTimers = [250, 1000, 2500].map((delay) => window.setTimeout(focusWhenReady, delay))
     window.addEventListener('keydown', handleKeyDown, true)
     window.addEventListener('mousedown', handlePointer, true)
     window.addEventListener('touchstart', handlePointer, true)
     window.addEventListener('focusout', handleFocusOut, true)
+    window.addEventListener('focus', focusWhenReady)
     document.addEventListener('tizenhwkey', handleHardwareBack)
     return () => {
-      window.clearTimeout(initialFocusTimer)
+      initialFocusTimers.forEach((timer) => window.clearTimeout(timer))
       window.removeEventListener('keydown', handleKeyDown, true)
       window.removeEventListener('mousedown', handlePointer, true)
       window.removeEventListener('touchstart', handlePointer, true)
       window.removeEventListener('focusout', handleFocusOut, true)
+      window.removeEventListener('focus', focusWhenReady)
       document.removeEventListener('tizenhwkey', handleHardwareBack)
+      document.body.classList.remove('tv-remote-navigation')
     }
   }, [])
 

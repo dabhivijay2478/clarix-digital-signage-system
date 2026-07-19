@@ -19,12 +19,13 @@ import { showToast } from '@/components/Toast'
 import { Badge } from '@/components/ui/badge'
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { contentApi, playlistsApi, scheduleApi, screensApi } from '@/lib/tauri'
+import { contentApi, getBrowserControllerOrigin, playlistsApi, scheduleApi, screensApi } from '@/lib/tauri'
 import type { AppWeekday, ContentItem, Playlist, ScheduleSlot, Screen } from '@/lib/types'
 import {
   APP_WEEKDAYS,
   formatScheduleTime,
   getControllerTimeZone,
+  getPlaylistItemDayScheduleWindows,
   normalizePlaylistItemSchedule,
   parseTimeToMinutes,
 } from '@/lib/signage-schedule'
@@ -136,17 +137,19 @@ function buildDashboardTimelineSlots(
       for (const day of APP_WEEKDAYS) {
         const daySchedule = schedule.day_times?.[day]
         if (!daySchedule?.enabled) continue
-        addTimelineWindow(
-          slots,
-          {
-            id: `playlist-${screen.id}-${playlist.id}-${itemIndex}`,
-            name,
-            description: `${screen.name} · ${playlist.name} · ${contentName} (${formatScheduleTime(daySchedule.start)}-${formatScheduleTime(daySchedule.end)}${dateText})`,
-          },
-          day,
-          daySchedule.start,
-          daySchedule.end,
-        )
+        getPlaylistItemDayScheduleWindows(daySchedule).forEach((window, windowIndex) => {
+          addTimelineWindow(
+            slots,
+            {
+              id: `playlist-${screen.id}-${playlist.id}-${itemIndex}-${windowIndex}`,
+              name,
+              description: `${screen.name} · ${playlist.name} · ${contentName} (${formatScheduleTime(window.start)}-${formatScheduleTime(window.end)}${dateText})`,
+            },
+            day,
+            window.start,
+            window.end,
+          )
+        })
       }
     })
   }
@@ -204,8 +207,18 @@ export default function DashboardPage() {
     const refreshOnFocus = () => {
       void loadDashboardData()
     }
+    const interval = window.setInterval(refreshOnFocus, 15_000)
+    let events: EventSource | null = null
+    if (window.location.protocol.startsWith('http')) {
+      events = new EventSource(`${getBrowserControllerOrigin()}/v1/browser/events`)
+      events.addEventListener('revision', refreshOnFocus)
+    }
     window.addEventListener('focus', refreshOnFocus)
-    return () => window.removeEventListener('focus', refreshOnFocus)
+    return () => {
+      window.clearInterval(interval)
+      events?.close()
+      window.removeEventListener('focus', refreshOnFocus)
+    }
   }, [loadDashboardData])
 
 

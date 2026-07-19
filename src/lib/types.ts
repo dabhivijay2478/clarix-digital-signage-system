@@ -28,7 +28,7 @@ export interface Screen {
   created_at: string;
 }
 
-export type ScreenPurpose = "playlist" | "truck_gate";
+export type ScreenPurpose = "playlist" | "truck_gate" | "production_dashboard";
 
 export interface ScreenResolution {
   width: number;

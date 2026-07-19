@@ -184,9 +184,9 @@ export function getPlaylistItemDayScheduleWindows(
 export function isTimeWithinWindow(nowMinutes: number, startMinutes: number, endMinutes: number): boolean {
   if (startMinutes === endMinutes) return true;
   if (startMinutes < endMinutes) {
-    return nowMinutes >= startMinutes && nowMinutes <= endMinutes;
+    return nowMinutes >= startMinutes && nowMinutes < endMinutes;
   }
-  return nowMinutes >= startMinutes || nowMinutes <= endMinutes;
+  return nowMinutes >= startMinutes || nowMinutes < endMinutes;
 }
 
 export function isOvernightWindow(startTime: string, endTime: string): boolean {
@@ -223,9 +223,9 @@ export function isPlaylistItemScheduleActive(
       if (start === null || end === null) return false;
       if (start === end) return mode === 'current';
       if (start < end) {
-        return mode === 'current' && zonedDate.nowMinutes >= start && zonedDate.nowMinutes <= end;
+        return mode === 'current' && zonedDate.nowMinutes >= start && zonedDate.nowMinutes < end;
       }
-      return mode === 'current' ? zonedDate.nowMinutes >= start : zonedDate.nowMinutes <= end;
+      return mode === 'current' ? zonedDate.nowMinutes >= start : zonedDate.nowMinutes < end;
     });
   };
 
@@ -266,12 +266,12 @@ export function getPlaylistItemScheduleRemainingMs(
       if (start === end) {
         remainingMinutes = mode === 'current' ? 1440 - zonedDate.nowMinutes : null;
       } else if (start < end) {
-        if (mode === 'current' && zonedDate.nowMinutes >= start && zonedDate.nowMinutes <= end) {
+        if (mode === 'current' && zonedDate.nowMinutes >= start && zonedDate.nowMinutes < end) {
           remainingMinutes = end - zonedDate.nowMinutes;
         }
       } else if (mode === 'current' && zonedDate.nowMinutes >= start) {
         remainingMinutes = 1440 - zonedDate.nowMinutes + end;
-      } else if (mode === 'previous' && zonedDate.nowMinutes <= end) {
+      } else if (mode === 'previous' && zonedDate.nowMinutes < end) {
         remainingMinutes = end - zonedDate.nowMinutes;
       }
 

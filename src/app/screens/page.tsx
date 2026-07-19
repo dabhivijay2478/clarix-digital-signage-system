@@ -7,7 +7,7 @@ import { useContent } from '../../hooks/useContent';
 import ScreenCard from '../../components/ScreenCard';
 import Modal from '../../components/Modal';
 import { showToast } from '../../components/Toast';
-import type { AppWeekday, ContentItem, PlaylistItem, PlaylistItemDaySchedule, PlaylistItemSchedule, Screen, ScreenPurpose, TransitionEffect } from '../../lib/types';
+import type { AppWeekday, ContentItem, PlaylistItem, PlaylistItemDaySchedule, PlaylistItemSchedule, Screen, TransitionEffect } from '../../lib/types';
 import { customConfirm, getBrowserControllerOrigin } from '../../lib/tauri';
 import {
   APP_WEEKDAYS,
@@ -49,10 +49,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuthStore } from '@/store/authStore';
 import { usePermissions } from '@/hooks/usePermissions';
-import { useGateStore, isValidGateNumber } from '@/store/gateStore';
-import { assignScreenToGate, assignScreenToGates } from '@/lib/gate-binding';
-import ScreenGateSelect from '@/components/ScreenGateSelect';
-import { formatScreenGatesLabel, normalizeScreenGateSelection, parseScreenGates, serializeScreenGates } from '@/lib/screen-gates';
 
 const ITEM_SCHEDULE_DAY_LABELS: Record<AppWeekday, string> = {
   Mon: 'Monday',
@@ -180,37 +176,18 @@ export default function ScreensPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [formName, setFormName] = useState('');
 
-  // Gate store configuration hooks
-  const { gates, assignments, addGate, removeGate, assignScreenToGates: assignScreenToGatesInStore, getAllAssignedScreenIds, unassignScreenFromAll, getAssignedGatesForScreen, updateGateLoadingDuration } = useGateStore();
   const authUser = useAuthStore((s) => s.user);
   const { hasPermission, isSuperAdmin } = usePermissions();
   const controllerTimeZone = useMemo(() => getControllerTimeZone(), []);
-  const [showAddGate, setShowAddGate] = useState(false);
-  const [newGateNumber, setNewGateNumber] = useState('');
-  const [selectedGateForAssign, setSelectedGateForAssign] = useState<string | null>(null);
-  const [assignPickerGate, setAssignPickerGate] = useState<string | null>(null);
-
-  // Inline create-screen form inside the assign-picker modal
-  const [pickerNewName, setPickerNewName] = useState('');
-  const [pickerNewLocation, setPickerNewLocation] = useState('');
-  const [pickerNewIp, setPickerNewIp] = useState('');
-  const [pickerCreating, setPickerCreating] = useState(false);
-
-  const assignedScreenIds = useMemo(() => new Set(getAllAssignedScreenIds()), [getAllAssignedScreenIds]);
-  const unassignedScreens = useMemo(() => screens.filter((s) => !assignedScreenIds.has(s.id)), [screens, assignedScreenIds]);
   const [formLocation, setFormLocation] = useState('');
   const [formIp, setFormIp] = useState('');
   const [formOrientation, setFormOrientation] = useState('Landscape');
-  const [formGates, setFormGates] = useState<string[]>([]);
 
   const [editingScreen, setEditingScreen] = useState<Screen | null>(null);
   const [editFormName, setEditFormName] = useState('');
   const [editFormLocation, setEditFormLocation] = useState('');
   const [editFormIp, setEditFormIp] = useState('');
   const [editFormOrientation, setEditFormOrientation] = useState('Landscape');
-  const [editFormPurpose, setEditFormPurpose] = useState<ScreenPurpose>('truck_gate');
-  const [editFormGates, setEditFormGates] = useState<string[]>([]);
-  const [editFormDefaultContentId, setEditFormDefaultContentId] = useState('');
 
   // Screen Operating Hours Modal state
   const [hoursScreen, setHoursScreen] = useState<Screen | null>(null);
@@ -560,24 +537,10 @@ export default function ScreensPage() {
     return true;
   });
 
-  const gateOptions = useMemo(() => {
-    const values = new Set<string>();
-    gates.forEach((gate) => {
-      if (gate.number) values.add(gate.number.toLowerCase());
-    });
-    ['d4', 'd5', editingScreen?.gate, ...editFormGates, ...formGates].forEach((gate) => {
-      parseScreenGates(typeof gate === 'string' ? gate : null).forEach((value) => values.add(value));
-      const normalized = typeof gate === 'string' ? gate.trim().toLowerCase() : '';
-      if (normalized) values.add(normalized);
-    });
-    return [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  }, [gates, editingScreen?.gate, editFormGates, formGates]);
-
   const handleAdd = async () => {
     if (!formName.trim()) return;
-    const normalizedFormGates = normalizeScreenGateSelection(formGates);
     try {
-      const screen = await addScreen(
+      await addScreen(
         formName,
         formLocation,
         formIp || undefined,
@@ -585,24 +548,15 @@ export default function ScreensPage() {
         1920,
         1080,
         undefined,
-        'truck_gate',
-        serializeScreenGates(normalizedFormGates)
+        'production_dashboard',
+        null,
       );
-      if (normalizedFormGates.length > 0) {
-        await assignScreenToGates(screen, normalizedFormGates);
-        showToast(
-          `Screen "${formName}" added and assigned to ${formatScreenGatesLabel(normalizedFormGates)}`,
-          'success',
-        );
-      } else {
-        showToast(`Screen "${formName}" added`, 'success');
-      }
+      showToast(`Screen "${formName}" added`, 'success');
       setShowAdd(false);
       setFormName('');
       setFormLocation('');
       setFormIp('');
       setFormOrientation('Landscape');
-      setFormGates([]);
     } catch {
       showToast('Failed to add screen', 'error');
     }
@@ -653,35 +607,12 @@ export default function ScreensPage() {
     setEditFormLocation(screen.location || '');
     setEditFormIp(screen.ip_address || '');
     setEditFormOrientation(screen.orientation || 'Landscape');
-    setEditFormPurpose(screen.purpose === 'playlist' ? 'truck_gate' : (screen.purpose ?? 'truck_gate'));
-    const assignedGates = getAssignedGatesForScreen(screen.id);
-    setEditFormGates(
-      assignedGates.length > 0 ? assignedGates : parseScreenGates(screen.gate),
-    );
-    setEditFormDefaultContentId(screen.default_content_id ?? '');
   };
 
   const handleSaveEdit = async () => {
     if (!editingScreen || !editFormName.trim()) return;
-    const normalizedEditGates = normalizeScreenGateSelection(editFormGates);
-    if (editFormPurpose === 'truck_gate' && normalizedEditGates.length === 0) {
-      showToast('Please select at least one gate for the truck token display', 'error');
-      return;
-    }
-    for (const gateNumber of normalizedEditGates) {
-      if (!isValidGateNumber(gateNumber)) {
-        showToast('Gate must be 1-4 letters or numbers, for example E, C, 1, D1, or ABC2', 'error');
-        return;
-      }
-    }
 
     try {
-      assignScreenToGatesInStore(editingScreen.id, normalizedEditGates);
-
-      const nextDefaultContentId = editFormPurpose === 'truck_gate'
-        ? null
-        : editFormDefaultContentId || null;
-
       await editScreen(
         editingScreen.id,
         editFormName,
@@ -691,10 +622,10 @@ export default function ScreensPage() {
         editingScreen.resolution?.width ?? 1920,
         editingScreen.resolution?.height ?? 1080,
         editingScreen.playlist_id ?? undefined,
-        editFormPurpose,
-        serializeScreenGates(normalizedEditGates),
+        'production_dashboard',
         null,
-        nextDefaultContentId
+        null,
+        null,
       );
 
       showToast(`Screen "${editFormName}" updated`, 'success');
@@ -1260,42 +1191,7 @@ export default function ScreensPage() {
                 onChange={(e) => setEditFormIp(e.target.value)}
               />
             </div>
-            <div>
-              <label className="input-label">Screen preset</label>
-              <select
-                className="input"
-                value={editFormPurpose}
-                onChange={(event) => {
-                  const purpose = event.target.value as ScreenPurpose;
-                  setEditFormPurpose(purpose);
-                  if (purpose === 'production_dashboard') {
-                    setEditFormDefaultContentId('');
-                  }
-                }}
-              >
-                <option value="truck_gate">Truck Token Display</option>
-              </select>
-            </div>
-            {editFormPurpose === 'truck_gate' && (
-              <ScreenGateSelect
-                gateOptions={gateOptions}
-                value={editFormGates}
-                onChange={setEditFormGates}
-                required
-              />
-            )}
-            {editFormPurpose !== 'truck_gate' && (
-              <div>
-                <label className="input-label">Default content</label>
-                <select className="input" value={editFormDefaultContentId} onChange={(event) => setEditFormDefaultContentId(event.target.value)}>
-                  <option value="">None</option>
-                  {contentItems.map((item) => (
-                    <option key={item.id} value={item.id}>{item.name}</option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-muted-foreground">Shown when no scheduled playlist item is active.</p>
-              </div>
-            )}
+            <p className="text-xs text-muted-foreground">Production Data Display</p>
           </div>
         </Modal>
 
@@ -1407,19 +1303,16 @@ export default function ScreensPage() {
   }
 
   const canAddScreen = isSuperAdmin && hasPermission('screens');
-  const canManageGates = isSuperAdmin;
-
   return (
     <div className="space-y-6">
       <Tabs defaultValue="all_screens" className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Screens</h1>
-            <p className="text-sm text-muted-foreground mt-1">Manage screens and set up gate displays.</p>
+            <p className="text-sm text-muted-foreground mt-1">Manage production data displays and scheduled content.</p>
           </div>
-          <TabsList className="grid w-[280px] grid-cols-2">
+          <TabsList className="grid w-[140px] grid-cols-1">
             <TabsTrigger value="all_screens">Screens</TabsTrigger>
-            <TabsTrigger value="gates">Gates</TabsTrigger>
           </TabsList>
         </div>
 
@@ -1454,7 +1347,6 @@ export default function ScreensPage() {
                   <tr>
                     <th className="px-4 py-3 text-left font-medium">Name</th>
                     <th className="px-4 py-3 text-left font-medium">Location</th>
-                    <th className="px-4 py-3 text-left font-medium">Gates</th>
                     <th className="px-4 py-3 text-right font-medium">Actions</th>
                   </tr>
                 </thead>
@@ -1469,13 +1361,6 @@ export default function ScreensPage() {
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {screen.location || '—'}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {formatScreenGatesLabel(
-                          getAssignedGatesForScreen(screen.id).length > 0
-                            ? getAssignedGatesForScreen(screen.id)
-                            : parseScreenGates(screen.gate),
-                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
@@ -1511,98 +1396,6 @@ export default function ScreensPage() {
             </div>
           )}
         </TabsContent>
-
-        {/* Gates Tab */}
-        <TabsContent value="gates" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <p className="text-sm text-muted-foreground">
-              {gates.length} gate{gates.length !== 1 ? 's' : ''} configured
-            </p>
-            {canManageGates && (
-              <Button onClick={() => { setNewGateNumber(''); setShowAddGate(true) }} size="sm">
-                <Plus className="size-4 mr-1.5" /> Add Gate
-              </Button>
-            )}
-          </div>
-
-          {gates.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-border rounded-lg">
-              <Monitor className="size-10 text-muted-foreground/40 mb-3" />
-              <p className="font-medium text-foreground">No gates configured</p>
-              <p className="text-sm text-muted-foreground mt-1">Add a gate to assign screens (e.g. E, C, 1, D1, ABC2).</p>
-            </div>
-          ) : (
-            <div className="border border-border rounded-lg overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-medium">Gate</th>
-                    <th className="px-4 py-3 text-left font-medium">Load Time</th>
-                    <th className="px-4 py-3 text-left font-medium">Assigned Screens</th>
-                    <th className="px-4 py-3 text-right font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {gates.map((gate) => {
-                    const gateScreenIds = assignments[gate.number] ?? []
-                    const gateScreens = gateScreenIds.map((id) => screens.find((s) => s.id === id)).filter(Boolean) as typeof screens
-                    return (
-                      <tr key={gate.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-4 py-3 font-medium">Gate {gate.number.toUpperCase()}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              min={1}
-                              max={1440}
-                              value={gate.loadingDurationMins ?? 30}
-                              disabled={!canManageGates}
-                              onChange={(event) => updateGateLoadingDuration(gate.number, Number(event.target.value))}
-                              className="h-8 w-24"
-                            />
-                            <span className="text-xs text-muted-foreground">min / 2 trucks</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          {gateScreens.length === 0 ? (
-                            <span className="text-muted-foreground text-sm">No screens assigned</span>
-                          ) : (
-                            <div className="flex flex-wrap gap-1.5">
-                              {gateScreens.map((screen) => (
-                                <Badge key={screen.id} variant="secondary" className="text-xs">
-                                  {screen.name}
-                                </Badge>
-                              ))}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-destructive hover:text-destructive"
-                              onClick={async () => {
-                                const confirmed = await customConfirm(`Remove gate "${gate.number.toUpperCase()}"? Screens will be unassigned.`)
-                                if (confirmed) {
-                                  removeGate(gate.id)
-                                  if (selectedGateForAssign === gate.number) setSelectedGateForAssign(null)
-                                  showToast(`Gate ${gate.number.toUpperCase()} removed`, 'info')
-                                }
-                              }}
-                            >
-                              <Trash2 className="size-4 mr-1.5" /> Delete
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </TabsContent>
       </Tabs>
 
       {/* Add Screen Modal (Dev / SuperAdmin only) */}
@@ -1621,7 +1414,7 @@ export default function ScreensPage() {
           <div className="space-y-1.5">
             <Label>Screen Name *</Label>
             <Input
-              placeholder="e.g., Gate D1 Display"
+              placeholder="e.g., Production Hall Display"
               value={formName}
               onChange={(e) => setFormName(e.target.value)}
               autoFocus
@@ -1630,7 +1423,7 @@ export default function ScreensPage() {
           <div className="space-y-1.5">
             <Label>Location</Label>
             <Input
-              placeholder="e.g., Gate D1 entrance"
+              placeholder="e.g., Production Hall"
               value={formLocation}
               onChange={(e) => setFormLocation(e.target.value)}
             />
@@ -1656,11 +1449,7 @@ export default function ScreensPage() {
               <option value="PortraitFlipped">Portrait Flipped</option>
             </select>
           </div>
-          <ScreenGateSelect
-            gateOptions={gateOptions}
-            value={formGates}
-            onChange={setFormGates}
-          />
+          <p className="text-xs text-muted-foreground">Production Data Display</p>
         </div>
       </Modal>
 
@@ -1719,12 +1508,7 @@ export default function ScreensPage() {
               <option value="PortraitFlipped">Portrait Flipped</option>
             </select>
           </div>
-          <ScreenGateSelect
-            gateOptions={gateOptions}
-            value={editFormGates}
-            onChange={setEditFormGates}
-            required
-          />
+          <p className="text-xs text-muted-foreground">Production Data Display</p>
         </div>
       </Modal>
 
@@ -1828,191 +1612,6 @@ export default function ScreensPage() {
             />
             Blank the screen when not in use
           </label>
-        </div>
-      </Modal>
-
-      {/* Add Gate Modal */}
-      <Modal
-        isOpen={showAddGate}
-        onClose={() => setShowAddGate(false)}
-        title="Add Gate"
-        actions={
-          <>
-            <Button variant="outline" onClick={() => setShowAddGate(false)}>Cancel</Button>
-            <Button onClick={() => {
-              const trimmed = newGateNumber.trim()
-              if (!isValidGateNumber(trimmed)) {
-                showToast('Gate must be 1-4 letters or numbers (e.g. E, C, 1, D1, ABC2)', 'error')
-                return
-              }
-              const result = addGate(trimmed)
-              if (!result) {
-                showToast(`Gate "${trimmed.toUpperCase()}" already exists`, 'error')
-                return
-              }
-              setSelectedGateForAssign(result.number)
-              setShowAddGate(false)
-              showToast(`Gate ${result.number.toUpperCase()} added`, 'success')
-            }}>
-              Add Gate
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Gate Number *</Label>
-            <Input
-              value={newGateNumber}
-              onChange={(e) => setNewGateNumber(e.target.value)}
-              placeholder="e.g., E, C, 1, D1, ABC2"
-              autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-            />
-            <p className="text-xs text-muted-foreground">
-              Use 1-4 letters or numbers, e.g. <code className="rounded bg-muted px-1">E</code>, <code className="rounded bg-muted px-1">C</code>, <code className="rounded bg-muted px-1">1</code>, <code className="rounded bg-muted px-1">D1</code>, <code className="rounded bg-muted px-1">ABC2</code>.
-            </p>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Assign Screen Picker Modal */}
-      <Modal
-        isOpen={assignPickerGate !== null}
-        onClose={() => {
-          setAssignPickerGate(null)
-          setPickerNewName('')
-          setPickerNewLocation('')
-          setPickerNewIp('')
-        }}
-        title={`Assign Screen to Gate ${(assignPickerGate ?? '').toUpperCase()}`}
-        actions={
-          <Button variant="outline" onClick={() => {
-            setAssignPickerGate(null)
-            setPickerNewName('')
-            setPickerNewLocation('')
-            setPickerNewIp('')
-          }}>Close</Button>
-        }
-      >
-        <div className="space-y-5">
-          {/* Inline create new screen for this gate */}
-          <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold">Create new screen for this gate</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  New screens are automatically assigned and linked to the gate&apos;s dashboard (if any).
-                </p>
-              </div>
-              <Badge variant="outline" className="border-primary/30 text-primary">Quick add</Badge>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>Screen name *</Label>
-                <Input
-                  value={pickerNewName}
-                  onChange={(e) => setPickerNewName(e.target.value)}
-                  placeholder={`e.g., Gate ${(assignPickerGate ?? '').toUpperCase()} Display`}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Location</Label>
-                <Input
-                  value={pickerNewLocation}
-                  onChange={(e) => setPickerNewLocation(e.target.value)}
-                  placeholder={`e.g., Gate ${(assignPickerGate ?? '').toUpperCase()} entrance`}
-                />
-              </div>
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label>IP address (optional)</Label>
-                <Input
-                  value={pickerNewIp}
-                  onChange={(e) => setPickerNewIp(e.target.value)}
-                  placeholder="e.g., 192.168.1.100"
-                />
-              </div>
-            </div>
-            <div className="flex justify-end">
-              <Button
-                disabled={!pickerNewName.trim() || pickerCreating}
-                onClick={async () => {
-                  if (!assignPickerGate || !pickerNewName.trim()) return
-                  setPickerCreating(true)
-                  try {
-                    const newScreen = await addScreen(
-                      pickerNewName.trim(),
-                      pickerNewLocation.trim(),
-                      pickerNewIp.trim() || undefined,
-                      'Landscape',
-                      1920,
-                      1080,
-                      undefined,
-                      'truck_gate',
-                    )
-                    if (!newScreen) throw new Error('Screen creation failed')
-                    const gate = await assignScreenToGate(newScreen, assignPickerGate)
-                    showToast(`Screen "${newScreen.name}" created and assigned to gate ${assignPickerGate.toUpperCase()}`, 'success')
-                    setPickerNewName('')
-                    setPickerNewLocation('')
-                    setPickerNewIp('')
-                    setAssignPickerGate(null)
-                  } catch {
-                    showToast('Failed to create screen', 'error')
-                  } finally {
-                    setPickerCreating(false)
-                  }
-                }}
-              >
-                {pickerCreating ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-                {pickerCreating ? 'Creating...' : 'Create & assign'}
-              </Button>
-            </div>
-          </div>
-
-          {/* Existing unassigned screens */}
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Or pick an existing unassigned screen
-              </p>
-              <Badge variant="secondary">{unassignedScreens.length} available</Badge>
-            </div>
-            {unassignedScreens.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border py-8 text-center">
-                <Monitor className="mx-auto mb-2 size-8 text-muted-foreground/30" />
-                <p className="text-sm text-muted-foreground">All screens are already assigned to gates.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {unassignedScreens.map((screen) => (
-                  <button
-                    key={screen.id}
-                    className="flex w-full items-center gap-3 rounded-xl border border-border bg-background/60 p-3 text-left transition-all hover:border-primary/50 hover:bg-primary/5"
-                    onClick={async () => {
-                      if (!assignPickerGate) return
-                      const gate = await assignScreenToGate(screen, assignPickerGate)
-                      showToast(`Screen "${screen.name}" assigned to gate ${assignPickerGate.toUpperCase()}`, 'success')
-                      setAssignPickerGate(null)
-                    }}
-                  >
-                    <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                      <Monitor className="size-4 text-primary" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold">{screen.name}</p>
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {screen.location || 'No location'} · {formatScreenGatesLabel(parseScreenGates(screen.gate))}
-                      </p>
-                    </div>
-                    <Badge variant="outline" className="shrink-0">
-                      {screen.pairing_status === 'paired' ? '🟢' : '⚫'}
-                    </Badge>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       </Modal>
     </div>

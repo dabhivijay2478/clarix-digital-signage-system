@@ -53,7 +53,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { databaseApi } from '@/lib/tauri'
 import { APP_NAME } from '@/lib/branding'
-import { buildDispatchedTrucksCsv } from '@/lib/truck-csv'
 
 const tablesMetadata: Record<string, { label: string; desc: string }> = {
   screens: { label: 'Screens', desc: 'Registered signage screens, location, resolution, and configurations' },
@@ -66,7 +65,6 @@ const tablesMetadata: Record<string, { label: string; desc: string }> = {
   pairing_requests: { label: 'Pairing Requests', desc: 'Pending and approved player pairing authorization codes' },
   player_heartbeats: { label: 'Player Heartbeats', desc: 'Heartbeats and active revisions of connected players' },
   asset_checksums: { label: 'Asset Checksums', desc: 'Content file hashes (SHA-256) and local sizes for synchronization' },
-  dispatched_trucks: { label: 'Dispatched Trucks', desc: 'Persistently saved log of dispatched trucks including all status transition timestamps' },
 }
 
 export default function DatabasePage() {
@@ -203,22 +201,15 @@ export default function DatabasePage() {
     }
 
     try {
-      let csvContent = ''
-      
-      if (selectedTable === 'dispatched_trucks') {
-        csvContent = buildDispatchedTrucksCsv(rowsToExport)
-      } else {
-        // Create CSV format
-        const headerLine = tableData.columns.map(col => `"${col.replace(/"/g, '""')}"`).join(',')
-        const rowLines = rowsToExport.map(row => 
-          tableData.columns.map(col => {
-            const val = row[col]
-            const valStr = val === null || val === undefined ? '' : String(val)
-            return `"${valStr.replace(/"/g, '""')}"`
-          }).join(',')
-        )
-        csvContent = [headerLine, ...rowLines].join('\n')
-      }
+      const headerLine = tableData.columns.map(col => `"${col.replace(/"/g, '""')}"`).join(',')
+      const rowLines = rowsToExport.map(row =>
+        tableData.columns.map(col => {
+          const val = row[col]
+          const valStr = val === null || val === undefined ? '' : String(val)
+          return `"${valStr.replace(/"/g, '""')}"`
+        }).join(',')
+      )
+      const csvContent = [headerLine, ...rowLines].join('\n')
 
       if (isTauriRuntime()) {
         const { invoke } = await import('@tauri-apps/api/core')
@@ -318,7 +309,7 @@ export default function DatabasePage() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Reset local database?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This deletes all local SQLite data, media library files, screens, trucks, and settings on this machine.
+                  This deletes all local SQLite data, media library files, screens, and settings on this machine.
                   The app will restart with an empty database and the seeded admin user from <code>.env</code>.
                   This cannot be undone.
                 </AlertDialogDescription>

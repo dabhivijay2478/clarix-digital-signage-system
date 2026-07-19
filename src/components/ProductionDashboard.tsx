@@ -178,9 +178,9 @@ function AskRateBadge({ value, isPlayer = false }: { value: number; isPlayer?: b
 function PlayerProductionChart({ data }: { data: typeof chartData }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 1920, height: 720 })
-  const chartFontSize = Math.round(Math.max(16, Math.min(28, size.height * 0.035)))
-  const chartLabelSize = Math.round(Math.max(18, Math.min(32, size.height * 0.04)))
-  const legendFontSize = Math.round(Math.max(16, Math.min(28, size.height * 0.034)))
+  const chartFontSize = Math.round(Math.max(12, Math.min(22, size.height * 0.028)))
+  const chartLabelSize = Math.round(Math.max(14, Math.min(24, size.height * 0.032)))
+  const legendFontSize = Math.round(Math.max(12, Math.min(22, size.height * 0.027)))
 
   useEffect(() => {
     const el = hostRef.current
@@ -217,7 +217,7 @@ function PlayerProductionChart({ data }: { data: typeof chartData }) {
           width={size.width}
           height={size.height}
           data={data}
-          margin={{ top: 8, right: 24, left: 4, bottom: 8 }}
+          margin={{ top: 4, right: 18, left: 0, bottom: 4 }}
         >
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
           <XAxis
@@ -226,14 +226,14 @@ function PlayerProductionChart({ data }: { data: typeof chartData }) {
             axisLine={false}
             tick={{ fontSize: chartFontSize, fill: '#000000' }}
             label={{ value: 'Date', position: 'insideBottom', offset: -6, fontSize: chartLabelSize, fontWeight: 700, fill: '#000000' }}
-            height={Math.max(42, chartLabelSize + 18)}
+            height={Math.max(34, chartLabelSize + 14)}
           />
           <YAxis
             tickLine={false}
             axisLine={false}
             tick={{ fontSize: chartFontSize, fill: '#000000' }}
             label={{ value: 'Qty', angle: -90, position: 'insideLeft', offset: 12, fontSize: chartLabelSize, fontWeight: 700, fill: '#000000' }}
-            width={Math.max(58, chartFontSize * 3)}
+            width={Math.max(48, chartFontSize * 2.7)}
           />
           <Tooltip />
           <Legend wrapperStyle={{ fontSize: legendFontSize, fontWeight: 700, color: '#000000' }} />

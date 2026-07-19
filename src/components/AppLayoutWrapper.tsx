@@ -11,19 +11,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { useAuthStore } from '@/store/authStore'
-import { useTruckStore } from '@/store/truckStore'
 import { usePermissions } from '@/hooks/usePermissions'
 import { showToast } from '@/components/Toast'
-import { trucksApi } from '@/lib/tauri'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import TvRemoteNavigation from '@/components/TvRemoteNavigation'
 
 export default function AppLayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const isPresentation = pathname === '/player'
     || pathname?.startsWith('/player/')
-    || pathname === '/trucks/display'
-    || pathname?.startsWith('/trucks/display/')
   
   const { isCollapsed, toggle } = useSidebarStore()
   const { appName, customFavicon } = useBrandingStore()
@@ -37,7 +32,6 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
   const [inviteCode, setInviteCode] = useState('')
   const [inviteName, setInviteName] = useState('')
   const [loggingIn, setLoggingIn] = useState(false)
-  const trucks = useTruckStore((state) => state.trucks)
 
   useEffect(() => {
     setMounted(true)
@@ -57,16 +51,6 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
     }
   }, [appName, customFavicon])
 
-  useEffect(() => {
-    if (isPresentation || trucks.length === 0) return
-    const timer = setTimeout(() => {
-      void trucksApi.saveActiveSnapshot(trucks).catch((error) => {
-        console.warn('Failed to sync active truck snapshot:', error)
-      })
-    }, 250)
-    return () => clearTimeout(timer)
-  }, [isPresentation, trucks])
-
   if (isPresentation) {
     return (
       <div
@@ -83,7 +67,6 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
           background: '#f4f6f8',
         }}
       >
-        <TvRemoteNavigation />
         {children}
       </div>
     )
