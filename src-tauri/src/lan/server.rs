@@ -1,9 +1,9 @@
-use std::{collections::HashMap, convert::Infallible, path::{Path as FsPath, PathBuf}, time::Duration};
+use std::{collections::HashMap, convert::Infallible, io::Read, path::{Path as FsPath, PathBuf}, time::Duration};
 
 use axum::{
-    body::Body,
+    body::{Body, Bytes},
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{header::CACHE_CONTROL, HeaderMap, HeaderValue, StatusCode},
     response::{Response, sse::{Event, KeepAlive, Sse}},
     routing::{get, post},
     Json, Router,
@@ -14,7 +14,11 @@ use rusqlite::params;
 use sha2::{Digest, Sha256};
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
-use tower_http::{cors::CorsLayer, services::{ServeDir, ServeFile}};
+use tower_http::{
+    cors::CorsLayer,
+    services::{ServeDir, ServeFile},
+    set_header::SetResponseHeaderLayer,
+};
 
 use crate::{
     db::{self, DbPool},
@@ -25,6 +29,8 @@ use crate::{
         MarqueeSettings,
     },
 };
+
+const STREAM_CHUNK_BYTES: usize = 256 * 1024;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub struct SyncPayload {
@@ -109,6 +115,7 @@ pub async fn start_controller_server(
         .route("/api/playlists", get(read_playlists))
         .route("/api/content", get(read_content))
         .route("/api/schedule", get(read_schedule))
+        .route("/api/time", get(read_controller_time))
         .route("/api/marquee", get(read_marquee))
         .route("/api/trucks", get(read_active_trucks).post(write_active_trucks))
         .route("/api/trucks/dispatch-summary", get(read_truck_dispatch_summary))
@@ -118,6 +125,14 @@ pub async fn start_controller_server(
         .route("/media/{filename}", get(legacy_media))
         .route("/presentation/{filename}", get(presentation_viewer))
         .route("/api/proxy", get(proxy_url));
+
+    let player_routes = Router::new()
+        .route_service("/player", ServeFile::new(browser_assets_dir.join("player.html")))
+        .route_service("/player/", ServeFile::new(browser_assets_dir.join("player.html")))
+        .layer(SetResponseHeaderLayer::overriding(
+            CACHE_CONTROL,
+            HeaderValue::from_static("no-store, no-cache, must-revalidate"),
+        ));
 
     let router = Router::new()
         .route("/v1/pairing/requests", post(create_pairing_request))
@@ -130,8 +145,7 @@ pub async fn start_controller_server(
         .route("/v1/truck-alerts", get(stream_truck_alerts))
         .route("/status", get(health))
         .merge(browser_routes)
-        .route_service("/player", ServeFile::new(browser_assets_dir.join("player.html")))
-        .route_service("/player/", ServeFile::new(browser_assets_dir.join("player.html")))
+        .merge(player_routes)
         .route_service("/production-data/view", ServeFile::new(browser_assets_dir.join("production-data/view.html")))
         .route_service("/production-data/view/", ServeFile::new(browser_assets_dir.join("production-data/view.html")))
         .route_service("/trucks/display", ServeFile::new(browser_assets_dir.join("trucks/display.html")))
@@ -161,6 +175,19 @@ async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
         "protocol_version": state.identity.protocol_version,
         "port": state.identity.service_port,
         "revision": current_revision(&state.pool).unwrap_or(0),
+    }))
+}
+
+async fn read_controller_time() -> Json<serde_json::Value> {
+    let now = Utc::now();
+    let time_zone = std::env::var("CLARIX_TIME_ZONE")
+        .ok()
+        .or_else(|| std::env::var("TZ").ok())
+        .unwrap_or_else(|| "Asia/Calcutta".to_string());
+    Json(serde_json::json!({
+        "server_time_iso": now.to_rfc3339(),
+        "server_time_ms": now.timestamp_millis(),
+        "server_time_zone": time_zone,
     }))
 }
 
@@ -270,11 +297,7 @@ async fn asset(
         Ok(rows.next()?.map(|row| row.get(0)).transpose()?)
     }).await.map_err(internal_error)?.map_err(internal_error)?;
     let path = file_path.ok_or((StatusCode::NOT_FOUND, "Asset not found".to_string()))?;
-    let bytes = tokio::fs::read(&path).await.map_err(internal_error)?;
-    Ok(Response::builder()
-        .header("Content-Type", media_content_type(&path))
-        .body(Body::from(bytes))
-        .map_err(internal_error)?)
+    stream_file_response(PathBuf::from(path), &headers).await
 }
 
 async fn sync_ack(
@@ -430,16 +453,76 @@ async fn read_production_dataset(
 
 async fn legacy_media(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(filename): Path<String>,
 ) -> Result<Response, (StatusCode, String)> {
     let safe_name = FsPath::new(&filename).file_name().and_then(|value| value.to_str())
         .ok_or((StatusCode::BAD_REQUEST, "Invalid filename".to_string()))?;
     let media_path = state.media_dir.join(safe_name);
-    let bytes = tokio::fs::read(&media_path).await
+    stream_file_response(media_path, &headers).await
+}
+
+async fn stream_file_response(
+    path: PathBuf,
+    headers: &HeaderMap,
+) -> Result<Response, (StatusCode, String)> {
+    let metadata = tokio::fs::metadata(&path).await
         .map_err(|_| (StatusCode::NOT_FOUND, "Media not found".to_string()))?;
+    let file_len = metadata.len();
+
+    if let Some((start, end)) = parse_range_header(headers, file_len)? {
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
+
+        let chunk_len = end - start + 1;
+        let mut file = tokio::fs::File::open(&path).await.map_err(internal_error)?;
+        file.seek(std::io::SeekFrom::Start(start)).await.map_err(internal_error)?;
+        let stream = futures_util::stream::try_unfold(
+            (file, chunk_len),
+            |(mut file, remaining)| async move {
+                if remaining == 0 {
+                    return Ok::<Option<(Bytes, (tokio::fs::File, u64))>, std::io::Error>(None);
+                }
+
+                let next_len = remaining.min(STREAM_CHUNK_BYTES as u64) as usize;
+                let mut buffer = vec![0; next_len];
+                let read = AsyncReadExt::read(&mut file, &mut buffer).await?;
+                if read == 0 {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        "media file ended before the requested range",
+                    ));
+                }
+                buffer.truncate(read);
+                Ok(Some((Bytes::from(buffer), (file, remaining - read as u64))))
+            },
+        );
+
+        return Ok(Response::builder()
+            .status(StatusCode::PARTIAL_CONTENT)
+            .header("Content-Type", media_content_type(&path))
+            .header("Accept-Ranges", "bytes")
+            .header("Content-Length", chunk_len.to_string())
+            .header("Content-Range", format!("bytes {start}-{end}/{file_len}"))
+            .body(Body::from_stream(stream))
+            .map_err(internal_error)?);
+    }
+
+    let file = tokio::fs::File::open(&path).await.map_err(internal_error)?;
+    let stream = futures_util::stream::try_unfold(file, |mut file| async move {
+        let mut buffer = vec![0; STREAM_CHUNK_BYTES];
+        let read = tokio::io::AsyncReadExt::read(&mut file, &mut buffer).await?;
+        if read == 0 {
+            return Ok::<Option<(Bytes, tokio::fs::File)>, std::io::Error>(None);
+        }
+        buffer.truncate(read);
+        Ok::<Option<(Bytes, tokio::fs::File)>, std::io::Error>(Some((Bytes::from(buffer), file)))
+    });
+
     Ok(Response::builder()
-        .header("Content-Type", media_content_type(&media_path))
-        .body(Body::from(bytes))
+        .header("Content-Type", media_content_type(&path))
+        .header("Accept-Ranges", "bytes")
+        .header("Content-Length", file_len.to_string())
+        .body(Body::from_stream(stream))
         .map_err(internal_error)?)
 }
 
@@ -471,15 +554,66 @@ fn media_content_type(path: impl AsRef<FsPath>) -> &'static str {
         "gif" => "image/gif",
         "webp" => "image/webp",
         "svg" => "image/svg+xml",
-        "mp4" => "video/mp4",
+        "mp4" | "m4v" => "video/mp4",
         "webm" => "video/webm",
         "mov" => "video/quicktime",
+        "mkv" => "video/x-matroska",
+        "avi" => "video/x-msvideo",
         "mp3" => "audio/mpeg",
         "wav" => "audio/wav",
         "txt" => "text/plain; charset=utf-8",
         "csv" => "text/csv; charset=utf-8",
         _ => "application/octet-stream",
     }
+}
+
+fn parse_range_header(headers: &HeaderMap, file_len: u64) -> Result<Option<(u64, u64)>, (StatusCode, String)> {
+    if file_len == 0 {
+        return Ok(None);
+    }
+    let Some(range) = headers.get("range").and_then(|value| value.to_str().ok()) else {
+        return Ok(None);
+    };
+    let Some(raw_range) = range.strip_prefix("bytes=") else {
+        return Err((StatusCode::RANGE_NOT_SATISFIABLE, "Unsupported range unit".to_string()));
+    };
+    let Some((start_raw, end_raw)) = raw_range.split_once('-') else {
+        return Err((StatusCode::RANGE_NOT_SATISFIABLE, "Invalid range".to_string()));
+    };
+
+    if start_raw.is_empty() {
+        let suffix_len = end_raw
+            .parse::<u64>()
+            .map_err(|_| (StatusCode::RANGE_NOT_SATISFIABLE, "Invalid suffix range".to_string()))?;
+        if suffix_len == 0 {
+            return Err((StatusCode::RANGE_NOT_SATISFIABLE, "Invalid suffix range".to_string()));
+        }
+        let start = file_len.saturating_sub(suffix_len);
+        return Ok(Some((start, file_len - 1)));
+    }
+
+    let start = start_raw
+        .parse::<u64>()
+        .map_err(|_| (StatusCode::RANGE_NOT_SATISFIABLE, "Invalid range start".to_string()))?;
+    if start >= file_len {
+        return Err((StatusCode::RANGE_NOT_SATISFIABLE, "Range start is outside the file".to_string()));
+    }
+    let requested_end = if end_raw.is_empty() {
+        file_len - 1
+    } else {
+        end_raw
+            .parse::<u64>()
+            .map_err(|_| (StatusCode::RANGE_NOT_SATISFIABLE, "Invalid range end".to_string()))?
+            .min(file_len - 1)
+    };
+    // Honor the range the client requested. The response body is streamed, so
+    // an open-ended request does not require loading the full video into memory.
+    let end = requested_end.min(file_len - 1);
+    if end < start {
+        return Err((StatusCode::RANGE_NOT_SATISFIABLE, "Range end is before start".to_string()));
+    }
+
+    Ok(Some((start, end)))
 }
 
 fn authenticate(pool: &DbPool, headers: &HeaderMap, query_token: Option<&str>) -> Result<PairingRequest, (StatusCode, String)> {
@@ -547,16 +681,16 @@ pub fn build_manifest(pool: &DbPool, screen_id: &str) -> anyhow::Result<SyncMani
         let Some(path) = item.file_path.as_deref() else { continue };
         let file_path = PathBuf::from(path);
         if !file_path.is_file() { continue; }
-        let bytes = std::fs::read(&file_path)?;
-        let sha256 = sha256_bytes(&bytes);
+        let file_size = file_path.metadata()?.len();
+        let sha256 = sha256_file(&file_path)?;
         let filename = file_path.file_name().and_then(|value| value.to_str()).unwrap_or("asset").to_string();
-        assets.push(SyncAsset { content_id: item.id.clone(), sha256: sha256.clone(), filename, size: bytes.len() as u64 });
+        assets.push(SyncAsset { content_id: item.id.clone(), sha256: sha256.clone(), filename, size: file_size });
         conn.execute(
             "INSERT INTO asset_checksums (content_id, sha256, file_path, file_size, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5)
              ON CONFLICT(content_id) DO UPDATE SET sha256=excluded.sha256, file_path=excluded.file_path,
              file_size=excluded.file_size, updated_at=excluded.updated_at",
-            params![item.id, sha256, path, bytes.len() as i64, Utc::now().to_rfc3339()],
+            params![item.id, sha256, path, file_size as i64, Utc::now().to_rfc3339()],
         )?;
     }
     Ok(SyncManifest { revision, screen_id: screen_id.to_string(), payload, assets, force_sync })
@@ -732,12 +866,30 @@ async fn player_sync_once(
         let Some(asset) = asset_by_content.get(&item.id) else { continue };
         let safe_name = FsPath::new(&asset.filename).file_name().and_then(|value| value.to_str()).unwrap_or("asset");
         let destination = media_dir.join(format!("{}-{safe_name}", asset.sha256));
-        let valid_existing = std::fs::read(&destination).map(|bytes| sha256_bytes(&bytes) == asset.sha256).unwrap_or(false);
+        let valid_existing = sha256_file(&destination).map(|hash| hash == asset.sha256).unwrap_or(false);
         if !valid_existing {
-            let bytes = client.get(format!("{base}/v1/assets/{}", asset.sha256)).bearer_auth(&token).send().await?.error_for_status()?.bytes().await?;
-            if sha256_bytes(&bytes) != asset.sha256 { anyhow::bail!("Asset checksum verification failed for {}", asset.filename); }
             let temporary = destination.with_extension("part");
-            tokio::fs::write(&temporary, &bytes).await?;
+            let response = client
+                .get(format!("{base}/v1/assets/{}", asset.sha256))
+                .bearer_auth(&token)
+                .send()
+                .await?
+                .error_for_status()?;
+            let mut stream = response.bytes_stream();
+            let mut file = tokio::fs::File::create(&temporary).await?;
+            let mut hasher = Sha256::new();
+            use tokio::io::AsyncWriteExt;
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk?;
+                hasher.update(&chunk);
+                file.write_all(&chunk).await?;
+            }
+            file.flush().await?;
+            let downloaded_sha = format!("{:x}", hasher.finalize());
+            if downloaded_sha != asset.sha256 {
+                let _ = tokio::fs::remove_file(&temporary).await;
+                anyhow::bail!("Asset checksum verification failed for {}", asset.filename);
+            }
             tokio::fs::rename(&temporary, &destination).await?;
         }
         item.file_path = Some(destination.to_string_lossy().to_string());
@@ -1002,8 +1154,23 @@ fn parse_date(value: String) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(&value).map(|date| date.with_timezone(&Utc)).unwrap_or_else(|_| Utc::now())
 }
 
+#[cfg(test)]
 fn sha256_bytes(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
+}
+
+fn sha256_file(path: &FsPath) -> anyhow::Result<String> {
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0; STREAM_CHUNK_BYTES];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 fn internal_error(error: impl std::fmt::Display) -> (StatusCode, String) {
@@ -1031,8 +1198,8 @@ fn is_same_host_origin(headers: &HeaderMap) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_same_host_origin, sha256_bytes};
-    use axum::http::{header::{HOST, ORIGIN}, HeaderMap};
+    use super::{is_same_host_origin, parse_range_header, sha256_bytes};
+    use axum::http::{header::{HOST, ORIGIN, RANGE}, HeaderMap};
 
     #[test]
     fn produces_stable_sha256_asset_ids() {
@@ -1051,5 +1218,27 @@ mod tests {
 
         headers.insert(ORIGIN, "http://evil.example:3000".parse().unwrap());
         assert!(!is_same_host_origin(&headers));
+    }
+
+    #[test]
+    fn honors_open_ended_media_ranges_without_an_artificial_cap() {
+        let mut headers = HeaderMap::new();
+        headers.insert(RANGE, "bytes=0-".parse().unwrap());
+
+        assert_eq!(
+            parse_range_header(&headers, 64 * 1024 * 1024).unwrap(),
+            Some((0, 64 * 1024 * 1024 - 1)),
+        );
+    }
+
+    #[test]
+    fn honors_large_explicit_media_ranges() {
+        let mut headers = HeaderMap::new();
+        headers.insert(RANGE, "bytes=1048576-18874367".parse().unwrap());
+
+        assert_eq!(
+            parse_range_header(&headers, 32 * 1024 * 1024).unwrap(),
+            Some((1_048_576, 18_874_367)),
+        );
     }
 }

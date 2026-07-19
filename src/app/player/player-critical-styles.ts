@@ -29,9 +29,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
 .mg-player-spinner{width:56px;height:56px;margin:0 auto 18px;border:3px solid #e5e7eb;border-top-color:#10b981;border-radius:50%;-webkit-animation:mg-spin 0.8s linear infinite;animation:mg-spin 0.8s linear infinite}
 .mg-player-muted{font-size:20px;color:#6b7280}
 .mg-player-stage{position:absolute;top:0;left:0;width:100%;height:100%;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-align:center;-webkit-align-items:center;align-items:center;-webkit-box-pack:center;-webkit-justify-content:center;justify-content:center;overflow:hidden;background:#000}
-.mg-player-back-button{position:fixed;top:14px;left:14px;z-index:10002;width:40px;height:40px;padding:0;border:1px solid rgba(255,255,255,.32);border-radius:6px;background:rgba(15,23,42,.82);color:#fff;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-align:center;-webkit-align-items:center;align-items:center;-webkit-box-pack:center;-webkit-justify-content:center;justify-content:center;cursor:pointer;box-shadow:0 3px 10px rgba(15,23,42,.22);transition:background-color .15s ease,border-color .15s ease,transform .15s ease}
-.mg-player-back-button:hover,.mg-player-back-button:focus{background:#0f172a;border-color:#10b981;color:#fff;outline:3px solid rgba(16,185,129,.9);outline-offset:2px;transform:scale(1.04)}
-.production-player-surface .mg-player-back-button,.production-player-surface .mg-player-back-button *{color:#fff!important}
 .mg-player-media{position:relative;width:100%;height:100%;overflow:hidden}
 .mg-player-media img,.mg-player-media video,.mg-player-media iframe{display:block;width:100%;height:100%;border:none;object-fit:contain}
 .mg-player-wait-icon{width:112px;height:112px;margin:0 auto 36px;border:2px solid #d1d5db;border-radius:50%;display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-align:center;-webkit-align-items:center;align-items:center;-webkit-box-pack:center;-webkit-justify-content:center;justify-content:center;font-size:48px;color:#059669;background:#fff}
@@ -44,13 +41,11 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
 .mg-player-actions{margin-top:56px;font-size:20px;font-weight:600}
 .mg-player-actions button{border:none;background:transparent;color:#6b7280;cursor:pointer;font:inherit}
 .mg-player-actions button:hover,.mg-player-actions button:focus{color:#111827;outline:none}
-body.tv-remote-navigation .mg-player-shell :focus{outline:4px solid #0284c7!important;outline-offset:4px!important;box-shadow:0 0 0 7px rgba(255,255,255,.95)!important}
 .mg-player-marquee{position:fixed;left:0;right:0;bottom:0;z-index:90;overflow:hidden;padding:12px 0;height:96px;display:flex;align-items:center;border-top:1px solid #e5e7eb;background:rgba(255,255,255,0.98);color:#111827}
 .mg-player-marquee-track{display:flex;align-items:center;white-space:nowrap;font-size:36px;font-weight:700;-webkit-animation:mg-marquee 20s linear infinite;animation:mg-marquee 20s linear infinite;width:max-content}
 @-webkit-keyframes mg-spin{to{-webkit-transform:rotate(360deg);transform:rotate(360deg)}}
 @keyframes mg-spin{to{transform:rotate(360deg)}}
 @-webkit-keyframes mg-marquee{from{-webkit-transform:translateX(100%);transform:translateX(100%)}to{-webkit-transform:translateX(-100%);transform:translateX(-100%)}}
 @keyframes mg-marquee{from{transform:translateX(100%)}to{transform:translateX(-100%)}}
-.mg-player-branding{display:block;background:transparent;border:0;border-radius:0;padding:0;box-shadow:none;backdrop-filter:none}.mg-player-branding img{display:block;width:clamp(90px,8vw,160px);max-width:160px;height:auto;object-fit:contain}
-.mg-player-shell .production-player-surface{overflow:hidden;background:#ffffff;color:#000000}
+.mg-player-branding{position:fixed;right:20px;bottom:20px;z-index:9999;pointer-events:none;background:transparent!important;border:0!important;border-radius:0!important;padding:0!important;box-shadow:none!important;backdrop-filter:none!important;display:flex;align-items:center;justify-content:center}.mg-player-branding img{display:block;height:80px;width:auto;object-fit:contain;filter:none!important}
 `;

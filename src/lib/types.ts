@@ -28,7 +28,7 @@ export interface Screen {
   created_at: string;
 }
 
-export type ScreenPurpose = "playlist" | "truck_gate" | "production_dashboard";
+export type ScreenPurpose = "playlist" | "truck_gate";
 
 export interface ScreenResolution {
   width: number;
@@ -124,10 +124,16 @@ export interface PlaylistItem {
 
 export type TransitionEffect = "None" | "Fade" | "Slide" | "Zoom";
 
+export interface PlaylistItemDayScheduleWindow {
+  start: string;
+  end: string;
+}
+
 export interface PlaylistItemDaySchedule {
   enabled: boolean;
   start: string;
   end: string;
+  windows?: PlaylistItemDayScheduleWindow[];
 }
 
 export interface PlaylistItemSchedule {
@@ -140,6 +146,7 @@ export interface PlaylistItemSchedule {
   start_date: string;
   end_date: string;
   transition: TransitionEffect;
+  timezone?: string;
 }
 
 // ── Schedule ────────────────────────────────────────────────────────────────
@@ -294,6 +301,8 @@ export interface TruckScreenAlert {
   next_truck_status?: string | null;
   queue_trucks?: Truck[];
   queue_gates?: GateQueueSettings[];
+  /** Seconds between loading ↔ waiting views on truck token displays. */
+  display_rotation_secs?: number;
 }
 
 export interface GateQueueSettings {

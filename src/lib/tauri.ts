@@ -44,6 +44,12 @@ function isTauriRuntime(): boolean {
 
 const browserControllerPort = process.env.NEXT_PUBLIC_CLARIX_CONTROLLER_PORT ?? process.env.NEXT_PUBLIC_SIGNALOS_CONTROLLER_PORT ?? '7420';
 
+export interface ControllerTimeResponse {
+  server_time_iso: string;
+  server_time_ms: number;
+  server_time_zone?: string;
+}
+
 export function getBrowserControllerOrigin(): string {
   if (typeof window === 'undefined') return `http://localhost:${browserControllerPort}`;
   const controllerOrigin = (window as typeof window & { __CLARIX_CONTROLLER_ORIGIN__?: string }).__CLARIX_CONTROLLER_ORIGIN__;
@@ -351,9 +357,9 @@ export const contentApi = {
   add: (
     name: string,
     contentType: string,
-    filePath?: string,
-    url?: string,
-    durationSecs: number = 30,
+    filePath: string | undefined,
+    url: string | undefined,
+    durationSecs: number,
     tags: string[] = [],
     metadataJson: Record<string, unknown> = {}
   ) =>
@@ -367,12 +373,16 @@ export const contentApi = {
       metadataJson,
     }),
 
+  updateDuration: (id: string, durationSecs: number) =>
+    tauriInvoke<void>('update_content_duration', { id, durationSecs }),
+
   delete: (id: string) => tauriInvoke<void>('delete_content_item', { id }),
 
-  saveLocalFile: async (filename: string, bytes: Uint8Array) => {
+  saveLocalFile: async (filename: string, source: Uint8Array | Blob) => {
     const chunkSize = 512 * 1024;
     let savedPath = '';
-    if (bytes.length === 0) {
+    const totalBytes = source instanceof Blob ? source.size : source.length;
+    if (totalBytes === 0) {
       return tauriInvoke<string>('save_local_content_file_chunk', {
         filename,
         bytes: [],
@@ -380,8 +390,10 @@ export const contentApi = {
       });
     }
 
-    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-      const chunk = bytes.slice(offset, offset + chunkSize);
+    for (let offset = 0; offset < totalBytes; offset += chunkSize) {
+      const chunk = source instanceof Blob
+        ? new Uint8Array(await source.slice(offset, offset + chunkSize).arrayBuffer())
+        : source.slice(offset, offset + chunkSize);
       savedPath = await tauriInvoke<string>('save_local_content_file_chunk', {
         filename,
         bytes: Array.from(chunk),
@@ -422,6 +434,25 @@ export const trucksApi = {
   getActive: () => tauriInvoke<Truck[]>('get_active_trucks'),
   saveActiveSnapshot: (trucks: Truck[]) =>
     tauriInvoke<void>('save_active_trucks', { trucks }),
+};
+
+export const clockApi = {
+  getControllerTime: async (): Promise<ControllerTimeResponse> => {
+    const response = await fetch(`${getBrowserControllerOrigin()}/api/time`, {
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      throw new Error(`Controller time request failed: ${response.status}`);
+    }
+
+    const data = await response.json() as ControllerTimeResponse;
+    if (!Number.isFinite(data.server_time_ms) || !data.server_time_iso) {
+      throw new Error('Controller time response is invalid');
+    }
+
+    return data;
+  },
 };
 
 // ── Local Admin Auth API ───────────────────────────────────────────────────
@@ -578,6 +609,7 @@ export const databaseApi = {
   exportTableToCsv: (tableName: string) => tauriInvoke<string>('export_db_table_to_csv', { tableName }),
   backupContentLibraryToZip: (savePath: string) => tauriInvoke<void>('backup_content_library_to_zip', { savePath }),
   saveTextFile: (path: string, content: string) => tauriInvoke<void>('save_text_file', { path, content }),
+  resetLocalDatabase: () => tauriInvoke<void>('reset_local_database'),
 };
 
 // ── Event Listeners ─────────────────────────────────────────────────────────

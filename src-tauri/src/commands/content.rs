@@ -1,6 +1,6 @@
 use crate::db::DbPool;
 use crate::models::{ContentItem, ContentType};
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 use std::{
     fs,
     io::{Cursor, Read},
@@ -143,15 +143,194 @@ pub async fn add_content_item(
 }
 
 #[tauri::command]
-pub async fn delete_content_item(id: String, pool: State<'_, DbPool>) -> Result<(), String> {
+pub async fn update_content_duration(
+    id: String,
+    duration_secs: u32,
+    pool: State<'_, DbPool>,
+    events: State<'_, crate::lan::server::SyncEventBus>,
+) -> Result<(), String> {
+    if duration_secs == 0 {
+        return Err("Content duration must be greater than zero".to_string());
+    }
+
     let pool = pool.inner().clone();
+    let event_bus = events.inner().clone();
     tokio::task::spawn_blocking(move || {
         let conn = pool.get().map_err(|e| e.to_string())?;
-        conn.execute(
-            "DELETE FROM content_items WHERE id = ?1",
+        let rows = conn
+            .execute(
+                "UPDATE content_items SET duration_secs = ?1 WHERE id = ?2",
+                params![duration_secs as i64, id],
+            )
+            .map_err(|e| e.to_string())?;
+        if rows == 0 {
+            return Err("Content item not found".to_string());
+        }
+        drop(conn);
+        crate::lan::server::publish_revision(&pool, &event_bus).map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn delete_content_item(
+    id: String,
+    pool: State<'_, DbPool>,
+    events: State<'_, crate::lan::server::SyncEventBus>,
+) -> Result<(), String> {
+    let pool = pool.inner().clone();
+    let event_bus = events.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+        let exists = tx
+            .query_row(
+                "SELECT 1 FROM content_items WHERE id = ?1",
+                params![id],
+                |_| Ok(true),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?
+            .is_some();
+        if !exists {
+            return Err("Content item not found".to_string());
+        }
+
+        let playlist_names = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT DISTINCT p.name
+                     FROM playlists p
+                     JOIN playlist_items pi ON pi.playlist_id = p.id
+                     WHERE pi.content_id = ?1
+                     ORDER BY p.name
+                     LIMIT 5",
+                )
+                .map_err(|e| e.to_string())?;
+            let values = stmt.query_map(params![id], |row| row.get::<_, String>(0))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            values
+        };
+        let screen_names = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT DISTINCT name
+                     FROM screens
+                     WHERE default_content_id = ?1
+                     ORDER BY name
+                     LIMIT 5",
+                )
+                .map_err(|e| e.to_string())?;
+            let values = stmt.query_map(params![id], |row| row.get::<_, String>(0))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            values
+        };
+        let screen_default_names = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT DISTINCT s.name
+                     FROM screen_defaults sd
+                     JOIN screens s ON s.id = sd.screen_id
+                     WHERE sd.default_content_id = ?1
+                     ORDER BY s.name
+                     LIMIT 5",
+                )
+                .map_err(|e| e.to_string())?;
+            let values = stmt.query_map(params![id], |row| row.get::<_, String>(0))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            values
+        };
+        let schedule_names = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT DISTINCT ss.name
+                     FROM schedule_slots ss
+                     JOIN playlist_items pi ON pi.playlist_id = ss.playlist_id
+                     WHERE pi.content_id = ?1 AND ss.is_active = 1
+                     ORDER BY ss.name
+                     LIMIT 5",
+                )
+                .map_err(|e| e.to_string())?;
+            let values = stmt.query_map(params![id], |row| row.get::<_, String>(0))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            values
+        };
+
+        if !playlist_names.is_empty() || !screen_names.is_empty() || !screen_default_names.is_empty() || !schedule_names.is_empty() {
+            let mut parts = Vec::new();
+            if !playlist_names.is_empty() {
+                parts.push(format!("playlists: {}", playlist_names.join(", ")));
+            }
+            if !schedule_names.is_empty() {
+                parts.push(format!("schedules: {}", schedule_names.join(", ")));
+            }
+            let mut screens = screen_names;
+            for name in screen_default_names {
+                if !screens.contains(&name) {
+                    screens.push(name);
+                }
+            }
+            if !screens.is_empty() {
+                parts.push(format!("screens: {}", screens.join(", ")));
+            }
+            return Err(format!("Cannot delete content because it is currently used in {}. Remove it from those playlists, schedules, or screens first.", parts.join("; ")));
+        }
+
+        let file_path: Option<String> = tx
+            .query_row(
+                "SELECT file_path FROM content_items WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+
+        tx.execute(
+            "DELETE FROM asset_checksums WHERE content_id = ?1",
             params![id],
         )
         .map_err(|e| e.to_string())?;
+
+        let rows = tx
+            .execute("DELETE FROM content_items WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        if rows == 0 {
+            return Err("Content item not found".to_string());
+        }
+
+        tx.commit().map_err(|e| e.to_string())?;
+
+        if let Some(path) = file_path.filter(|value| !value.is_empty()) {
+            let other_refs: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM content_items WHERE file_path = ?1",
+                    params![path],
+                    |row| row.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+            if other_refs == 0 {
+                let fs_path = PathBuf::from(&path);
+                let _ = fs::remove_file(&fs_path);
+                if let Some(parent) = fs_path.parent() {
+                    if let Some(stem) = fs_path.file_stem().and_then(|value| value.to_str()) {
+                        let _ = fs::remove_file(parent.join(format!("{stem}.presentation.html")));
+                        let _ = fs::remove_file(parent.join(format!("{stem}.pdf")));
+                    }
+                }
+            }
+        }
+
+        let _ = crate::lan::server::notify_current_revision(&pool, &event_bus);
         Ok(())
     })
     .await

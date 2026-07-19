@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { useContent } from '../../hooks/useContent';
 import ContentCard from '../../components/ContentCard';
@@ -15,8 +15,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import type { ContentItem } from '@/lib/types';
+import { playlistsApi, scheduleApi, screensApi } from '@/lib/tauri';
+import type { ContentItem, Playlist, ScheduleSlot, Screen } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { detectFileMediaDuration, formatMediaDuration, normalizeMediaDurationSeconds } from '@/lib/media-duration';
 
 const contentTypes = ['Image', 'Video', 'Presentation', 'Document', 'Spreadsheet', 'WebApp', 'Ad', 'Slideshow'];
 
@@ -39,8 +41,18 @@ const typeStyles: Record<string, string> = {
   Spreadsheet: 'border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400',
 };
 
+type ContentUsage = {
+  playlists: string[];
+  schedules: string[];
+  screens: string[];
+};
+
+function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+
 export default function ContentPage() {
-  const { items, loading, search, setSearch, addItem, deleteItem } = useContent();
+  const { items, allItems, loading, search, setSearch, addItem, updateItemDuration, deleteItem } = useContent();
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [previewItem, setPreviewItem] = useState<ContentItem | null>(null);
@@ -48,11 +60,43 @@ export default function ContentPage() {
   const [formName, setFormName] = useState('');
   const [formType, setFormType] = useState('Image');
   const [formUrl, setFormUrl] = useState('');
-  const [formDuration, setFormDuration] = useState('30');
   const [formTags, setFormTags] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [detectedDurationSecs, setDetectedDurationSecs] = useState<number | null>(null);
+  const [isDetectingDuration, setIsDetectingDuration] = useState(false);
+  const durationDetectionRequestRef = useRef(0);
+  const durationUpdatesPendingRef = useRef(new Set<string>());
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [screens, setScreens] = useState<Screen[]>([]);
+  const [scheduleSlots, setScheduleSlots] = useState<ScheduleSlot[]>([]);
+
+  useEffect(() => {
+    let disposed = false;
+
+    const loadUsageData = async () => {
+      try {
+        const [nextPlaylists, nextScreens, nextScheduleSlots] = await Promise.all([
+          playlistsApi.getAll(),
+          screensApi.getAll(),
+          scheduleApi.getAll(),
+        ]);
+        if (!disposed) {
+          setPlaylists(nextPlaylists);
+          setScreens(nextScreens);
+          setScheduleSlots(nextScheduleSlots);
+        }
+      } catch (error) {
+        console.warn('Failed to load content usage data:', error);
+      }
+    };
+
+    void loadUsageData();
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   const filtered = useMemo(() => {
     let result = items;
@@ -62,11 +106,68 @@ export default function ContentPage() {
     return result;
   }, [items, activeFilter]);
 
+  const contentUsageById = useMemo(() => {
+    const usage = new Map<string, ContentUsage>();
+
+    const ensure = (contentId: string) => {
+      const existing = usage.get(contentId);
+      if (existing) return existing;
+      const next = { playlists: [], schedules: [], screens: [] };
+      usage.set(contentId, next);
+      return next;
+    };
+
+    for (const playlist of playlists) {
+      for (const item of playlist.items ?? []) {
+        ensure(item.content_id).playlists.push(playlist.name);
+      }
+    }
+
+    for (const slot of scheduleSlots) {
+      const playlist = playlists.find((entry) => entry.id === slot.playlist_id);
+      if (!playlist) continue;
+      for (const item of playlist.items ?? []) {
+        ensure(item.content_id).schedules.push(slot.name);
+      }
+    }
+
+    for (const screen of screens) {
+      if (screen.default_content_id) {
+        ensure(screen.default_content_id).screens.push(screen.name);
+      }
+      const playlist = screen.playlist_id ? playlists.find((entry) => entry.id === screen.playlist_id) : null;
+      if (playlist) {
+        for (const item of playlist.items ?? []) {
+          ensure(item.content_id).screens.push(screen.name);
+        }
+      }
+    }
+
+    for (const [contentId, value] of usage) {
+      usage.set(contentId, {
+        playlists: uniqueSorted(value.playlists),
+        schedules: uniqueSorted(value.schedules),
+        screens: uniqueSorted(value.screens),
+      });
+    }
+
+    return usage;
+  }, [playlists, scheduleSlots, screens]);
+
+  const deleteItemDetails = deleteId ? allItems.find((item) => item.id === deleteId) ?? null : null;
+  const deleteUsage = deleteId ? contentUsageById.get(deleteId) ?? null : null;
+  const isDeleteBlocked = Boolean(deleteUsage && (
+    deleteUsage.playlists.length > 0 || deleteUsage.schedules.length > 0 || deleteUsage.screens.length > 0
+  ));
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setSelectedFile(file);
+    setDetectedDurationSecs(null);
+    setIsDetectingDuration(false);
+    const detectionRequest = ++durationDetectionRequestRef.current;
     // Autofill name (strip extension)
     const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
     setFormName(nameWithoutExt);
@@ -83,6 +184,23 @@ export default function ContentPage() {
 
     if (isVideoOrAudio) {
       setFormType('Video');
+      setIsDetectingDuration(true);
+      void detectFileMediaDuration(file)
+        .then((duration) => {
+          if (durationDetectionRequestRef.current === detectionRequest) {
+            setDetectedDurationSecs(duration);
+          }
+        })
+        .catch((error) => {
+          if (durationDetectionRequestRef.current === detectionRequest) {
+            showToast(String(error), 'error');
+          }
+        })
+        .finally(() => {
+          if (durationDetectionRequestRef.current === detectionRequest) {
+            setIsDetectingDuration(false);
+          }
+        });
     } else if (isImage) {
       setFormType('Image');
     } else if (isPresentation) {
@@ -117,18 +235,16 @@ export default function ContentPage() {
 
     setIsAdding(true);
     try {
+      const durationSecs = formType === 'Video' && selectedFile
+        ? detectedDurationSecs ?? await detectFileMediaDuration(selectedFile)
+        : 30;
       let filePath: string | undefined = undefined;
       const needsFile = isUploadType || (isWebType && selectedFile);
 
       if (needsFile && selectedFile) {
         showToast('Uploading local asset...', 'info');
-        // Read file bytes
-        const arrayBuffer = await selectedFile.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
-
-        // Save file locally using Tauri backend
         const { contentApi: api } = await import('../../lib/tauri');
-        filePath = await api.saveLocalFile(selectedFile.name, bytes);
+        filePath = await api.saveLocalFile(selectedFile.name, selectedFile);
         if (formType === 'Presentation') {
           showToast('Preparing presentation for screen playback...', 'info');
           filePath = await api.preparePresentation(filePath);
@@ -140,7 +256,7 @@ export default function ContentPage() {
         formType,
         filePath,
         formType === 'WebApp' ? (formUrl || undefined) : undefined,
-        parseInt(formDuration) || 30,
+        durationSecs,
         formTags.split(',').map((t) => t.trim()).filter(Boolean)
       );
 
@@ -149,9 +265,10 @@ export default function ContentPage() {
       setFormName('');
       setFormType('Image');
       setFormUrl('');
-      setFormDuration('30');
       setFormTags('');
       setSelectedFile(null);
+      setDetectedDurationSecs(null);
+      durationDetectionRequestRef.current += 1;
     } catch (err) {
       showToast(`Failed to add content: ${err}`, 'error');
     } finally {
@@ -159,10 +276,39 @@ export default function ContentPage() {
     }
   };
 
+  const handleDetectedDuration = useCallback((id: string, nativeDuration: number) => {
+    let durationSecs: number;
+    try {
+      durationSecs = normalizeMediaDurationSeconds(nativeDuration);
+    } catch {
+      return;
+    }
+    const item = allItems.find((entry) => entry.id === id);
+    if (!item || item.duration_secs === durationSecs || durationUpdatesPendingRef.current.has(id)) return;
+
+    durationUpdatesPendingRef.current.add(id);
+    void updateItemDuration(id, durationSecs)
+      .then(() => {
+        setPreviewItem((current) => (
+          current?.id === id ? { ...current, duration_secs: durationSecs } : current
+        ));
+      })
+      .catch((error) => {
+        console.warn('Failed to update detected video duration:', error);
+      })
+      .finally(() => {
+        durationUpdatesPendingRef.current.delete(id);
+      });
+  }, [allItems, updateItemDuration]);
+
   const handleDelete = async (id: string) => {
-    await deleteItem(id);
-    showToast('Content deleted', 'error');
-    setDeleteId(null);
+    try {
+      await deleteItem(id);
+      showToast('Content deleted', 'error');
+      setDeleteId(null);
+    } catch (err) {
+      showToast(`Failed to delete content: ${err}`, 'error');
+    }
   };
 
   const isUploadType = formType === 'Image' || formType === 'Video' || formType === 'Presentation' || formType === 'Document' || formType === 'Spreadsheet' || formType === 'Ad' || formType === 'Slideshow' || formType === 'WebApp';
@@ -272,7 +418,13 @@ export default function ContentPage() {
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {filtered.map((item) => (
-            <ContentCard key={item.id} item={item} onDelete={setDeleteId} onView={setPreviewItem} />
+            <ContentCard
+              key={item.id}
+              item={item}
+              onDelete={setDeleteId}
+              onView={setPreviewItem}
+              onDurationDetected={handleDetectedDuration}
+            />
           ))}
         </div>
       ) : (
@@ -329,7 +481,7 @@ export default function ContentPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-muted-foreground">
-                      {item.duration_secs}s
+                      {formatMediaDuration(item.duration_secs)}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
@@ -363,16 +515,40 @@ export default function ContentPage() {
       <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete content?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This permanently removes &quot;{items.find((item) => item.id === deleteId)?.name}&quot;.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{isDeleteBlocked ? 'Content is in use' : 'Delete content?'}</AlertDialogTitle>
+            {isDeleteBlocked && deleteUsage ? (
+              <AlertDialogDescription asChild>
+                <div className="space-y-3 text-sm text-muted-foreground">
+                  <p>
+                    &quot;{deleteItemDetails?.name}&quot; cannot be deleted because it is used for playback.
+                    Remove it from these playlists, schedules, or screens first.
+                  </p>
+                  <div className="space-y-1.5">
+                    {deleteUsage.playlists.length > 0 && (
+                      <p><span className="font-medium text-foreground">Playlists:</span> {deleteUsage.playlists.join(', ')}</p>
+                    )}
+                    {deleteUsage.schedules.length > 0 && (
+                      <p><span className="font-medium text-foreground">Schedules:</span> {deleteUsage.schedules.join(', ')}</p>
+                    )}
+                    {deleteUsage.screens.length > 0 && (
+                      <p><span className="font-medium text-foreground">Screens:</span> {deleteUsage.screens.join(', ')}</p>
+                    )}
+                  </div>
+                </div>
+              </AlertDialogDescription>
+            ) : (
+              <AlertDialogDescription>
+                This permanently removes &quot;{deleteItemDetails?.name}&quot;.
+              </AlertDialogDescription>
+            )}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => deleteId && handleDelete(deleteId)}>
-              Delete
-            </AlertDialogAction>
+            {!isDeleteBlocked && (
+              <AlertDialogAction onClick={() => deleteId && handleDelete(deleteId)}>
+                Delete
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -383,6 +559,9 @@ export default function ContentPage() {
         onClose={() => {
           setShowAdd(false);
           setSelectedFile(null);
+          setDetectedDurationSecs(null);
+          setIsDetectingDuration(false);
+          durationDetectionRequestRef.current += 1;
         }}
         title="Add Content"
         actions={
@@ -390,10 +569,13 @@ export default function ContentPage() {
             <Button variant="outline" onClick={() => {
               setShowAdd(false);
               setSelectedFile(null);
+              setDetectedDurationSecs(null);
+              setIsDetectingDuration(false);
+              durationDetectionRequestRef.current += 1;
             }} disabled={isAdding}>
               Cancel
             </Button>
-            <Button onClick={handleAdd} disabled={isAdding}>
+            <Button onClick={handleAdd} disabled={isAdding || isDetectingDuration}>
               {isAdding ? (
                 <>
                   <Loader2 className="mr-2 size-4 animate-spin" />
@@ -410,8 +592,11 @@ export default function ContentPage() {
           <div className="space-y-2">
             <Label>Content Type</Label>
             <Select value={formType} onValueChange={(value) => {
-                setFormType(value);
-                setSelectedFile(null);
+              setFormType(value);
+              setSelectedFile(null);
+              setDetectedDurationSecs(null);
+              setIsDetectingDuration(false);
+              durationDetectionRequestRef.current += 1;
               }}>
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>{contentTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
@@ -439,6 +624,15 @@ export default function ContentPage() {
                       <p className="max-w-[280px] truncate text-sm font-semibold text-foreground">
                         {selectedFile.name}
                       </p>
+                      {formType === 'Video' && (
+                        <p className="mt-1 text-xs font-medium text-primary">
+                          {isDetectingDuration
+                            ? 'Reading video duration...'
+                            : detectedDurationSecs
+                              ? `Duration ${formatMediaDuration(detectedDurationSecs)}`
+                              : 'Duration unavailable'}
+                        </p>
+                      )}
                       <p className="mt-1 text-xs text-muted-foreground">
                         {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB · Click to change
                       </p>
@@ -477,16 +671,6 @@ export default function ContentPage() {
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="content-duration">Duration (seconds)</Label>
-            <Input id="content-duration"
-              type="number"
-              placeholder="30"
-              value={formDuration}
-              onChange={(e) => setFormDuration(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
             <Label htmlFor="content-tags">Tags (comma-separated)</Label>
             <Input id="content-tags"
               placeholder="promo, welcome, lobby"
@@ -523,6 +707,7 @@ export default function ContentPage() {
                   src={previewItem.file_path ? convertFileSrc(previewItem.file_path) : previewItem.url!}
                   controls
                   autoPlay
+                  onLoadedMetadata={(event) => handleDetectedDuration(previewItem.id, event.currentTarget.duration)}
                   className="max-h-[500px] w-full"
                 />
               ) : (
@@ -546,7 +731,7 @@ export default function ContentPage() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Duration</p>
-                <p className="mt-1 font-medium">{previewItem.duration_secs}s</p>
+                <p className="mt-1 font-medium">{formatMediaDuration(previewItem.duration_secs)}</p>
               </div>
               {previewItem.tags && previewItem.tags.length > 0 && (
                 <div className="col-span-2">

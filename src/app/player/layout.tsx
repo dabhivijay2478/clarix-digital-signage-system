@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from 'next';
-import { PRODUCTION_DASHBOARD_CRITICAL_CSS } from '@/components/production-dashboard-critical-styles';
 import { PLAYER_CRITICAL_CSS } from './player-critical-styles';
 import PlayerThemeLock from './PlayerThemeLock';
 
@@ -19,7 +18,7 @@ export default function PlayerLayout({ children }: { children: React.ReactNode }
   return (
     <>
       <PlayerThemeLock />
-      <style dangerouslySetInnerHTML={{ __html: PLAYER_CRITICAL_CSS + PRODUCTION_DASHBOARD_CRITICAL_CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: PLAYER_CRITICAL_CSS }} />
       <div className="mg-player-shell">{children}</div>
     </>
   );

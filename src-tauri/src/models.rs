@@ -493,4 +493,6 @@ pub struct TruckScreenAlert {
     pub next_truck_status: Option<String>,
     pub queue_trucks: Option<Vec<serde_json::Value>>,
     pub queue_gates: Option<Vec<serde_json::Value>>,
+    #[serde(default)]
+    pub display_rotation_secs: Option<u32>,
 }

@@ -14,6 +14,9 @@ import {
   defaultPlaylistItemDayTimes,
   defaultPlaylistItemSchedule,
   formatPlaylistScheduleSummary,
+  formatScheduleTime,
+  getControllerTimeZone,
+  getPlaylistItemDayScheduleWindows,
   normalizePlaylistItemSchedule,
   validatePlaylistItemSchedule,
 } from '../../lib/signage-schedule';
@@ -40,6 +43,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { formatMediaDuration } from '@/lib/media-duration';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -81,9 +85,9 @@ function nextWeekday(day: AppWeekday): AppWeekday {
 function formatTimeRange(range: [number, number]): string {
   const format = (minutes: number) => {
     const clamped = Math.min(minutes, 1439);
-    return `${String(Math.floor(clamped / 60)).padStart(2, '0')}:${String(clamped % 60).padStart(2, '0')}`;
+    return formatScheduleTime(`${String(Math.floor(clamped / 60)).padStart(2, '0')}:${String(clamped % 60).padStart(2, '0')}`);
   };
-  return `${format(range[0])}-${range[1] === 1440 ? '24:00' : format(range[1])}`;
+  return `${format(range[0])}-${range[1] === 1440 ? '12:00 AM' : format(range[1])}`;
 }
 
 function getScheduleDateRange(schedule: PlaylistItemSchedule): { start: string; end: string } {
@@ -130,13 +134,15 @@ function buildPlaylistScheduleWindows(item: PlaylistItem, index: number): Playli
     const daySchedule = schedule.day_times?.[day];
     if (!daySchedule?.enabled) return;
 
-    const ranges = expandDayWindow(daySchedule.start, daySchedule.end);
-    ranges.forEach((range, rangeIndex) => {
-      windows.push({
-        index,
-        day: rangeIndex === 1 ? nextWeekday(day) : day,
-        range,
-        dateRange,
+    getPlaylistItemDayScheduleWindows(daySchedule).forEach((dayWindow) => {
+      const ranges = expandDayWindow(dayWindow.start, dayWindow.end);
+      ranges.forEach((range, rangeIndex) => {
+        windows.push({
+          index,
+          day: rangeIndex === 1 ? nextWeekday(day) : day,
+          range,
+          dateRange,
+        });
       });
     });
   });
@@ -178,6 +184,7 @@ export default function ScreensPage() {
   const { gates, assignments, addGate, removeGate, assignScreenToGates: assignScreenToGatesInStore, getAllAssignedScreenIds, unassignScreenFromAll, getAssignedGatesForScreen, updateGateLoadingDuration } = useGateStore();
   const authUser = useAuthStore((s) => s.user);
   const { hasPermission, isSuperAdmin } = usePermissions();
+  const controllerTimeZone = useMemo(() => getControllerTimeZone(), []);
   const [showAddGate, setShowAddGate] = useState(false);
   const [newGateNumber, setNewGateNumber] = useState('');
   const [selectedGateForAssign, setSelectedGateForAssign] = useState<string | null>(null);
@@ -189,7 +196,7 @@ export default function ScreensPage() {
   const [pickerNewIp, setPickerNewIp] = useState('');
   const [pickerCreating, setPickerCreating] = useState(false);
 
-  const assignedScreenIds = useMemo(() => new Set(getAllAssignedScreenIds()), [assignments, getAllAssignedScreenIds]);
+  const assignedScreenIds = useMemo(() => new Set(getAllAssignedScreenIds()), [getAllAssignedScreenIds]);
   const unassignedScreens = useMemo(() => screens.filter((s) => !assignedScreenIds.has(s.id)), [screens, assignedScreenIds]);
   const [formLocation, setFormLocation] = useState('');
   const [formIp, setFormIp] = useState('');
@@ -201,7 +208,7 @@ export default function ScreensPage() {
   const [editFormLocation, setEditFormLocation] = useState('');
   const [editFormIp, setEditFormIp] = useState('');
   const [editFormOrientation, setEditFormOrientation] = useState('Landscape');
-  const [editFormPurpose, setEditFormPurpose] = useState<ScreenPurpose>('production_dashboard');
+  const [editFormPurpose, setEditFormPurpose] = useState<ScreenPurpose>('truck_gate');
   const [editFormGates, setEditFormGates] = useState<string[]>([]);
   const [editFormDefaultContentId, setEditFormDefaultContentId] = useState('');
 
@@ -241,6 +248,59 @@ export default function ScreensPage() {
   const [itemSchedStartDate, setItemSchedStartDate] = useState('');
   const [itemSchedEndDate, setItemSchedEndDate] = useState('');
   const [itemSchedTransition, setItemSchedTransition] = useState<TransitionEffect>('Fade');
+
+  const updateItemSchedDay = (
+    day: AppWeekday,
+    updater: (current: PlaylistItemDaySchedule) => PlaylistItemDaySchedule
+  ) => {
+    setItemSchedDayTimes((prev) => {
+      const current = prev[day] || {
+        enabled: true,
+        start: '09:00',
+        end: '17:00',
+        windows: [{ start: '09:00', end: '17:00' }],
+      };
+      const next = updater(current);
+      const windows = getPlaylistItemDayScheduleWindows(next);
+      return {
+        ...prev,
+        [day]: {
+          ...next,
+          start: windows[0]?.start || next.start,
+          end: windows[0]?.end || next.end,
+          windows,
+        },
+      };
+    });
+  };
+
+  const updateItemSchedWindow = (
+    day: AppWeekday,
+    index: number,
+    field: 'start' | 'end',
+    value: string
+  ) => {
+    updateItemSchedDay(day, (current) => {
+      const windows = getPlaylistItemDayScheduleWindows(current);
+      windows[index] = { ...(windows[index] || { start: '09:00', end: '17:00' }), [field]: value };
+      return { ...current, windows };
+    });
+  };
+
+  const addItemSchedWindow = (day: AppWeekday) => {
+    updateItemSchedDay(day, (current) => ({
+      ...current,
+      enabled: true,
+      windows: [...getPlaylistItemDayScheduleWindows(current), { start: '09:00', end: '17:00' }],
+    }));
+  };
+
+  const removeItemSchedWindow = (day: AppWeekday, index: number) => {
+    updateItemSchedDay(day, (current) => {
+      const windows = getPlaylistItemDayScheduleWindows(current).filter((_, idx) => idx !== index);
+      return { ...current, windows: windows.length > 0 ? windows : [{ start: current.start, end: current.end }] };
+    });
+  };
 
   const selectedScreen = useMemo(
     () => screens.find((s) => s.id === selectedScreenId) || null,
@@ -314,7 +374,7 @@ export default function ScreensPage() {
       content_id: contentId,
       order: nextOrder,
       override_duration: null,
-      display_schedule: defaultPlaylistItemSchedule()
+      display_schedule: { ...defaultPlaylistItemSchedule(), timezone: controllerTimeZone }
     };
     setLocalPlaylistItems(prev => [...prev, newItem]);
     setHasUnsavedChanges(true);
@@ -373,6 +433,7 @@ export default function ScreensPage() {
       start_date: itemSchedStartDate,
       end_date: itemSchedEndDate,
       transition: itemSchedTransition,
+      timezone: controllerTimeZone,
     };
   };
 
@@ -391,7 +452,7 @@ export default function ScreensPage() {
     items.map((item, index) => ({
       ...item,
       order: index,
-      display_schedule: normalizePlaylistItemSchedule(item.display_schedule),
+      display_schedule: { ...normalizePlaylistItemSchedule(item.display_schedule), timezone: controllerTimeZone },
     }));
 
   const handleSavePlaylist = async () => {
@@ -524,7 +585,7 @@ export default function ScreensPage() {
         1920,
         1080,
         undefined,
-        'production_dashboard',
+        'truck_gate',
         serializeScreenGates(normalizedFormGates)
       );
       if (normalizedFormGates.length > 0) {
@@ -592,7 +653,7 @@ export default function ScreensPage() {
     setEditFormLocation(screen.location || '');
     setEditFormIp(screen.ip_address || '');
     setEditFormOrientation(screen.orientation || 'Landscape');
-    setEditFormPurpose('production_dashboard');
+    setEditFormPurpose(screen.purpose === 'playlist' ? 'truck_gate' : (screen.purpose ?? 'truck_gate'));
     const assignedGates = getAssignedGatesForScreen(screen.id);
     setEditFormGates(
       assignedGates.length > 0 ? assignedGates : parseScreenGates(screen.gate),
@@ -603,10 +664,13 @@ export default function ScreensPage() {
   const handleSaveEdit = async () => {
     if (!editingScreen || !editFormName.trim()) return;
     const normalizedEditGates = normalizeScreenGateSelection(editFormGates);
-    // No gate validation needed — Production Data Display does not require gates
+    if (editFormPurpose === 'truck_gate' && normalizedEditGates.length === 0) {
+      showToast('Please select at least one gate for the truck token display', 'error');
+      return;
+    }
     for (const gateNumber of normalizedEditGates) {
       if (!isValidGateNumber(gateNumber)) {
-        showToast('Gate must use a letter and number, for example D4', 'error');
+        showToast('Gate must be 1-4 letters or numbers, for example E, C, 1, D1, or ABC2', 'error');
         return;
       }
     }
@@ -614,7 +678,7 @@ export default function ScreensPage() {
     try {
       assignScreenToGatesInStore(editingScreen.id, normalizedEditGates);
 
-      const nextDefaultContentId = editFormPurpose === 'production_dashboard'
+      const nextDefaultContentId = editFormPurpose === 'truck_gate'
         ? null
         : editFormDefaultContentId || null;
 
@@ -674,7 +738,7 @@ export default function ScreensPage() {
         mode: hoursMode,
         days: hoursDays,
         blank_when_not_in_use: hoursBlank,
-        timezone: 'Asia/Calcutta',
+        timezone: controllerTimeZone,
       };
       await updateOperatingHours(hoursScreen.id, payload);
       showToast(`Operating hours for "${hoursScreen.name}" updated`, 'success');
@@ -981,7 +1045,7 @@ export default function ScreensPage() {
                             {item.name}
                           </span>
                           <span className="text-[10px] text-muted-foreground/80 mt-0.5 block">
-                            {item.content_type} • {item.duration_secs}s
+                            {item.content_type} • {formatMediaDuration(item.duration_secs)}
                           </span>
                         </div>
                         <div className="text-primary font-bold text-base pr-2 group-hover:scale-125 transition-transform duration-100">
@@ -1002,6 +1066,8 @@ export default function ScreensPage() {
           isOpen={editingItemIndex !== null}
           onClose={() => setEditingItemIndex(null)}
           title="Content Schedule & Rules"
+          contentClassName="sm:max-w-2xl lg:max-w-3xl"
+          bodyClassName="px-4 py-4 sm:px-6 sm:py-5"
           actions={
             <>
               <Button variant="outline" onClick={() => setEditingItemIndex(null)}>
@@ -1013,27 +1079,27 @@ export default function ScreensPage() {
             </>
           }
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', color: 'var(--foreground)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 190px', gap: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '18px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                <span style={{ fontSize: '14px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>This content</span>
+          <div className="flex flex-col gap-5 text-foreground">
+            <div className="grid gap-3 border-b border-border pb-5 md:grid-cols-[minmax(0,1fr)_190px]">
+              <div className="grid gap-2 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-center">
+                <span className="text-sm font-medium text-muted-foreground">This content</span>
                 <select
                   className="input"
                   value={itemSchedTimeRestricted ? 'scheduled' : 'always'}
                   onChange={(e) => setItemSchedTimeRestricted(e.target.value === 'scheduled')}
-                  style={{ width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--foreground)', padding: '8px 12px', fontSize: '13px' }}
+                  style={{ width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--foreground)', padding: '10px 12px', fontSize: '13px' }}
                 >
                   <option value="always" style={{ background: 'var(--bg-primary)' }}>can play whenever playlist runs</option>
                   <option value="scheduled" style={{ background: 'var(--bg-primary)' }}>is allowed during these times</option>
                 </select>
               </div>
               <div>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '5px' }}>Transition</span>
+                <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Transition</span>
                 <select
                   className="input"
                   value={itemSchedTransition}
                   onChange={(e) => setItemSchedTransition(e.target.value as TransitionEffect)}
-                  style={{ background: 'var(--bg-tertiary)', color: 'var(--foreground)', border: '1px solid var(--border)', fontSize: '13px' }}
+                  style={{ width: '100%', background: 'var(--bg-tertiary)', color: 'var(--foreground)', border: '1px solid var(--border)', fontSize: '13px', padding: '10px 12px' }}
                 >
                   <option value="Fade" style={{ background: 'var(--bg-primary)' }}>Fade</option>
                   <option value="Slide" style={{ background: 'var(--bg-primary)' }}>Slide</option>
@@ -1044,82 +1110,95 @@ export default function ScreensPage() {
             </div>
 
             {itemSchedTimeRestricted && (
-              <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '18px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div className="rounded-xl border border-border/70 bg-muted/10 p-3 sm:p-4">
+                <div className="flex max-h-[52vh] flex-col gap-3 overflow-y-auto pr-1">
                   {APP_WEEKDAYS.map((day) => {
                     const daySchedule = itemSchedDayTimes[day] || { enabled: true, start: '09:00', end: '17:00' };
+                    const dayWindows = getPlaylistItemDayScheduleWindows(daySchedule);
                     return (
-                      <div key={day} style={{ display: 'grid', gridTemplateColumns: '140px 1fr 1fr', alignItems: 'center', gap: '12px' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', fontWeight: 600, color: daySchedule.enabled ? 'var(--foreground)' : 'var(--text-muted)' }}>
+                      <div key={day} className="grid gap-3 rounded-lg border border-border/50 bg-background/35 p-3 lg:grid-cols-[140px_minmax(0,1fr)] lg:items-start">
+                        <label className={cn('flex items-center gap-3 text-sm font-semibold lg:pt-2', daySchedule.enabled ? 'text-foreground' : 'text-muted-foreground')}>
                           <input
                             type="checkbox"
                             checked={daySchedule.enabled}
-                            onChange={(e) => {
-                              setItemSchedDayTimes((prev) => ({
-                                ...prev,
-                                [day]: { ...prev[day], enabled: e.target.checked },
-                              }));
-                            }}
-                            style={{ width: '16px', height: '16px', accentColor: 'var(--accent-primary)' }}
+                            onChange={(e) => updateItemSchedDay(day, (current) => ({ ...current, enabled: e.target.checked }))}
+                            className="size-4 shrink-0 accent-primary"
                           />
                           {ITEM_SCHEDULE_DAY_LABELS[day]}
                         </label>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '7px 10px', opacity: daySchedule.enabled ? 1 : 0.45 }}>
-                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Start</span>
-                          <input
-                            type="time"
-                            value={daySchedule.start}
+                        <div className={cn('flex flex-col gap-2', !daySchedule.enabled && 'opacity-50')}>
+                          {dayWindows.map((window, windowIndex) => (
+                            <div key={`${day}-${windowIndex}`} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px] sm:items-center">
+                              <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
+                                <span className="shrink-0 text-[11px] text-muted-foreground">Start</span>
+                                <input
+                                  type="time"
+                                  value={window.start}
+                                  disabled={!daySchedule.enabled}
+                                  onChange={(e) => updateItemSchedWindow(day, windowIndex, 'start', e.target.value)}
+                                  className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-foreground outline-none [color-scheme:dark]"
+                                />
+                              </div>
+                              <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
+                                <span className="shrink-0 text-[11px] text-muted-foreground">End</span>
+                                <input
+                                  type="time"
+                                  value={window.end}
+                                  disabled={!daySchedule.enabled}
+                                  onChange={(e) => updateItemSchedWindow(day, windowIndex, 'end', e.target.value)}
+                                  className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-foreground outline-none [color-scheme:dark]"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeItemSchedWindow(day, windowIndex)}
+                                disabled={!daySchedule.enabled || dayWindows.length === 1}
+                                title="Remove slot"
+                                className={cn(
+                                  'grid h-10 w-full place-items-center rounded-lg border border-border bg-background/40 transition-colors sm:w-10',
+                                  dayWindows.length === 1 ? 'cursor-not-allowed text-muted-foreground' : 'text-destructive hover:bg-destructive/10',
+                                )}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => addItemSchedWindow(day)}
                             disabled={!daySchedule.enabled}
-                            onChange={(e) => {
-                              setItemSchedDayTimes((prev) => ({
-                                ...prev,
-                                [day]: { ...prev[day], start: e.target.value },
-                              }));
-                            }}
-                            style={{ background: 'transparent', border: 'none', color: 'var(--foreground)', width: '100%', fontSize: '13px', outline: 'none', colorScheme: 'dark' }}
-                          />
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '7px 10px', opacity: daySchedule.enabled ? 1 : 0.45 }}>
-                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>End</span>
-                          <input
-                            type="time"
-                            value={daySchedule.end}
-                            disabled={!daySchedule.enabled}
-                            onChange={(e) => {
-                              setItemSchedDayTimes((prev) => ({
-                                ...prev,
-                                [day]: { ...prev[day], end: e.target.value },
-                              }));
-                            }}
-                            style={{ background: 'transparent', border: 'none', color: 'var(--foreground)', width: '100%', fontSize: '13px', outline: 'none', colorScheme: 'dark' }}
-                          />
+                            className="inline-flex w-fit items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Plus size={14} />
+                            Add slot
+                          </button>
                         </div>
                       </div>
                     );
                   })}
                 </div>
-                <p style={{ margin: '12px 0 0', fontSize: '11px', color: 'var(--text-muted)' }}>
-                  Content timezone: Asia/Calcutta. Overnight windows like 10:00 PM to 6:00 AM are supported.
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Content timezone: {controllerTimeZone}. Overnight windows like 10:00 PM to 6:00 AM are supported.
                 </p>
               </div>
             )}
 
             {/* Periodic Date Range */}
-            <div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: 600, fontSize: '14px', marginBottom: '12px' }}>
+            <div className="rounded-xl border border-border/70 bg-muted/10 p-4">
+              <label className="mb-3 flex cursor-pointer items-center gap-3 text-sm font-semibold">
                 <input
                   type="checkbox"
                   checked={itemSchedDateRestricted}
                   onChange={(e) => setItemSchedDateRestricted(e.target.checked)}
-                  style={{ width: '16px', height: '16px', accentColor: 'var(--accent-primary)' }}
+                  className="size-4 accent-primary"
                 />
                 Restrict display by date range (periodic)
               </label>
 
               {itemSchedDateRestricted && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', paddingLeft: '26px' }}>
+                <div className="grid gap-3 sm:grid-cols-2 sm:pl-7">
                   <div>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Start Date</span>
+                    <span className="mb-1 block text-[11px] text-muted-foreground">Start Date</span>
                     <input
                       type="date"
                       className="input"
@@ -1129,7 +1208,7 @@ export default function ScreensPage() {
                     />
                   </div>
                   <div>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>End Date</span>
+                    <span className="mb-1 block text-[11px] text-muted-foreground">End Date</span>
                     <input
                       type="date"
                       className="input"
@@ -1194,9 +1273,29 @@ export default function ScreensPage() {
                   }
                 }}
               >
-                <option value="production_dashboard">Production Data Display</option>
+                <option value="truck_gate">Truck Token Display</option>
               </select>
             </div>
+            {editFormPurpose === 'truck_gate' && (
+              <ScreenGateSelect
+                gateOptions={gateOptions}
+                value={editFormGates}
+                onChange={setEditFormGates}
+                required
+              />
+            )}
+            {editFormPurpose !== 'truck_gate' && (
+              <div>
+                <label className="input-label">Default content</label>
+                <select className="input" value={editFormDefaultContentId} onChange={(event) => setEditFormDefaultContentId(event.target.value)}>
+                  <option value="">None</option>
+                  {contentItems.map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-muted-foreground">Shown when no scheduled playlist item is active.</p>
+              </div>
+            )}
           </div>
         </Modal>
 
@@ -1289,7 +1388,7 @@ export default function ScreensPage() {
             </div>
 
             <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px' }}>
-              Screen timezone: Asia/Calcutta
+              Screen timezone: {controllerTimeZone}
             </div>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', marginTop: '8px', fontSize: '13px' }}>
@@ -1356,7 +1455,6 @@ export default function ScreensPage() {
                     <th className="px-4 py-3 text-left font-medium">Name</th>
                     <th className="px-4 py-3 text-left font-medium">Location</th>
                     <th className="px-4 py-3 text-left font-medium">Gates</th>
-                    <th className="px-4 py-3 text-left font-medium">Status</th>
                     <th className="px-4 py-3 text-right font-medium">Actions</th>
                   </tr>
                 </thead>
@@ -1377,14 +1475,6 @@ export default function ScreensPage() {
                           getAssignedGatesForScreen(screen.id).length > 0
                             ? getAssignedGatesForScreen(screen.id)
                             : parseScreenGates(screen.gate),
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge variant={screen.is_online ? 'default' : 'secondary'} className="text-xs">
-                          {screen.is_online ? 'Online' : 'Offline'}
-                        </Badge>
-                        {syncingScreenIds.includes(screen.id) && (
-                          <span className="ml-2 text-xs text-primary">Syncing...</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -1439,7 +1529,7 @@ export default function ScreensPage() {
             <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-border rounded-lg">
               <Monitor className="size-10 text-muted-foreground/40 mb-3" />
               <p className="font-medium text-foreground">No gates configured</p>
-              <p className="text-sm text-muted-foreground mt-1">Add a gate to assign screens (e.g. d1, d2).</p>
+              <p className="text-sm text-muted-foreground mt-1">Add a gate to assign screens (e.g. E, C, 1, D1, ABC2).</p>
             </div>
           ) : (
             <div className="border border-border rounded-lg overflow-hidden">
@@ -1726,7 +1816,7 @@ export default function ScreensPage() {
           </div>
 
           <div className="text-[10px] text-muted-foreground border-t border-border/50 pt-2 font-mono">
-            Screen timezone: Asia/Calcutta
+            Screen timezone: {controllerTimeZone}
           </div>
 
           <label className="flex items-center gap-2 cursor-pointer text-xs font-medium">
@@ -1752,7 +1842,7 @@ export default function ScreensPage() {
             <Button onClick={() => {
               const trimmed = newGateNumber.trim()
               if (!isValidGateNumber(trimmed)) {
-                showToast('Gate number must start with a letter followed by digits (e.g. d1, g10)', 'error')
+                showToast('Gate must be 1-4 letters or numbers (e.g. E, C, 1, D1, ABC2)', 'error')
                 return
               }
               const result = addGate(trimmed)
@@ -1775,12 +1865,12 @@ export default function ScreensPage() {
             <Input
               value={newGateNumber}
               onChange={(e) => setNewGateNumber(e.target.value)}
-              placeholder="e.g., d1, d2, g10"
+              placeholder="e.g., E, C, 1, D1, ABC2"
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
             />
             <p className="text-xs text-muted-foreground">
-              Must start with a letter and end with number(s) — e.g. <code className="rounded bg-muted px-1">d1</code>, <code className="rounded bg-muted px-1">d2</code>, <code className="rounded bg-muted px-1">g10</code>
+              Use 1-4 letters or numbers, e.g. <code className="rounded bg-muted px-1">E</code>, <code className="rounded bg-muted px-1">C</code>, <code className="rounded bg-muted px-1">1</code>, <code className="rounded bg-muted px-1">D1</code>, <code className="rounded bg-muted px-1">ABC2</code>.
             </p>
           </div>
         </div>

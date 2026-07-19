@@ -9,12 +9,26 @@ import type { ScreenPurpose } from '@/lib/types'
 
 export interface Gate {
   id: string
-  number: string // e.g. "d1", "d2", "g10" — letter prefix + numeric suffix
+  number: string // e.g. "e", "c", "1", "d1", "abc2"
   purpose: ScreenPurpose
   productionDashboardId: string | null
   playlistId: string | null
   loadingDurationMins: number
 }
+
+/** Preset intervals for rotating between loading and waiting truck display views. */
+export const TRUCK_DISPLAY_ROTATION_OPTIONS = [
+  { value: 5, label: '5 seconds' },
+  { value: 8, label: '8 seconds' },
+  { value: 10, label: '10 seconds' },
+  { value: 15, label: '15 seconds' },
+  { value: 20, label: '20 seconds' },
+  { value: 30, label: '30 seconds' },
+  { value: 45, label: '45 seconds' },
+  { value: 60, label: '1 minute' },
+] as const
+
+export const DEFAULT_TRUCK_DISPLAY_ROTATION_SECS = 8
 
 // gate number → array of screen IDs assigned to that gate
 export type GateScreenAssignments = Record<string, string[]>
@@ -32,9 +46,9 @@ function uid(): string {
   })
 }
 
-/** Gate number must start with a letter and be followed by one or more digits (case-insensitive). e.g. d1, D2, g10 */
+/** Gate codes are short plant identifiers, e.g. e, c, 1, d1, abc2. */
 export function isValidGateNumber(value: string): boolean {
-  return /^[a-zA-Z]\d+$/.test(value.trim())
+  return /^[a-zA-Z0-9]{1,4}$/.test(value.trim())
 }
 
 /** Normalize gate number to lowercase */
@@ -47,6 +61,8 @@ export function normalizeGateNumber(value: string): string {
 interface GateStore {
   gates: Gate[]
   assignments: GateScreenAssignments // gateNumber → screenIds[]
+  /** Seconds between loading ↔ waiting views on truck token displays. */
+  displayRotationSecs: number
 
   addGate: (number: string) => Gate | null   // returns null if duplicate or invalid
   removeGate: (id: string) => void
@@ -65,6 +81,7 @@ interface GateStore {
     playlistId: string | null
   ) => void
   updateGateLoadingDuration: (gateNumber: string, loadingDurationMins: number) => void
+  updateDisplayRotationSecs: (displayRotationSecs: number) => void
 }
 
 // ── Store ────────────────────────────────────────────────────────────────────
@@ -74,6 +91,7 @@ export const useGateStore = create<GateStore>()(
     (set, get) => ({
       gates: [], // No default gates - user adds them manually
       assignments: {},
+      displayRotationSecs: DEFAULT_TRUCK_DISPLAY_ROTATION_SECS,
 
       addGate: (number) => {
         const normalized = normalizeGateNumber(number)
@@ -199,14 +217,21 @@ export const useGateStore = create<GateStore>()(
           ),
         }))
       },
+
+      updateDisplayRotationSecs: (displayRotationSecs) => {
+        const safeSecs = TRUCK_DISPLAY_ROTATION_OPTIONS.some((option) => option.value === displayRotationSecs)
+          ? displayRotationSecs
+          : DEFAULT_TRUCK_DISPLAY_ROTATION_SECS
+        set({ displayRotationSecs: safeSecs })
+      },
     }),
     {
       name: 'mg-enterprise-gates',
-      version: 3, // Adds per-gate loading duration
+      version: 4, // Adds truck display loading/waiting rotation interval
       migrate: (persistedState: any, version: number) => {
         // Clear all gates on version upgrade to remove default D4/D5
         if (version < 2) {
-          return { gates: [], assignments: {} }
+          return { gates: [], assignments: {}, displayRotationSecs: DEFAULT_TRUCK_DISPLAY_ROTATION_SECS }
         }
         if (version < 3) {
           return {
@@ -215,6 +240,13 @@ export const useGateStore = create<GateStore>()(
               ...gate,
               loadingDurationMins: gate.loadingDurationMins ?? 30,
             })),
+            displayRotationSecs: DEFAULT_TRUCK_DISPLAY_ROTATION_SECS,
+          }
+        }
+        if (version < 4) {
+          return {
+            ...persistedState,
+            displayRotationSecs: DEFAULT_TRUCK_DISPLAY_ROTATION_SECS,
           }
         }
         return persistedState

@@ -7,11 +7,13 @@ import type { ContentItem } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { formatMediaDuration } from '@/lib/media-duration'
 
 interface ContentCardProps {
   item: ContentItem
   onDelete: (id: string) => void
   onView?: (item: ContentItem) => void
+  onDurationDetected?: (id: string, duration: number) => void
 }
 
 const typeConfig: Record<string, {
@@ -39,7 +41,7 @@ const fallbackConfig = {
   label: 'File',
 }
 
-function ContentCard({ item, onDelete, onView }: ContentCardProps) {
+function ContentCard({ item, onDelete, onView, onDurationDetected }: ContentCardProps) {
   const { id, name, content_type, url, duration_secs, tags } = item
   const cfg = typeConfig[content_type] ?? fallbackConfig
   const IconComponent = cfg.icon
@@ -69,6 +71,7 @@ function ContentCard({ item, onDelete, onView }: ContentCardProps) {
             className="size-full object-contain"
             muted
             preload="metadata"
+            onLoadedMetadata={(event) => onDurationDetected?.(id, event.currentTarget.duration)}
           />
         ) : (
           <IconComponent className={cn('size-8 opacity-60', cfg.iconColor)} />
@@ -142,7 +145,7 @@ function ContentCard({ item, onDelete, onView }: ContentCardProps) {
           </div>
           <span className="flex items-center gap-0.5 text-[10px] font-mono text-muted-foreground shrink-0 ml-1">
             <Clock className="size-2.5" />
-            {duration_secs}s
+            {formatMediaDuration(duration_secs)}
           </span>
         </div>
       </div>

@@ -13,6 +13,8 @@ import {
   Upload,
   ArrowUp,
   ArrowDown,
+  ArrowRight,
+  Download,
   Timer,
   CheckCircle2,
   CalendarDays,
@@ -22,7 +24,7 @@ import { useTrucks } from '@/hooks/useTrucks'
 import { useScreens } from '@/hooks/useScreens'
 import { showToast } from '@/components/Toast'
 import Modal from '@/components/Modal'
-import { customConfirm, productionApi, truckAlertsApi, trucksApi } from '@/lib/tauri'
+import { customConfirm, databaseApi, productionApi, truckAlertsApi, trucksApi } from '@/lib/tauri'
 import { formatDateTime } from '@/lib/utils'
 import {
   createTruckScreenAlert,
@@ -43,8 +45,14 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { ProductionImportResult, ProductionRow, TruckDispatchSummary, TruckScreenAlert, Truck as TruckType } from '@/lib/types'
-import { useGateStore, isValidGateNumber, normalizeGateNumber } from '@/store/gateStore'
+import {
+  useGateStore,
+  isValidGateNumber,
+  normalizeGateNumber,
+  TRUCK_DISPLAY_ROTATION_OPTIONS,
+} from '@/store/gateStore'
 import { cn } from '@/lib/utils'
+import { buildDispatchedTrucksCsv } from '@/lib/truck-csv'
 
 // ── Compact Stat Card ──────────────────────────────────────────────────────
 
@@ -96,6 +104,33 @@ const excelExtensions = new Set(['xlsx', 'xls', 'xlsm', 'xlsb'])
 type TruckImportRow = {
   registration_number: string
   gate_no: string
+  delivery_batch_code: string | null
+}
+
+function getGateColorClass(gateNo: string | null | undefined): string {
+  if (!gateNo) {
+    return 'bg-zinc-500/10 text-zinc-400 border-zinc-500/15'
+  }
+  const cleanGate = gateNo.trim().toUpperCase()
+  
+  let hash = 0
+  for (let i = 0; i < cleanGate.length; i++) {
+    hash = cleanGate.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  
+  const colors = [
+    'bg-emerald-500/10 text-emerald-400 border-emerald-500/15',
+    'bg-cyan-500/10 text-cyan-400 border-cyan-500/15',
+    'bg-indigo-500/10 text-indigo-400 border-indigo-500/15',
+    'bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/15',
+    'bg-amber-500/10 text-amber-400 border-amber-500/15',
+    'bg-rose-500/10 text-rose-400 border-rose-500/15',
+    'bg-sky-500/10 text-sky-400 border-sky-500/15',
+    'bg-orange-500/10 text-orange-400 border-orange-500/15',
+  ]
+  
+  const index = Math.abs(hash) % colors.length
+  return colors[index]
 }
 
 function getGateColorClass(gateNo: string | null | undefined): string {
@@ -125,11 +160,14 @@ function getGateColorClass(gateNo: string | null | undefined): string {
 }
 
 function makeGateNormalizer(configuredGates: string[]) {
+  const gatesByNormalizedNumber = new Map(
+    configuredGates.map((gate) => [normalizeGateNumber(gate), normalizeGateNumber(gate)])
+  )
+
   return function normalizeGateNo(value: string | null | undefined): string {
-    const raw = (value ?? '').trim().toLowerCase()
+    const raw = normalizeGateNumber(value ?? '')
     if (!raw) return ''
-    if (configuredGates.length === 0) return raw
-    return configuredGates.map((g) => g.toLowerCase()).includes(raw) ? raw : raw
+    return gatesByNormalizedNumber.get(raw) ?? raw
   }
 }
 
@@ -157,8 +195,36 @@ function getImportValue(row: Record<string, unknown>, names: string[]): string {
   return ''
 }
 
+function getGateFromDeliveryBatch(value: string): string {
+  const match = value.trim().match(/[a-z0-9]$/i)
+  return match ? match[0].toLowerCase() : ''
+}
+
+function suggestGateForBatchCode(batchCode: string, configuredGates: string[]): string {
+  const normalizedCode = normalizeGateNumber(batchCode)
+  const normalizedGates = configuredGates.map(normalizeGateNumber)
+  const exactMatch = normalizedGates.find((gate) => gate === normalizedCode)
+  if (exactMatch) return exactMatch
+
+  const prefixMatches = normalizedGates.filter((gate) => gate.startsWith(normalizedCode))
+  return prefixMatches.length === 1 ? prefixMatches[0] : ''
+}
+
 function mapImportRecordToTruck(row: Record<string, unknown>, normalizeGateNo: (v: string) => string): TruckImportRow {
-  const gate = normalizeGateNo(getImportValue(row, ['gate_no', 'gate', 'gate_number', 'gateno']))
+  const explicitGate = getImportValue(row, ['gate_no', 'gate', 'gate_number', 'gateno'])
+  const deliveryBatchGate = getGateFromDeliveryBatch(getImportValue(row, [
+    'del.batch',
+    'del_batch',
+    'del batch',
+    'del.bacthc',
+    'del_bacthc',
+    'del bacthc',
+    'delivery_batch',
+    'delivery batch',
+    'delivery_batch_no',
+    'delivery batch no',
+    'batch',
+  ]))
   return {
     registration_number: getImportValue(row, [
       'registration_number',
@@ -167,11 +233,19 @@ function mapImportRecordToTruck(row: Record<string, unknown>, normalizeGateNo: (
       'reg_number',
       'vehicle_no',
       'vehicle_number',
+      'vehicle',
+      'vechical_number',
+      'vechical number',
+      'vechicle_number',
+      'vechicle number',
+      'vehical_number',
+      'vehical number',
       'truck_no',
       'truck_number',
       'number',
     ]),
-    gate_no: gate || '',
+    gate_no: explicitGate ? normalizeGateNo(explicitGate) : '',
+    delivery_batch_code: explicitGate ? null : deliveryBatchGate || null,
   }
 }
 
@@ -271,7 +345,7 @@ export default function TrucksPage() {
     moveTruck,
   } = useTrucks()
 
-  const { gates } = useGateStore()
+  const { gates, displayRotationSecs, updateDisplayRotationSecs } = useGateStore()
   const { screens } = useScreens()
 
   const normalizeGateNo = useMemo(() => makeGateNormalizer(gates.map((g) => g.number)), [gates])
@@ -289,7 +363,10 @@ export default function TrucksPage() {
   const [importPreviewData, setImportPreviewData] = useState<Array<{
     registration_number: string
     gate_no: string
+    delivery_batch_code: string | null
   }>>([])
+  const [importGateMappings, setImportGateMappings] = useState<Record<string, string>>({})
+  const [isExportingTrucks, setIsExportingTrucks] = useState(false)
   const didSyncActiveSnapshot = useRef(false)
 
   const [fRegNo, setFRegNo] = useState('')
@@ -313,6 +390,16 @@ export default function TrucksPage() {
     void trucksApi.saveActiveSnapshot(trucks).catch((error) => {
       console.warn('Failed to sync active truck snapshot:', error)
     })
+  }, [trucks])
+
+  useEffect(() => {
+    if (trucks.length === 0) return
+    const timer = setTimeout(() => {
+      void trucksApi.saveActiveSnapshot(trucks).catch((error) => {
+        console.warn('Failed to refresh active truck snapshot:', error)
+      })
+    }, 500)
+    return () => clearTimeout(timer)
   }, [trucks])
 
   const resetTruckForm = () => {
@@ -407,6 +494,7 @@ export default function TrucksPage() {
           number: gate.number,
           loadingDurationMins: gate.loadingDurationMins,
         })),
+        display_rotation_secs: displayRotationSecs,
       }
       await truckAlertsApi.publish(alert)
       setLastAlert(alert)
@@ -454,21 +542,74 @@ export default function TrucksPage() {
       }
 
       if (parsed.length === 0) {
-        showToast('No valid truck records found. Ensure truck_number and gate columns exist.', 'error')
+        showToast('No valid truck records found. Use truck_number/gate or vehicle_number/del.batch columns.', 'error')
         return
       }
 
+      const configuredGateNumbers = gates.map((gate) => gate.number)
+      const batchCodes = [...new Set(
+        parsed
+          .map((row) => row.delivery_batch_code)
+          .filter((code): code is string => Boolean(code))
+      )]
+      setImportGateMappings(Object.fromEntries(
+        batchCodes.map((code) => [code, suggestGateForBatchCode(code, configuredGateNumbers)])
+      ))
       setImportPreviewData(parsed)
       setShowImportPreview(true)
     } catch (error) {
       showToast(`Import failed: ${error instanceof Error ? error.message : String(error)}`, 'error')
     }
-  }, [])
+  }, [gates, normalizeGateNo])
+
+  const importBatchCodes = useMemo(
+    () => [...new Set(
+      importPreviewData
+        .map((row) => row.delivery_batch_code)
+        .filter((code): code is string => Boolean(code))
+    )].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+    [importPreviewData]
+  )
+
+  const configuredImportGateNumbers = useMemo(
+    () => new Set(gates.map((gate) => normalizeGateNumber(gate.number))),
+    [gates]
+  )
+
+  const resolvedImportPreviewData = useMemo(
+    () => importPreviewData.map((row) => {
+      const mappedGate = row.delivery_batch_code
+        ? normalizeGateNumber(importGateMappings[row.delivery_batch_code] ?? '')
+        : normalizeGateNumber(row.gate_no)
+      return {
+        ...row,
+        gate_no: configuredImportGateNumbers.has(mappedGate) ? mappedGate : '',
+      }
+    }),
+    [configuredImportGateNumbers, importGateMappings, importPreviewData]
+  )
+
+  const unresolvedImportCount = useMemo(
+    () => resolvedImportPreviewData.filter((row) => !row.gate_no).length,
+    [resolvedImportPreviewData]
+  )
+
+  const closeImportPreview = () => {
+    setShowImportPreview(false)
+    setImportPreviewData([])
+    setImportGateMappings({})
+  }
 
   const handleConfirmImport = () => {
+    if (unresolvedImportCount > 0) {
+      showToast('Map every delivery batch code to a configured gate before importing.', 'error')
+      return
+    }
+
     const count = importTrucks(
-      importPreviewData.map((d) => ({
-        ...d,
+      resolvedImportPreviewData.map((d) => ({
+        registration_number: d.registration_number,
+        gate_no: d.gate_no,
         is_waiting: true,
         is_loading: false,
         is_in: false,
@@ -480,8 +621,78 @@ export default function TrucksPage() {
       }))
     )
     showToast(`${count} truck${count !== 1 ? 's' : ''} imported successfully`, 'success')
-    setImportPreviewData([])
-    setShowImportPreview(false)
+    closeImportPreview()
+  }
+
+  const handleExportTruckCsv = async () => {
+    if (isExportingTrucks) return
+    setIsExportingTrucks(true)
+
+    try {
+      const recordsById = new Map<string, Record<string, unknown>>()
+      const addRecords = (rows: Record<string, unknown>[]) => {
+        rows.forEach((row, index) => {
+          const registrationNumber = stringifyImportValue(row.registration_number)
+          if (!registrationNumber) return
+          const key = stringifyImportValue(row.id)
+            || `${registrationNumber}:${stringifyImportValue(row.out_at)}:${index}`
+          recordsById.set(key, row)
+        })
+      }
+
+      try {
+        const dispatchedTable = await databaseApi.getTableData('dispatched_trucks')
+        addRecords(dispatchedTable.rows)
+      } catch (error) {
+        console.warn('Database dispatched-truck export fell back to the live truck store:', error)
+      }
+
+      addRecords(
+        trucks
+          .filter((truck) => truck.is_out)
+          .map((truck) => ({ ...truck }) as Record<string, unknown>)
+      )
+
+      const records = [...recordsById.values()].filter((row) => Boolean(row.out_at || row.is_out))
+      if (records.length === 0) {
+        showToast('No dispatched truck records are available to export.', 'error')
+        return
+      }
+
+      const csvContent = buildDispatchedTrucksCsv(records)
+      const filename = 'dispatched_trucks_export.csv'
+      const tauriWindow = window as typeof window & { __TAURI_INTERNALS__?: unknown }
+
+      if (tauriWindow.__TAURI_INTERNALS__) {
+        const { invoke } = await import('@tauri-apps/api/core')
+        const savePath = await invoke<string | null>('plugin:dialog|save', {
+          options: {
+            title: 'Export Dispatched Trucks',
+            defaultPath: filename,
+            filters: [{ name: 'CSV', extensions: ['csv'] }],
+          },
+        })
+        if (!savePath) return
+        await databaseApi.saveTextFile(savePath, csvContent)
+      } else {
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = filename
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        URL.revokeObjectURL(url)
+      }
+
+      showToast(`${records.length} dispatched truck record${records.length !== 1 ? 's' : ''} exported`, 'success')
+    } catch (error) {
+      console.error('Failed to export truck records:', error)
+      showToast(`Truck CSV export failed: ${error instanceof Error ? error.message : String(error)}`, 'error')
+    } finally {
+      setIsExportingTrucks(false)
+    }
   }
 
   const allGateNumbers = useMemo(() => {
@@ -545,7 +756,7 @@ export default function TrucksPage() {
               </SelectContent>
             </Select>
           ) : (
-            <Input placeholder="e.g., d1" value={fGateNo} onChange={(e) => setFGateNo(e.target.value)} />
+            <Input placeholder="e.g., E, C, 1, D1" value={fGateNo} onChange={(e) => setFGateNo(e.target.value)} />
           )}
         </div>
       </div>
@@ -652,6 +863,26 @@ export default function TrucksPage() {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="display-rotation" className="sr-only">
+                Display change interval
+              </Label>
+              <Select
+                value={String(displayRotationSecs)}
+                onValueChange={(value) => updateDisplayRotationSecs(Number(value))}
+              >
+                <SelectTrigger id="display-rotation" className="h-9 w-[210px] border-border/60 bg-card/60">
+                  <SelectValue placeholder="Display change time" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TRUCK_DISPLAY_ROTATION_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={String(option.value)}>
+                      Change every {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <input
               ref={fileInputRef}
               type="file"
@@ -664,6 +895,15 @@ export default function TrucksPage() {
             </Button>
             <Button onClick={() => { resetTruckForm(); setShowAddTruck(true) }}>
               <Plus className="mr-1 size-4" /> Add Truck
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => void handleExportTruckCsv()}
+              disabled={isExportingTrucks}
+              className="border-border/60"
+            >
+              <Download className="mr-1.5 size-4" />
+              {isExportingTrucks ? 'Exporting...' : 'Export CSV'}
             </Button>
           </div>
         </div>
@@ -700,11 +940,10 @@ export default function TrucksPage() {
                     <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Status</TableHead>
                     <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wide">Move</TableHead>
                     <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Gate</TableHead>
-                    <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Est. Wait</TableHead>
                     <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wide">Waiting</TableHead>
                     <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wide">Loading In</TableHead>
                     <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wide">Loading Out</TableHead>
-                    <TableHead className="w-[100px] text-[11px] font-semibold uppercase tracking-wide">Actions</TableHead>
+                    <TableHead className="w-[120px] text-[11px] font-semibold uppercase tracking-wide">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -729,7 +968,7 @@ export default function TrucksPage() {
                     return (
                       <TableRow
                         key={truck.id}
-                        className="cursor-pointer hover:bg-muted/40 transition-colors border-border/40 group"
+                        className="cursor-pointer hover:bg-muted/40 transition-colors border-border/40"
                         onClick={() => setSelectedTruckForDetails(truck)}
                       >
                         <TableCell className="text-muted-foreground font-mono text-xs">
@@ -761,40 +1000,38 @@ export default function TrucksPage() {
                             {statusLabel.toLowerCase()}
                           </Badge>
                         </TableCell>
-                        <TableCell>
-                          <span className="font-mono text-xs font-semibold text-muted-foreground">
-                            {statusLabel === 'Waiting'
-                              ? formatQueueDuration(getEstimatedWaitMinsForTruck(trucks, truck, gateQueueSettings))
-                              : 'Now'}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                          {isWaiting ? (
-                            <div className="flex items-center justify-center gap-0.5">
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                className="size-6 p-0 opacity-60 hover:opacity-100"
-                                disabled={!canMoveUp}
-                                onClick={() => moveTruck(truck.id, 'up')}
-                                title="Move Up"
-                              >
-                                <ArrowUp className="size-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                className="size-6 p-0 opacity-60 hover:opacity-100"
-                                disabled={!canMoveDown}
-                                onClick={() => moveTruck(truck.id, 'down')}
-                                title="Move Down"
-                              >
-                                <ArrowDown className="size-3" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground/30 text-xs">—</span>
-                          )}
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center gap-2">
+                            <span className="font-mono text-xs font-semibold text-muted-foreground min-w-[3rem] text-center">
+                              {statusLabel === 'Waiting'
+                                ? formatQueueDuration(getEstimatedWaitMinsForTruck(trucks, truck, gateQueueSettings))
+                                : 'Now'}
+                            </span>
+                            {isWaiting ? (
+                              <div className="flex items-center gap-0.5">
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="size-6 p-0"
+                                  disabled={!canMoveUp}
+                                  onClick={() => moveTruck(truck.id, 'up')}
+                                  title="Move Up"
+                                >
+                                  <ArrowUp className="size-3" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="size-6 p-0"
+                                  disabled={!canMoveDown}
+                                  onClick={() => moveTruck(truck.id, 'down')}
+                                  title="Move Down"
+                                >
+                                  <ArrowDown className="size-3" />
+                                </Button>
+                              </div>
+                            ) : null}
+                          </div>
                         </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           {truck.gate_no ? (
@@ -833,7 +1070,7 @@ export default function TrucksPage() {
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              className="size-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="size-7"
                               onClick={() => setSelectedTruckForDetails(truck)}
                             >
                               <Eye className="size-3.5" />
@@ -843,7 +1080,7 @@ export default function TrucksPage() {
                                 <Button
                                   variant="ghost"
                                   size="icon-sm"
-                                  className="size-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="size-7"
                                   onClick={() => openEditTruck(truck.id)}
                                 >
                                   <Edit2 className="size-3.5" />
@@ -851,7 +1088,7 @@ export default function TrucksPage() {
                                 <Button
                                   variant="ghost"
                                   size="icon-sm"
-                                  className="size-7 text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="size-7 text-destructive hover:bg-destructive/10"
                                   onClick={() => handleDeleteTruck(truck.id)}
                                 >
                                   <Trash2 className="size-3.5" />
@@ -1052,12 +1289,13 @@ export default function TrucksPage() {
       {/* ── IMPORT PREVIEW MODAL ──────────────────────────────────────────────── */}
       <Modal
         isOpen={showImportPreview}
-        onClose={() => { setShowImportPreview(false); setImportPreviewData([]) }}
+        onClose={closeImportPreview}
         title={`Import ${importPreviewData.length} Trucks`}
+        contentClassName="sm:max-w-3xl"
         actions={
           <>
-            <Button variant="outline" onClick={() => { setShowImportPreview(false); setImportPreviewData([]) }}>Cancel</Button>
-            <Button onClick={handleConfirmImport}>
+            <Button variant="outline" onClick={closeImportPreview}>Cancel</Button>
+            <Button onClick={handleConfirmImport} disabled={unresolvedImportCount > 0}>
               <FileSpreadsheet className="mr-1.5 size-4" /> Confirm Import
             </Button>
           </>
@@ -1066,23 +1304,130 @@ export default function TrucksPage() {
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
             {importPreviewData.length} truck record{importPreviewData.length !== 1 ? 's' : ''} found.
-            Review below and click &quot;Confirm Import&quot; to add them.
+            Map the detected delivery batch codes, then review the trucks before importing.
           </p>
+          {importBatchCodes.length > 0 && (
+            <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-4">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Delivery Batch Gate Mapping</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Each code is the final character found in the Del. Batch column.
+                </p>
+              </div>
+
+              {gates.length === 0 ? (
+                <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
+                  No gates are configured. Add gates on the Screens page before importing these trucks.
+                </p>
+              ) : (
+                <div className="grid gap-2">
+                  {importBatchCodes.map((batchCode) => {
+                    const affectedCount = importPreviewData.filter(
+                      (row) => row.delivery_batch_code === batchCode
+                    ).length
+                    return (
+                      <div
+                        key={batchCode}
+                        className="grid grid-cols-1 items-center gap-3 rounded-md border border-border/50 bg-background/50 p-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.4fr)]"
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Badge variant="outline" className="font-mono text-sm uppercase">
+                            {batchCode}
+                          </Badge>
+                          <span className="truncate text-xs text-muted-foreground">
+                            {affectedCount} truck{affectedCount !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <ArrowRight className="hidden size-4 text-muted-foreground sm:block" aria-hidden="true" />
+                        <Select
+                          value={importGateMappings[batchCode] || undefined}
+                          onValueChange={(gateNumber) => {
+                            setImportGateMappings((current) => ({
+                              ...current,
+                              [batchCode]: normalizeGateNumber(gateNumber),
+                            }))
+                          }}
+                        >
+                          <SelectTrigger className="min-w-0">
+                            <SelectValue placeholder="Select gate" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {gates.map((gate) => (
+                              <SelectItem key={gate.id} value={gate.number}>
+                                Gate {gate.number.toUpperCase()}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {unresolvedImportCount > 0 && (
+                <p className="text-xs font-medium text-amber-500">
+                  {unresolvedImportCount} truck{unresolvedImportCount !== 1 ? 's' : ''} still need a configured gate.
+                </p>
+              )}
+            </div>
+          )}
+          {importBatchCodes.length === 0 && unresolvedImportCount > 0 && (
+            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
+              Select a configured gate for each highlighted truck before importing.
+            </p>
+          )}
           <div className="max-h-[350px] overflow-auto rounded-lg border border-border/60">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>#</TableHead>
                   <TableHead>Truck Number</TableHead>
+                  {importBatchCodes.length > 0 && <TableHead>Batch Code</TableHead>}
                   <TableHead>Gate No</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {importPreviewData.map((row, i) => (
+                {resolvedImportPreviewData.map((row, i) => (
                   <TableRow key={i}>
                     <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                     <TableCell className="font-mono font-medium">{row.registration_number}</TableCell>
-                    <TableCell>{row.gate_no || '—'}</TableCell>
+                    {importBatchCodes.length > 0 && (
+                      <TableCell>
+                        {row.delivery_batch_code ? (
+                          <Badge variant="outline" className="font-mono uppercase">
+                            {row.delivery_batch_code}
+                          </Badge>
+                        ) : (importPreviewData[i]?.gate_no ? 'Direct gate' : 'No gate')}
+                      </TableCell>
+                    )}
+                    <TableCell>
+                      {row.gate_no ? `Gate ${row.gate_no.toUpperCase()}` : row.delivery_batch_code ? (
+                        <span className="font-medium text-amber-500">Map code above</span>
+                      ) : (
+                        <Select
+                          value={undefined}
+                          onValueChange={(gateNumber) => {
+                            setImportPreviewData((current) => current.map((item, index) => (
+                              index === i
+                                ? { ...item, gate_no: normalizeGateNumber(gateNumber) }
+                                : item
+                            )))
+                          }}
+                        >
+                          <SelectTrigger className="h-8 min-w-[140px]">
+                            <SelectValue placeholder="Select gate" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {gates.map((gate) => (
+                              <SelectItem key={gate.id} value={gate.number}>
+                                Gate {gate.number.toUpperCase()}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -1093,9 +1438,14 @@ export default function TrucksPage() {
             <div>
               <p className="font-medium">Import Format Tip</p>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Your CSV or Excel file should have columns: <code className="rounded bg-muted px-1 font-mono text-[11px]">truck_number, gate</code>.
-                Gate values should be lower-case like <code className="rounded bg-muted px-1 font-mono text-[11px]">d1</code> or <code className="rounded bg-muted px-1 font-mono text-[11px]">d2</code>.
+                Your CSV or Excel file can use <code className="rounded bg-muted px-1 font-mono text-[11px]">truck_number, gate</code> or <code className="rounded bg-muted px-1 font-mono text-[11px]">vehicle_number, del.batch</code>.
+                When <code className="rounded bg-muted px-1 font-mono text-[11px]">del.batch</code> is used, its final character is mapped to one of your configured gates above.
               </p>
+              <Button asChild variant="outline" size="sm" className="mt-3">
+                <a href="/samples/truck-token-import-example.csv" download>
+                  <Download className="size-4" /> Download Sample CSV
+                </a>
+              </Button>
             </div>
           </div>
         </div>

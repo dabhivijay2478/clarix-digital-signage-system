@@ -1292,6 +1292,11 @@
   outline-offset: 2px;
 }
 
+body.tv-remote-navigation :focus {
+  outline: 4px solid #0284c7 !important;
+  outline-offset: 4px !important;
+}
+
 /* Screen reader only */
 .sr-only {
   position: absolute;

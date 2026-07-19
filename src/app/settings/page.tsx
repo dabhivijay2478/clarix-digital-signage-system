@@ -36,7 +36,7 @@ import { appConfigApi, contentLibraryApi, localNetworkApi, networkApi, screensAp
 import type { ConnectionDiagnostic, ContentStorageInfo, DeviceIdentity, MarqueeSettings, PairingRequest, PeerScreen, Screen } from '@/lib/types'
 import { useBrandingStore } from '@/store/ui'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { cn } from '@/lib/utils'
+import { cn, formatDateTime } from '@/lib/utils'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 function formatBytes(bytes: number): string {
@@ -561,7 +561,7 @@ export default function SettingsPage() {
                     <div className="flex items-center justify-between gap-4 px-4 py-3.5">
                       <div>
                         <p className="text-sm font-medium">Local IP Address</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">This device&apos;s IP on the local network</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">This device's IP on the local network</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs bg-muted/80 px-2.5 py-1 rounded-md text-foreground border border-border/40">
@@ -736,7 +736,7 @@ export default function SettingsPage() {
                       <p><strong>Discovery Status:</strong> {networkDiagnostics.discovery_status}</p>
                       <p><strong>Pairing Status:</strong> {networkDiagnostics.pairing_status}</p>
                       {networkDiagnostics.last_successful_sync && (
-                        <p><strong>Last Sync:</strong> {new Date(networkDiagnostics.last_successful_sync).toLocaleString()}</p>
+                        <p><strong>Last Sync:</strong> {formatDateTime(networkDiagnostics.last_successful_sync)}</p>
                       )}
                     </div>
                   )}

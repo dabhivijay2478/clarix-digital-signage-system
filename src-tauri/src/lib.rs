@@ -64,6 +64,10 @@ pub fn run() {
 
             tracing::info!("MG Enterprise starting — data dir: {}", app_data);
 
+            if let Err(error) = db::consume_pending_reset(&app_data) {
+                tracing::error!("Failed to apply pending database reset: {error}");
+            }
+
             // ── Initialize Database ─────────────────────────────────
             let app_data_clone = app_data.clone();
             let pool = std::thread::spawn(move || {
@@ -120,7 +124,6 @@ pub fn run() {
                 "Serving browser player assets from {}",
                 browser_assets.display()
             );
-
             // Only a controller accepts inbound traffic. Players connect outward and pull revisions.
             let server_port = if identity.role == DeviceRole::Controller {
                 match tauri::async_runtime::block_on(lan::server::start_controller_server(
@@ -214,6 +217,7 @@ pub fn run() {
             // Content
             commands::content::get_content_items,
             commands::content::add_content_item,
+            commands::content::update_content_duration,
             commands::content::delete_content_item,
             commands::content::save_local_content_file,
             commands::content::save_local_content_file_chunk,
@@ -273,6 +277,7 @@ pub fn run() {
             commands::database::export_db_table_to_csv,
             commands::database::backup_content_library_to_zip,
             commands::database::save_text_file,
+            commands::database::reset_local_database,
         ])
         .run(tauri::generate_context!())
         .expect("error running MG Enterprise");

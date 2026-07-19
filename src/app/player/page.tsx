@@ -1,15 +1,22 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { screensApi, playlistsApi, contentApi, analyticsApi, localNetworkApi, customConfirm, getBrowserControllerOrigin, appConfigApi } from '../../lib/tauri';
-import type { Screen, Playlist, ContentItem, PlaylistItem, MarqueeSettings } from '../../lib/types';
-import { isPlaylistItemScheduleActive, isScreenWithinOperatingHours } from '../../lib/signage-schedule';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { screensApi, playlistsApi, contentApi, analyticsApi, localNetworkApi, customConfirm, getBrowserControllerOrigin, appConfigApi, trucksApi } from '../../lib/tauri';
+import type { Screen, Playlist, ContentItem, PlaylistItem, TruckScreenAlert, MarqueeSettings, ScreenPurpose, Truck, GateQueueSettings } from '../../lib/types';
+import { getPlaylistItemScheduleRemainingMs, isPlaylistItemScheduleActive, isScreenWithinOperatingHours } from '../../lib/signage-schedule';
 import { showToast } from '../../components/Toast';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { ArrowLeft } from 'lucide-react';
 import { useBrandingStore } from '../../store/ui';
-import { ProductionDashboard } from '@/components/ProductionDashboard';
+import { useGateStore } from '@/store/gateStore';
+import TruckTokenDisplay from '@/components/TruckTokenDisplay';
+import { parseScreenGates } from '@/lib/screen-gates';
+import { useTruckStore } from '@/store/truckStore';
+import { useControllerClock } from '@/hooks/useControllerClock';
+import { ArrowLeft } from 'lucide-react';
+
+const AMNS_LOGO_SRC = '/company-logo/AMNS_Logo_Mid.png?v=transparent-20260716';
+const PLAYER_SCREEN_STORAGE_KEY = 'clarix_player_screen_id';
 
 function playlistPlaybackSignature(playlist: Playlist): string {
   return JSON.stringify({
@@ -23,21 +30,6 @@ function playlistPlaybackSignature(playlist: Playlist): string {
       display_schedule: item.display_schedule ?? null,
     })),
   });
-}
-
-function playableItemsSignature(items: PlaylistItem[]): string {
-  return JSON.stringify(items.map((item) => ({
-    content_id: item.content_id,
-    order: item.order,
-    override_duration: item.override_duration,
-    display_schedule: item.display_schedule ?? null,
-  })));
-}
-
-function isProductionDataDisplay(screen: Screen | null | undefined): boolean {
-  return screen?.purpose === 'production_dashboard'
-    || screen?.purpose === 'truck_gate'
-    || screen?.purpose === 'playlist';
 }
 
 function formatScreenOrientation(orientation: Screen['orientation']): string {
@@ -61,9 +53,51 @@ function getScreenSelectionTags(screen: Screen): string[] {
   return tags;
 }
 
+function getScreenGateNumbers(screen: Screen | null | undefined): string[] {
+  const configuredGates = parseScreenGates(screen?.gate);
+  if (configuredGates.length > 0) return configuredGates;
+
+  return [...new Set([
+    ...parseScreenGates(screen?.name),
+    ...parseScreenGates(screen?.location),
+  ])];
+}
+
+function isTruckTokenScreen(screen: Screen): boolean {
+  return screen.purpose === 'truck_gate' || getScreenGateNumbers(screen).length > 0;
+}
+
+function pickDefaultPlayerScreen(screens: Screen[], storedId?: string | null, activeTrucks: Truck[] = []): Screen | null {
+  const storedScreen = storedId ? screens.find((screen) => screen.id === storedId) ?? null : null;
+  if (storedScreen && isTruckTokenScreen(storedScreen)) return storedScreen;
+
+  const activeGate = activeTrucks
+    .find((truck) => !truck.is_out && (truck.is_loading || truck.is_in || truck.is_waiting) && truck.gate_no)
+    ?.gate_no?.toLowerCase();
+  if (activeGate) {
+    const matchingTruckScreen = screens.find((screen) =>
+      isTruckTokenScreen(screen) && getScreenGateNumbers(screen).includes(activeGate)
+    );
+    if (matchingTruckScreen) return matchingTruckScreen;
+  }
+
+  const truckScreen = screens.find(isTruckTokenScreen);
+  if (truckScreen) return truckScreen;
+
+  if (storedScreen) return storedScreen;
+
+  return screens.length === 1 ? screens[0] : null;
+}
+
 export default function PlayerPage() {
-  const router = useRouter();
   const branding = useBrandingStore();
+  const { now: controllerNow } = useControllerClock();
+  const controllerMinuteMs = Math.floor(controllerNow.getTime() / 60000) * 60000;
+  const scheduleNow = useMemo(
+    () => new Date(controllerMinuteMs),
+    [controllerMinuteMs],
+  );
+  const trucks = useTruckStore((state) => state.trucks);
   const appName = branding.appName;
   const appLogo = branding.appIcon;
   const [screenId, setScreenId] = useState<string | null>(null);
@@ -85,6 +119,11 @@ export default function PlayerPage() {
   const [playableItems, setPlayableItems] = useState<PlaylistItem[]>([]);
   const [currentItemIndex, setCurrentItemIndex] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [activeTruckGates, setActiveTruckGates] = useState<string[]>([]);
+  const [isTruckTokenScreenActive, setIsTruckTokenScreenActive] = useState<boolean>(false);
+  const [liveTrucks, setLiveTrucks] = useState<Truck[]>([]);
+  const [liveGateSettings, setLiveGateSettings] = useState<GateQueueSettings[]>([]);
+  const [liveDisplayRotationSecs, setLiveDisplayRotationSecs] = useState<number | undefined>(undefined);
 
   // Active Screen context for orientation and operating hours
   const [activeScreen, setActiveScreen] = useState<Screen | null>(null);
@@ -92,11 +131,34 @@ export default function PlayerPage() {
   const [isScreenBlanked, setIsScreenBlanked] = useState<boolean>(false);
   const [marquee, setMarquee] = useState<MarqueeSettings | null>(null);
 
-  // Time tracker for schedules
-  const [scheduleNow, setScheduleNow] = useState<Date>(() => new Date());
-
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const playStartTimeRef = useRef<number>(0);
+  const truckAlertTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const controllerNowRef = useRef<Date>(controllerNow);
+  const activePlaylistRef = useRef<Playlist | null>(null);
+  const isPlayingRef = useRef(false);
+  const liveTrucksRef = useRef<Truck[]>([]);
+  const resolvingSignageRef = useRef(false);
+  const revisionSyncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const audioRetryPendingRef = useRef(false);
+  const lastPlaybackAdvanceRef = useRef<{ key: string; at: number }>({ key: '', at: 0 });
+
+  useEffect(() => {
+    controllerNowRef.current = controllerNow;
+  }, [controllerNow]);
+
+  useEffect(() => {
+    activePlaylistRef.current = activePlaylist;
+  }, [activePlaylist]);
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  useEffect(() => {
+    liveTrucksRef.current = liveTrucks;
+  }, [liveTrucks]);
 
   // Detect physical viewport aspect ratio (landscape vs portrait)
   useEffect(() => {
@@ -128,85 +190,114 @@ export default function PlayerPage() {
     }
   }, []);
 
-  // Load screen ID from query parameters or storage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
+  const loadInitialPlayerScreen = useCallback(async () => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const data = await screensApi.getAll();
+      setScreensList(data);
+      const activeTrucks = await trucksApi.getActive().catch((error) => {
+        console.warn('Failed to load active trucks during player boot:', error);
+        return [] as Truck[];
+      });
+      setLiveTrucks(activeTrucks);
+
       const params = new URLSearchParams(window.location.search);
       const queryId = params.get('screenId') || params.get('id');
       if (queryId) {
         setScreenId(queryId);
-        localStorage.setItem('clarix_player_screen_id', queryId);
-        setLoading(false);
-      } else {
-        const id = localStorage.getItem('clarix_player_screen_id');
-        if (id) {
-          setScreenId(id);
-          setLoading(false);
-        } else {
-          loadScreensList();
-        }
+        localStorage.setItem(PLAYER_SCREEN_STORAGE_KEY, queryId);
+        return;
       }
+
+      const storedId = localStorage.getItem(PLAYER_SCREEN_STORAGE_KEY);
+      const selectedScreen = pickDefaultPlayerScreen(data, storedId, activeTrucks);
+      if (selectedScreen) {
+        setScreenId(selectedScreen.id);
+        localStorage.setItem(PLAYER_SCREEN_STORAGE_KEY, selectedScreen.id);
+      } else if (storedId) {
+        // Keep retrying the saved screen while the controller restores its data.
+        setScreenId(storedId);
+      } else if (!storedId) {
+        setScreenId(null);
+      }
+    } catch (err) {
+      console.error('Failed to load player screen:', err);
+      loadScreensList();
+      return;
+    } finally {
+      setLoading(false);
     }
   }, [loadScreensList]);
+
+  // Load screen ID from query parameters or storage, validating cached IDs.
+  useEffect(() => {
+    void loadInitialPlayerScreen();
+  }, [loadInitialPlayerScreen]);
 
   // Screen selection handler
   const handleSelectScreen = (id: string) => {
-    localStorage.setItem('clarix_player_screen_id', id);
+    localStorage.setItem(PLAYER_SCREEN_STORAGE_KEY, id);
     setScreenId(id);
+
+    const selected = screensList.find((screen) => screen.id === id);
+    if (selected && isTruckTokenScreen(selected)) {
+      const gateNumbers = getScreenGateNumbers(selected);
+      setIsTruckTokenScreenActive(true);
+      setActiveTruckGates(gateNumbers.map((gate) => gate.toLowerCase()));
+      setActiveScreen(selected);
+      setActivePlaylist(null);
+      setIsPlaying(false);
+    } else {
+      setIsTruckTokenScreenActive(false);
+      setActiveTruckGates([]);
+    }
   };
 
   const handleBackToScreenSelection = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-
-    localStorage.removeItem('clarix_player_screen_id');
-    const playerUrl = new URL(window.location.href);
-    playerUrl.searchParams.delete('screenId');
-    playerUrl.searchParams.delete('id');
-    window.history.replaceState(null, '', `${playerUrl.pathname}${playerUrl.search}${playerUrl.hash}`);
-
+    localStorage.removeItem(PLAYER_SCREEN_STORAGE_KEY);
     setScreenId(null);
+    setIsTruckTokenScreenActive(false);
+    setActiveTruckGates([]);
+    setTruckAlert(null);
     setActiveScreen(null);
     setActivePlaylist(null);
-    setContentItems([]);
-    setPlayableItems([]);
-    setCurrentItemIndex(0);
-    setIsPlaying(false);
-    setIsScreenBlanked(false);
-    setMarquee(null);
-    setLoading(true);
-    void loadScreensList();
+    loadScreensList();
   }, [loadScreensList]);
 
+  // Escape key stays inside /player and returns to the player screen picker.
   useEffect(() => {
-    if (!screenId) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      handleBackToScreenSelection();
+    if (isReceiverMode) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleBackToScreenSelection();
+      }
     };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleBackToScreenSelection, isReceiverMode]);
+
+  useEffect(() => {
     const handleRemoteBack = (event: Event) => {
       event.preventDefault();
-      handleBackToScreenSelection();
+      if (screenId) {
+        handleBackToScreenSelection();
+      } else {
+        void loadScreensList();
+      }
     };
-
-    window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('tv-remote-back', handleRemoteBack);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('tv-remote-back', handleRemoteBack);
-    };
-  }, [handleBackToScreenSelection, screenId]);
+    return () => window.removeEventListener('tv-remote-back', handleRemoteBack);
+  }, [loadScreensList, screenId, handleBackToScreenSelection]);
 
   // Helper to disconnect screen representation
   const handleDisconnectScreen = async () => {
     const confirmed = await customConfirm('Disconnect screen from this Player device?');
     if (confirmed) {
-      localStorage.removeItem('clarix_player_screen_id');
+      localStorage.removeItem(PLAYER_SCREEN_STORAGE_KEY);
       setScreenId(null);
+      setIsTruckTokenScreenActive(false);
       loadScreensList();
     }
   };
@@ -246,31 +337,25 @@ export default function PlayerPage() {
     syncRemoteFullscreen();
   }, [activeScreen]);
 
-  // Keep track of current day, time, and evaluate screen blanking limits
+  // Keep track of controller time and evaluate screen blanking limits
   useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setScheduleNow(now);
-
-      if (activeScreen && activeScreen.operating_hours) {
-        const oh = activeScreen.operating_hours;
-        if (oh.blank_when_not_in_use) {
-          if (!isScreenWithinOperatingHours(oh, now)) {
-            setIsScreenBlanked(true);
-            return;
-          }
+    if (activeScreen && activeScreen.operating_hours) {
+      const oh = activeScreen.operating_hours;
+      if (oh.blank_when_not_in_use) {
+        if (!isScreenWithinOperatingHours(oh, controllerNow)) {
+          setIsScreenBlanked(true);
+          return;
         }
       }
-      setIsScreenBlanked(false);
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 5000); // check time every 5 seconds
-    return () => clearInterval(interval);
-  }, [activeScreen]);
+    }
+    setIsScreenBlanked(false);
+  }, [activeScreen, controllerNow]);
 
   // Resolve schedule slot & active playlist
   const resolveActiveSignage = useCallback(async (resetPlayback = false) => {
     if (!screenId) return;
+    if (resolvingSignageRef.current) return;
+    resolvingSignageRef.current = true;
 
     try {
       // 1. Fetch data
@@ -281,17 +366,24 @@ export default function PlayerPage() {
       if (!currentScreen) {
         setActiveScreen(null);
         setActivePlaylist(null);
+        setActiveTruckGates([]);
+        setIsTruckTokenScreenActive(false);
         setIsPlaying(false);
 
-        if (screens.length === 1) {
-          localStorage.setItem('clarix_player_screen_id', screens[0].id);
-          setScreenId(screens[0].id);
+        const fallbackScreen = pickDefaultPlayerScreen(
+          screens,
+          typeof window !== 'undefined' ? localStorage.getItem(PLAYER_SCREEN_STORAGE_KEY) : null,
+          liveTrucksRef.current,
+        );
+        if (fallbackScreen) {
+          localStorage.setItem(PLAYER_SCREEN_STORAGE_KEY, fallbackScreen.id);
+          setScreenId(fallbackScreen.id);
           setLoading(false);
           return;
         }
 
-        localStorage.removeItem('clarix_player_screen_id');
-        setScreenId(null);
+        // Keep the persisted ID while the controller is still restoring its data.
+        // A later refresh can resolve the same screen without user intervention.
         setLoading(false);
         return;
       }
@@ -302,14 +394,70 @@ export default function PlayerPage() {
       const items = await contentApi.getAll();
       const resolvedItems = [...items];
 
+      let activePurpose: ScreenPurpose = 'playlist'
+      let activeGateNumbers: string[] = []
+      let activePlaylistId: string | null = null
 
-      const activePlaylistId: string | null = currentScreen.playlist_id;
+      const gateStore = useGateStore.getState()
+      const screenGateNumbers = getScreenGateNumbers(currentScreen)
+      const assignedGateNumbers = gateStore.getAssignedGatesForScreen(screenId)
+      const assignedGate = assignedGateNumbers[0]
+        ? gateStore.gates.find((g) => g.number === assignedGateNumbers[0])
+        : null
+
+      if (currentScreen && isTruckTokenScreen(currentScreen)) {
+        activePurpose = 'truck_gate'
+        activeGateNumbers = screenGateNumbers.length > 0
+          ? screenGateNumbers
+          : assignedGateNumbers
+        activePlaylistId = currentScreen.playlist_id
+      } else if (assignedGate) {
+        activePurpose = assignedGate.purpose
+        activeGateNumbers = assignedGateNumbers
+        activePlaylistId = assignedGate.playlistId
+      } else if (currentScreen) {
+        activePurpose = currentScreen.purpose
+        activeGateNumbers = screenGateNumbers
+        activePlaylistId = currentScreen.playlist_id
+      }
 
       let playlistToPlay: Playlist | null = null;
       if (activePlaylistId) {
         playlistToPlay = playlists.find((p) => p.id === activePlaylistId) || null;
       }
 
+      if (activePurpose === 'truck_gate') {
+        setIsTruckTokenScreenActive(true);
+        setActiveTruckGates(activeGateNumbers.map((gate) => gate.toLowerCase()));
+        setContentItems(resolvedItems);
+        // Still load the playlist if one is assigned — the player needs it to
+        // detect whether a scheduled content window is currently active, so it
+        // can temporarily override the default TruckTokenDisplay with the playlist.
+        if (playlistToPlay && playlistToPlay.items.length > 0) {
+          const sortedPlaylist: Playlist = {
+            ...playlistToPlay,
+            items: [...playlistToPlay.items].sort((a, b) => a.order - b.order),
+          };
+          const hasTimedPlaylistItems = sortedPlaylist.items.some((item) => {
+            const schedule = item.display_schedule;
+            return Boolean(
+              schedule
+              && typeof schedule === 'object'
+              && Object.keys(schedule).length > 0
+            );
+          });
+          setActivePlaylist(hasTimedPlaylistItems ? sortedPlaylist : null);
+          setIsPlaying(hasTimedPlaylistItems);
+        } else {
+          setActivePlaylist(null);
+          setIsPlaying(false);
+        }
+        setCurrentItemIndex(0);
+        return;
+      }
+
+      setIsTruckTokenScreenActive(false);
+      setActiveTruckGates([]);
       setContentItems(resolvedItems);
 
       if (playlistToPlay && playlistToPlay.items.length > 0) {
@@ -319,10 +467,11 @@ export default function PlayerPage() {
         };
 
         const nextSignature = playlistPlaybackSignature(sortedPlaylist);
-        const currentSignature = activePlaylist ? playlistPlaybackSignature(activePlaylist) : '';
+        const currentActivePlaylist = activePlaylistRef.current;
+        const currentSignature = currentActivePlaylist ? playlistPlaybackSignature(currentActivePlaylist) : '';
 
         if (resetPlayback || nextSignature !== currentSignature) {
-          const playlistChanged = activePlaylist?.id !== sortedPlaylist.id;
+          const playlistChanged = currentActivePlaylist?.id !== sortedPlaylist.id;
           setActivePlaylist(sortedPlaylist);
           if (resetPlayback || playlistChanged) {
             setCurrentItemIndex(0);
@@ -331,7 +480,7 @@ export default function PlayerPage() {
           }
         }
 
-        if (!isPlaying) {
+        if (!isPlayingRef.current) {
           setCurrentItemIndex(0);
         }
         setIsPlaying(true);
@@ -341,8 +490,10 @@ export default function PlayerPage() {
       }
     } catch (err) {
       console.error('Error resolving signage slots:', err);
+    } finally {
+      resolvingSignageRef.current = false;
     }
-  }, [screenId, activePlaylist, isPlaying]);
+  }, [screenId]);
 
   useEffect(() => {
     appConfigApi.getMarquee()
@@ -376,16 +527,109 @@ export default function PlayerPage() {
   }, [screenId, resolveActiveSignage]);
 
 
-  // Controller-hosted browser players refresh immediately when a revision is published.
+  // Controller-hosted browser players refresh content in place when a revision is published.
   useEffect(() => {
     if (!screenId || typeof window === 'undefined' || !window.location.protocol.startsWith('http')) return;
     const events = new EventSource(`${getBrowserControllerOrigin()}/v1/browser/events`);
-    events.addEventListener('revision', () => { window.location.reload(); });
-    return () => events.close();
+    events.addEventListener('revision', () => {
+      if (revisionSyncTimeoutRef.current) {
+        clearTimeout(revisionSyncTimeoutRef.current);
+      }
+      revisionSyncTimeoutRef.current = setTimeout(
+        () => {
+          void resolveActiveSignage(true);
+        },
+        truckAlertRef.current ? 3500 : 250,
+      );
+    });
+    return () => {
+      events.close();
+      if (revisionSyncTimeoutRef.current) {
+        clearTimeout(revisionSyncTimeoutRef.current);
+        revisionSyncTimeoutRef.current = null;
+      }
+    };
   }, [screenId, resolveActiveSignage]);
 
-  const resolvedScreen = activeScreen ?? screensList.find((screen) => screen.id === screenId) ?? null;
-  const activeScreenDefaultContentId = isProductionDataDisplay(resolvedScreen)
+  // Keep truck token displays in sync with controller data on load and on every change.
+  useEffect(() => {
+    if (!screenId || !isTruckTokenScreenActive) {
+      setLiveTrucks([]);
+      return;
+    }
+
+    let disposed = false;
+
+    const refreshLiveTrucks = async () => {
+      try {
+        const active = await trucksApi.getActive();
+        if (!disposed) {
+          setLiveTrucks(active);
+        }
+      } catch (error) {
+        console.warn('Failed to refresh live trucks for player display:', error);
+      }
+    };
+
+    void refreshLiveTrucks();
+    const interval = setInterval(() => {
+      void refreshLiveTrucks();
+    }, 3000);
+
+    return () => {
+      disposed = true;
+      clearInterval(interval);
+    };
+  }, [screenId, isTruckTokenScreenActive]);
+
+  // Transient truck status alerts are pushed by the controller and overlay playback.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.location.protocol.startsWith('http')) return;
+
+    const events = new EventSource(`${getBrowserControllerOrigin()}/v1/browser/truck-alerts`);
+    events.addEventListener('truck-alert', (event) => {
+      try {
+        const alert = JSON.parse((event as MessageEvent).data) as TruckScreenAlert;
+        if (alert.queue_trucks?.length) {
+          setLiveTrucks(alert.queue_trucks);
+        }
+        if (alert.queue_gates?.length) {
+          setLiveGateSettings(alert.queue_gates);
+        }
+        if (alert.display_rotation_secs) {
+          setLiveDisplayRotationSecs(alert.display_rotation_secs);
+        }
+
+        if (activeScreen && isTruckTokenScreen(activeScreen)) {
+          setIsTruckTokenScreenActive(true);
+          setActiveTruckGates(getScreenGateNumbers(activeScreen).map((gate) => gate.toLowerCase()));
+          setTruckAlert(null);
+          return;
+        }
+
+        if (isTruckTokenScreenActive) return;
+
+        setTruckAlert(alert);
+        if (truckAlertTimeoutRef.current) {
+          clearTimeout(truckAlertTimeoutRef.current);
+        }
+        truckAlertTimeoutRef.current = setTimeout(() => {
+          setTruckAlert((current) => (current?.id === alert.id ? null : current));
+        }, Math.max(alert.duration_secs || 3, 1) * 1000);
+      } catch (error) {
+        console.warn('Failed to parse truck alert event:', error);
+      }
+    });
+    return () => {
+      events.close();
+      if (truckAlertTimeoutRef.current) {
+        clearTimeout(truckAlertTimeoutRef.current);
+        truckAlertTimeoutRef.current = null;
+      }
+    };
+  }, [activeScreen, isTruckTokenScreenActive]);
+
+  const activeScreenDefaultContentId = isTruckTokenScreenActive
     ? null
     : resolvedScreen?.default_content_id ?? null;
 
@@ -394,9 +638,8 @@ export default function PlayerPage() {
   useEffect(() => {
     let nextPlayableItems: PlaylistItem[] = [];
     if (activePlaylist) {
-      nextPlayableItems = activePlaylist.items.filter((item) => (
-        isPlaylistItemScheduleActive(item.display_schedule, scheduleNow)
-      ));
+      const scheduled = activePlaylist.items.filter((item) => isPlaylistItemScheduleActive(item.display_schedule, scheduleNow));
+      if (scheduled.length > 0) return scheduled;
     }
     if (nextPlayableItems.length === 0 && activeScreenDefaultContentId) {
       nextPlayableItems = [{
@@ -406,13 +649,74 @@ export default function PlayerPage() {
         display_schedule: null,
       }];
     }
+    return [];
+  }, [activePlaylist, activeScreenDefaultContentId, scheduleNow]);
 
-    if (playableItemsSignature(playableItems) === playableItemsSignature(nextPlayableItems)) return;
+  const hasScheduledPlaylistOverride = useCallback((): boolean => {
+    if (!activePlaylist || !isPlaying || !isTruckTokenScreenActive) return false;
+    return activePlaylist.items.some((item) => {
+      const schedule = item.display_schedule;
+      if (!schedule || (typeof schedule === 'object' && Object.keys(schedule).length === 0)) {
+        return false;
+      }
+      return isPlaylistItemScheduleActive(schedule, scheduleNow);
+    });
+  }, [activePlaylist, isPlaying, isTruckTokenScreenActive, scheduleNow]);
 
-    setPlayableItems(nextPlayableItems);
-    setCurrentItemIndex((index) => Math.min(index, Math.max(nextPlayableItems.length - 1, 0)));
-    if (activePlaylist && nextPlayableItems.length > 0) setIsPlaying(true);
-  }, [activePlaylist, activeScreenDefaultContentId, playableItems, scheduleNow]);
+  const advancePlayback = useCallback((contentId: string, itemCount: number) => {
+    const advanceKey = `${contentId}:${currentItemIndex}`;
+    const advanceNow = Date.now();
+    if (
+      lastPlaybackAdvanceRef.current.key === advanceKey &&
+      advanceNow - lastPlaybackAdvanceRef.current.at < 750
+    ) {
+      return;
+    }
+    lastPlaybackAdvanceRef.current = { key: advanceKey, at: advanceNow };
+    audioRetryPendingRef.current = false;
+
+    if (screenId) {
+      const dwellSecs = playStartTimeRef.current > 0
+        ? Math.max(Math.round((advanceNow - playStartTimeRef.current) / 1000), 0)
+        : 0;
+      analyticsApi.record(screenId, contentId, 'Complete', dwellSecs).catch((err) => {
+        console.warn('Failed to record analytics Complete event:', err);
+      });
+    }
+
+    if (currentItemIndex === itemCount - 1 && !activePlaylist?.loop_enabled) {
+      setIsPlaying(false);
+      return;
+    }
+    setCurrentItemIndex((current) => (current + 1) % itemCount);
+  }, [activePlaylist?.loop_enabled, currentItemIndex, screenId]);
+
+  const playVideoWithSound = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.defaultMuted = false;
+    video.muted = false;
+    video.volume = 1;
+    void video.play().then(() => {
+      audioRetryPendingRef.current = false;
+    }).catch((error) => {
+      audioRetryPendingRef.current = true;
+      console.warn('Unmuted video playback is waiting for TV autoplay permission:', error);
+    });
+  }, []);
+
+  useEffect(() => {
+    const handleUserGesture = () => {
+      if (audioRetryPendingRef.current) playVideoWithSound();
+    };
+    document.addEventListener('pointerdown', handleUserGesture, true);
+    document.addEventListener('keydown', handleUserGesture, true);
+    return () => {
+      document.removeEventListener('pointerdown', handleUserGesture, true);
+      document.removeEventListener('keydown', handleUserGesture, true);
+    };
+  }, [playVideoWithSound]);
 
   // Handle slide duration and transition loop
   useEffect(() => {
@@ -435,8 +739,16 @@ export default function PlayerPage() {
       return;
     }
 
-    // Playlist rows no longer expose duration overrides; content owns its playback time.
-    const duration = contentItem.duration_secs ?? 10;
+    const contentDurationMs = Math.max(contentItem.duration_secs ?? 10, 1) * 1000;
+    const scheduleRemainingMs = getPlaylistItemScheduleRemainingMs(
+      playlistItem.display_schedule,
+      controllerNowRef.current
+    );
+    const playbackDurationMs = scheduleRemainingMs === null
+      ? contentDurationMs
+      : contentItem.content_type === 'Video'
+        ? Math.max(scheduleRemainingMs, 1000)
+        : Math.min(contentDurationMs, Math.max(scheduleRemainingMs, 1000));
 
     // Record Analytics PLAY Event
     if (screenId) {
@@ -446,31 +758,24 @@ export default function PlayerPage() {
       playStartTimeRef.current = Date.now();
     }
 
+    // Let unscheduled videos advance from the real media end. Buffering should
+    // never consume their playback duration on slower signage hardware.
+    if (contentItem.content_type === 'Video' && scheduleRemainingMs === null) {
+      timerRef.current = null;
+      return;
+    }
+
     // Set timer to switch to next slide
     timerRef.current = setTimeout(() => {
-      // Record Analytics COMPLETE Event
-      if (screenId) {
-        const dwellSecs = (Date.now() - playStartTimeRef.current) / 1000;
-        analyticsApi.record(screenId, contentItem.id, 'Complete', Math.round(dwellSecs)).catch((err) => {
-          console.warn('Failed to record analytics Complete event:', err);
-        });
-      }
-
-      // Move to next item
-      if (currentItemIndex === playableItems.length - 1 && !activePlaylist.loop_enabled) {
-        setIsPlaying(false); // End of playlist, looping is disabled
-      } else {
-        const nextIndex = (currentItemIndex + 1) % playableItems.length;
-        setCurrentItemIndex(nextIndex);
-      }
-    }, duration * 1000);
+      advancePlayback(contentItem.id, playableItems.length);
+    }, playbackDurationMs);
 
     return () => {
       if (timerRef.current) {
         clearTimeout(timerRef.current);
       }
     };
-  }, [isPlaying, activePlaylist, playableItems, currentItemIndex, contentItems, screenId]);
+  }, [isPlaying, activePlaylist, currentItemIndex, contentItems, screenId, getPlayableItems, advancePlayback]);
 
   // Get source URL for assets
   const getMediaUrl = (item: ContentItem): string => {
@@ -512,10 +817,44 @@ export default function PlayerPage() {
       return (
         <div className={`mg-player-media ${transitionClass}`} style={{ width: '100%', height: '100%' }}>
           <video
+            key={`${contentItem.id}-${currentItemIndex}-${src}`}
+            ref={videoRef}
             src={src}
             autoPlay
             playsInline
-            loop={playableItems.length === 1}
+            preload="auto"
+            loop={playableItems.length === 1 && activePlaylist?.loop_enabled !== false}
+            onLoadedMetadata={(event) => {
+              event.currentTarget.currentTime = 0;
+              event.currentTarget.defaultMuted = false;
+              event.currentTarget.volume = 1;
+            }}
+            onCanPlay={(event) => {
+              const video = event.currentTarget;
+              if (video.dataset.playbackStarted === 'true') return;
+              video.dataset.playbackStarted = 'true';
+              video.defaultMuted = false;
+              video.muted = false;
+              video.volume = 1;
+              void video.play().then(() => {
+                audioRetryPendingRef.current = false;
+              }).catch((error) => {
+                audioRetryPendingRef.current = true;
+                console.warn('Unmuted video autoplay is waiting for TV permission:', error);
+              });
+            }}
+            onPlaying={() => {
+              playStartTimeRef.current = Date.now();
+            }}
+            onEnded={() => {
+              advancePlayback(contentItem.id, playableItems.length);
+            }}
+            onError={(event) => {
+              console.warn('Video failed to load:', event.currentTarget.error);
+              if (playableItems.length > 1) {
+                window.setTimeout(() => advancePlayback(contentItem.id, playableItems.length), 1000);
+              }
+            }}
             style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
           />
         </div>
@@ -572,6 +911,25 @@ export default function PlayerPage() {
     );
   };
 
+  const renderTruckAlertOverlay = () => {
+    if (!truckAlert) return null;
+
+    return (
+      <TruckTokenDisplay
+        trucks={truckAlert.queue_trucks ?? trucks}
+        gateSettings={truckAlert.queue_gates ?? liveGateSettings}
+        displayRotationSecs={truckAlert.display_rotation_secs ?? liveDisplayRotationSecs}
+        title="Truck Token Alert"
+        className="z-100"
+        showHeader={false}
+        gateFilter={truckAlert.gate}
+        timeZone={activeScreen?.operating_hours?.timezone}
+        loadRemoteSnapshot={false}
+        showBackButton
+        onBack={handleBackToScreenSelection}
+      />
+    );
+  };
 
   const renderMarquee = () => {
     if (!marquee?.enabled || !marquee.text.trim()) return null;
@@ -678,45 +1036,33 @@ export default function PlayerPage() {
     );
   };
 
-  const renderBrandingLogo = () => (
-    <div
-      className="mg-player-branding"
-      data-player-branding="amns"
-      style={{
-        position: 'fixed',
-        right: 'clamp(18px, 2vw, 40px)',
-        bottom: marquee?.enabled && marquee.text.trim() ? '160px' : '32px',
-        zIndex: 9999,
-        pointerEvents: 'none',
-        transition: 'bottom 0.3s ease',
-      }}
-    >
-      <img
-        src="/company-logo/AMNS_Logo_Mid.png"
-        alt="AMNS India"
-        style={{
-          display: 'block',
-          width: 'clamp(90px, 8vw, 160px)',
-          height: 'auto',
-          objectFit: 'contain',
-        }}
-      />
-    </div>
-  );
-
   const renderPlayerBackButton = () => {
     if (!screenId) return null;
 
     return (
       <button
         type="button"
-        className="mg-player-back-button"
-        data-tv-back
+        onClick={handleBackToScreenSelection}
         aria-label="Back to screen selection"
         title="Back to screen selection"
-        onClick={handleBackToScreenSelection}
+        style={{
+          position: 'fixed',
+          top: 24,
+          left: 24,
+          zIndex: 10001,
+          width: 48,
+          height: 48,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          border: '1px solid rgba(255, 255, 255, 0.3)',
+          borderRadius: 6,
+          background: 'rgba(0, 0, 0, 0.68)',
+          color: '#fff',
+          cursor: 'pointer',
+        }}
       >
-        <ArrowLeft aria-hidden="true" size={21} strokeWidth={2.5} />
+        <ArrowLeft size={26} strokeWidth={2.25} aria-hidden="true" />
       </button>
     );
   };
@@ -728,7 +1074,6 @@ export default function PlayerPage() {
         className="mg-player-stage"
         style={{ background: '#000' }}
       >
-        {renderBrandingLogo()}
         {renderPlayerBackButton()}
       </div>
     );
@@ -792,9 +1137,12 @@ export default function PlayerPage() {
                 <button
                   type="button"
                   className="mg-player-btn"
-                  onClick={() => router.push('/screens')}
+                  onClick={() => {
+                    setLoading(true);
+                    void loadScreensList();
+                  }}
                 >
-                  Go to Dashboard
+                  Refresh Screens
                 </button>
               )}
             </div>
@@ -827,8 +1175,8 @@ export default function PlayerPage() {
           <div className="mg-player-footer">
             <span>{port > 0 ? `Controller-hosted browser player · ${port}` : 'Packaged offline player'}</span>
             {!isReceiverMode && (
-              <button type="button" onClick={() => router.push('/')}>
-                ← Back to Main
+              <button type="button" onClick={handleBackToScreenSelection}>
+                ← Player Home
               </button>
             )}
           </div>
@@ -838,7 +1186,36 @@ export default function PlayerPage() {
     );
   }
 
-  // ── RENDER DEFAULT WAIT SCREEN / Production Dashboard ────────────────────
+  const shouldShowTruckDisplay =
+    Boolean(screenId && isTruckTokenScreenActive && !hasScheduledPlaylistOverride());
+
+  if (shouldShowTruckDisplay) {
+    return (
+      <div
+        className="mg-player-stage"
+        style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', background: '#000' }}
+      >
+        <TruckTokenDisplay
+          trucks={liveTrucks.length > 0 ? liveTrucks : trucks}
+          gateSettings={liveGateSettings}
+          gateFilters={activeTruckGates.length > 0 ? activeTruckGates : undefined}
+          timeZone={activeScreen?.operating_hours?.timezone}
+          loadRemoteSnapshot={liveTrucks.length === 0}
+          displayRotationSecs={liveDisplayRotationSecs}
+          showBackButton
+          onBack={handleBackToScreenSelection}
+        />
+        {renderMarquee()}
+      </div>
+    );
+  }
+
+  if (screenId && truckAlert) {
+    return renderTruckAlertOverlay();
+  }
+
+  // ── RENDER DEFAULT WAIT SCREEN ──────────────────────────────────────────
+  const playableItems = getPlayableItems();
   if (playableItems.length === 0) {
     if (isProductionDataDisplay(resolvedScreen)) {
       return (
@@ -889,7 +1266,9 @@ export default function PlayerPage() {
           background: '#f4f6f8',
         }}
       >
+        {renderTruckAlertOverlay()}
         {renderMarquee()}
+        {renderPlayerBackButton()}
 
         <div className="mg-player-badge">
           <span className="mg-player-badge-dot" />
@@ -936,8 +1315,8 @@ export default function PlayerPage() {
                 Disconnect Screen
               </button>
               <span style={{ margin: '0 16px', color: 'rgba(255,255,255,0.1)' }}>|</span>
-              <button type="button" onClick={() => router.push('/')}>
-                Exit Player (Esc)
+              <button type="button" onClick={handleBackToScreenSelection}>
+                Player Home (Esc)
               </button>
             </div>
           )}
@@ -1013,8 +1392,41 @@ export default function PlayerPage() {
         {renderContentItem()}
       </div>
       {renderMarquee()}
-      {renderBrandingLogo()}
       {renderPlayerBackButton()}
+
+      {/* Company branding — fixed to the bottom-right without decoration. */}
+      <div
+        className="mg-player-branding"
+        style={{
+          position: 'fixed',
+          right: '40px',
+          bottom: marquee?.enabled && marquee?.text.trim() ? '160px' : '40px',
+          zIndex: 9999,
+          pointerEvents: 'none',
+          transition: 'bottom 0.3s ease',
+          background: 'transparent',
+          border: 'none',
+          borderRadius: 0,
+          padding: 0,
+          boxShadow: 'none',
+          backdropFilter: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <img
+          src={AMNS_LOGO_SRC}
+          alt="AMNS India logo"
+          style={{
+            display: 'block',
+            height: '110px',
+            width: 'auto',
+            objectFit: 'contain',
+            filter: 'none',
+          }}
+        />
+      </div>
     </div>
   );
 }

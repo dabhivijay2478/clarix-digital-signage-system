@@ -11,6 +11,7 @@ import {
   Download,
   Eye,
   RefreshCw,
+  RotateCcw,
   Search,
   Server,
   ShieldAlert,
@@ -27,6 +28,17 @@ import {
   type VisibilityState,
 } from '@tanstack/react-table'
 import { showToast } from '@/components/Toast'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -41,6 +53,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { databaseApi } from '@/lib/tauri'
 import { APP_NAME } from '@/lib/branding'
+import { buildDispatchedTrucksCsv } from '@/lib/truck-csv'
 
 const tablesMetadata: Record<string, { label: string; desc: string }> = {
   screens: { label: 'Screens', desc: 'Registered signage screens, location, resolution, and configurations' },
@@ -61,6 +74,7 @@ export default function DatabasePage() {
   const [selectedTable, setSelectedTable] = useState<string>('screens')
   const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, any>[] }>({ columns: [], rows: [] })
   const [loading, setLoading] = useState(true)
+  const [resetting, setResetting] = useState(false)
 
   // TanStack table state
   const [sorting, setSorting] = useState<SortingState>([])
@@ -192,68 +206,7 @@ export default function DatabasePage() {
       let csvContent = ''
       
       if (selectedTable === 'dispatched_trucks') {
-        const headers = [
-          'Sr. No.',
-          'Truck Number',
-          'Gate',
-          'Date (YYYY-MM-DD)',
-          'Loading In Time (HH:MM 24h)',
-          'Loading Out Time (HH:MM 24h)',
-          'Loading Duration (HH:MM)'
-        ]
-        
-        const formatTime24 = (isoStr: string | null | undefined): string => {
-          if (!isoStr) return ''
-          const d = new Date(isoStr)
-          if (isNaN(d.getTime())) return ''
-          const hrs = String(d.getHours()).padStart(2, '0')
-          const mins = String(d.getMinutes()).padStart(2, '0')
-          return `${hrs}:${mins}`
-        }
-
-        const formatDate = (isoStr: string | null | undefined): string => {
-          if (!isoStr) return ''
-          const d = new Date(isoStr)
-          if (isNaN(d.getTime())) return ''
-          const yr = d.getFullYear()
-          const mon = String(d.getMonth() + 1).padStart(2, '0')
-          const day = String(d.getDate()).padStart(2, '0')
-          return `${yr}-${mon}-${day}`
-        }
-
-        const formatDurationHHMM = (seconds: any): string => {
-          if (seconds === null || seconds === undefined || seconds === '') return ''
-          const secs = Number(seconds)
-          if (isNaN(secs) || secs < 0) return ''
-          const mins = Math.floor(secs / 60)
-          const hrs = Math.floor(mins / 60)
-          const remainingMins = mins % 60
-          const paddedHours = String(hrs).padStart(2, '0')
-          const paddedMinutes = String(remainingMins).padStart(2, '0')
-          return `${paddedHours}:${paddedMinutes}`
-        }
-
-        const headerLine = headers.map(h => `"${h}"`).join(',')
-        const rowLines = rowsToExport.map((row, index) => {
-          const srNo = String(index + 1)
-          const truckNo = String(row.registration_number || '')
-          const gate = String(row.gate_no || '')
-          const date = formatDate(row.loading_at || row.created_at)
-          const loadingIn = formatTime24(row.loading_at)
-          const loadingOut = formatTime24(row.out_at)
-          const duration = formatDurationHHMM(row.loading_duration)
-          
-          return [
-            `"${srNo}"`,
-            `"${truckNo.replace(/"/g, '""')}"`,
-            `"${gate.replace(/"/g, '""')}"`,
-            `"${date}"`,
-            `"${loadingIn}"`,
-            `"${loadingOut}"`,
-            `"${duration}"`
-          ].join(',')
-        })
-        csvContent = [headerLine, ...rowLines].join('\n')
+        csvContent = buildDispatchedTrucksCsv(rowsToExport)
       } else {
         // Create CSV format
         const headerLine = tableData.columns.map(col => `"${col.replace(/"/g, '""')}"`).join(',')
@@ -300,7 +253,6 @@ export default function DatabasePage() {
     }
   }
 
-  // Backup Content Library to ZIP
   const handleBackupContent = async () => {
     try {
       if (isTauriRuntime()) {
@@ -328,6 +280,23 @@ export default function DatabasePage() {
     }
   }
 
+  const handleResetDatabase = async () => {
+    if (!isTauriRuntime()) {
+      showToast('Database reset is only supported in the desktop app.', 'warning')
+      return
+    }
+
+    setResetting(true)
+    try {
+      showToast('Resetting database… the app will restart.', 'info')
+      await databaseApi.resetLocalDatabase()
+    } catch (err) {
+      console.error('Failed to reset database:', err)
+      showToast(`Database reset failed: ${err}`, 'error')
+      setResetting(false)
+    }
+  }
+
   return (
     <div className="space-y-7 lg:space-y-9">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -339,6 +308,36 @@ export default function DatabasePage() {
           <p className="page-subtitle">Inspect raw relational tables, download database records as CSV, or compress asset libraries.</p>
         </div>
         <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm" disabled={resetting || !isTauriRuntime()}>
+                <RotateCcw className="size-4" /> Reset local database
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Reset local database?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This deletes all local SQLite data, media library files, screens, trucks, and settings on this machine.
+                  The app will restart with an empty database and the seeded admin user from <code>.env</code>.
+                  This cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={resetting}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  variant="destructive"
+                  disabled={resetting}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    void handleResetDatabase()
+                  }}
+                >
+                  {resetting ? 'Resetting…' : 'Reset and restart'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <Button variant="outline" size="sm" onClick={handleBackupContent}>
             <Archive className="size-4" /> Backup Content Zip
           </Button>
