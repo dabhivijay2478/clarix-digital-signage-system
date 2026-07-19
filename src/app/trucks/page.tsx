@@ -14,6 +14,7 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowRight,
+  Download,
   Timer,
   CheckCircle2,
   CalendarDays,
@@ -23,7 +24,7 @@ import { useTrucks } from '@/hooks/useTrucks'
 import { useScreens } from '@/hooks/useScreens'
 import { showToast } from '@/components/Toast'
 import Modal from '@/components/Modal'
-import { customConfirm, productionApi, truckAlertsApi, trucksApi } from '@/lib/tauri'
+import { customConfirm, databaseApi, productionApi, truckAlertsApi, trucksApi } from '@/lib/tauri'
 import { formatDateTime } from '@/lib/utils'
 import {
   createTruckScreenAlert,
@@ -182,6 +183,17 @@ function suggestGateForBatchCode(batchCode: string, configuredGates: string[]): 
   return prefixMatches.length === 1 ? prefixMatches[0] : ''
 }
 
+function escapeCsvValue(value: unknown): string {
+  const text = value === null || value === undefined ? '' : String(value)
+  return `"${text.replace(/"/g, '""')}"`
+}
+
+function getExportTruckStatus(row: Record<string, unknown>): string {
+  if (row.out_at || row.is_out) return 'dispatched'
+  if (row.loading_at || row.in_at || row.is_loading || row.is_in) return 'loading'
+  return 'waiting'
+}
+
 function mapImportRecordToTruck(row: Record<string, unknown>, normalizeGateNo: (v: string) => string): TruckImportRow {
   const explicitGate = getImportValue(row, ['gate_no', 'gate', 'gate_number', 'gateno'])
   const deliveryBatchGate = getGateFromDeliveryBatch(getImportValue(row, [
@@ -338,6 +350,7 @@ export default function TrucksPage() {
     delivery_batch_code: string | null
   }>>([])
   const [importGateMappings, setImportGateMappings] = useState<Record<string, string>>({})
+  const [isExportingTrucks, setIsExportingTrucks] = useState(false)
   const didSyncActiveSnapshot = useRef(false)
 
   const [fRegNo, setFRegNo] = useState('')
@@ -595,6 +608,105 @@ export default function TrucksPage() {
     closeImportPreview()
   }
 
+  const handleExportTruckCsv = async () => {
+    if (isExportingTrucks) return
+    setIsExportingTrucks(true)
+
+    try {
+      const recordsById = new Map<string, { row: Record<string, unknown>; source: string }>()
+      const addRecords = (rows: Record<string, unknown>[], source: string) => {
+        rows.forEach((row, index) => {
+          const registrationNumber = stringifyImportValue(row.registration_number)
+          if (!registrationNumber) return
+          const key = stringifyImportValue(row.id)
+            || `${source}:${registrationNumber}:${stringifyImportValue(row.created_at)}:${index}`
+          if (source !== 'dispatched' && recordsById.get(key)?.source === 'dispatched') return
+          recordsById.set(key, { row, source })
+        })
+      }
+
+      try {
+        const [activeTable, dispatchedTable] = await Promise.all([
+          databaseApi.getTableData('active_trucks'),
+          databaseApi.getTableData('dispatched_trucks'),
+        ])
+        addRecords(activeTable.rows, 'active')
+        addRecords(dispatchedTable.rows, 'dispatched')
+      } catch (error) {
+        console.warn('Database truck export fell back to the live truck store:', error)
+      }
+
+      addRecords(
+        trucks.map((truck) => ({ ...truck }) as Record<string, unknown>),
+        'active'
+      )
+
+      const records = [...recordsById.values()]
+      if (records.length === 0) {
+        showToast('No truck records are available to export.', 'error')
+        return
+      }
+
+      const columns = [
+        'truck_number',
+        'gate',
+        'status',
+        'waiting_at',
+        'loading_at',
+        'in_at',
+        'out_at',
+        'created_at',
+        'loading_duration_seconds',
+        'record_source',
+      ]
+      const lines = records.map(({ row, source }) => [
+        row.registration_number,
+        row.gate_no,
+        getExportTruckStatus(row),
+        row.waiting_at,
+        row.loading_at,
+        row.in_at,
+        row.out_at,
+        row.created_at,
+        row.loading_duration,
+        source,
+      ].map(escapeCsvValue).join(','))
+      const csvContent = `\uFEFF${columns.join(',')}\n${lines.join('\n')}`
+      const filename = `truck-token-records-${new Date().toISOString().slice(0, 10)}.csv`
+      const tauriWindow = window as typeof window & { __TAURI_INTERNALS__?: unknown }
+
+      if (tauriWindow.__TAURI_INTERNALS__) {
+        const { invoke } = await import('@tauri-apps/api/core')
+        const savePath = await invoke<string | null>('plugin:dialog|save', {
+          options: {
+            title: 'Export Truck Token Records',
+            defaultPath: filename,
+            filters: [{ name: 'CSV', extensions: ['csv'] }],
+          },
+        })
+        if (!savePath) return
+        await databaseApi.saveTextFile(savePath, csvContent)
+      } else {
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = filename
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        URL.revokeObjectURL(url)
+      }
+
+      showToast(`${records.length} truck record${records.length !== 1 ? 's' : ''} exported`, 'success')
+    } catch (error) {
+      console.error('Failed to export truck records:', error)
+      showToast(`Truck CSV export failed: ${error instanceof Error ? error.message : String(error)}`, 'error')
+    } finally {
+      setIsExportingTrucks(false)
+    }
+  }
+
   const allGateNumbers = useMemo(() => {
     const fromGates = gates.map((g) => g.number)
     return fromGates
@@ -795,6 +907,15 @@ export default function TrucksPage() {
             </Button>
             <Button onClick={() => { resetTruckForm(); setShowAddTruck(true) }}>
               <Plus className="mr-1 size-4" /> Add Truck
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => void handleExportTruckCsv()}
+              disabled={isExportingTrucks}
+              className="border-border/60"
+            >
+              <Download className="mr-1.5 size-4" />
+              {isExportingTrucks ? 'Exporting...' : 'Export CSV'}
             </Button>
           </div>
         </div>
@@ -1265,7 +1386,7 @@ export default function TrucksPage() {
           )}
           {importBatchCodes.length === 0 && unresolvedImportCount > 0 && (
             <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
-              One or more gate values do not match a configured gate. Update the file or add the missing gate before importing.
+              Select a configured gate for each highlighted truck before importing.
             </p>
           )}
           <div className="max-h-[350px] overflow-auto rounded-lg border border-border/60">
@@ -1289,12 +1410,34 @@ export default function TrucksPage() {
                           <Badge variant="outline" className="font-mono uppercase">
                             {row.delivery_batch_code}
                           </Badge>
-                        ) : 'Direct gate'}
+                        ) : (importPreviewData[i]?.gate_no ? 'Direct gate' : 'No gate')}
                       </TableCell>
                     )}
                     <TableCell>
-                      {row.gate_no ? `Gate ${row.gate_no.toUpperCase()}` : (
-                        <span className="font-medium text-amber-500">Select gate</span>
+                      {row.gate_no ? `Gate ${row.gate_no.toUpperCase()}` : row.delivery_batch_code ? (
+                        <span className="font-medium text-amber-500">Map code above</span>
+                      ) : (
+                        <Select
+                          value={undefined}
+                          onValueChange={(gateNumber) => {
+                            setImportPreviewData((current) => current.map((item, index) => (
+                              index === i
+                                ? { ...item, gate_no: normalizeGateNumber(gateNumber) }
+                                : item
+                            )))
+                          }}
+                        >
+                          <SelectTrigger className="h-8 min-w-[140px]">
+                            <SelectValue placeholder="Select gate" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {gates.map((gate) => (
+                              <SelectItem key={gate.id} value={gate.number}>
+                                Gate {gate.number.toUpperCase()}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       )}
                     </TableCell>
                   </TableRow>
@@ -1310,6 +1453,11 @@ export default function TrucksPage() {
                 Your CSV or Excel file can use <code className="rounded bg-muted px-1 font-mono text-[11px]">truck_number, gate</code> or <code className="rounded bg-muted px-1 font-mono text-[11px]">vehicle_number, del.batch</code>.
                 When <code className="rounded bg-muted px-1 font-mono text-[11px]">del.batch</code> is used, its final character is mapped to one of your configured gates above.
               </p>
+              <Button asChild variant="outline" size="sm" className="mt-3">
+                <a href="/samples/truck-token-import-example.csv" download>
+                  <Download className="size-4" /> Download Sample CSV
+                </a>
+              </Button>
             </div>
           </div>
         </div>
