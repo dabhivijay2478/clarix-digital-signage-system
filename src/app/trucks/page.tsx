@@ -13,6 +13,7 @@ import {
   Upload,
   ArrowUp,
   ArrowDown,
+  ArrowRight,
   Timer,
   CheckCircle2,
   CalendarDays,
@@ -101,6 +102,7 @@ const excelExtensions = new Set(['xlsx', 'xls', 'xlsm', 'xlsb'])
 type TruckImportRow = {
   registration_number: string
   gate_no: string
+  delivery_batch_code: string | null
 }
 
 function getGateColorClass(gateNo: string | null | undefined): string {
@@ -130,11 +132,14 @@ function getGateColorClass(gateNo: string | null | undefined): string {
 }
 
 function makeGateNormalizer(configuredGates: string[]) {
+  const gatesByNormalizedNumber = new Map(
+    configuredGates.map((gate) => [normalizeGateNumber(gate), normalizeGateNumber(gate)])
+  )
+
   return function normalizeGateNo(value: string | null | undefined): string {
-    const raw = (value ?? '').trim().toLowerCase()
+    const raw = normalizeGateNumber(value ?? '')
     if (!raw) return ''
-    if (configuredGates.length === 0) return raw
-    return configuredGates.map((g) => g.toLowerCase()).includes(raw) ? raw : raw
+    return gatesByNormalizedNumber.get(raw) ?? raw
   }
 }
 
@@ -167,6 +172,16 @@ function getGateFromDeliveryBatch(value: string): string {
   return match ? match[0].toLowerCase() : ''
 }
 
+function suggestGateForBatchCode(batchCode: string, configuredGates: string[]): string {
+  const normalizedCode = normalizeGateNumber(batchCode)
+  const normalizedGates = configuredGates.map(normalizeGateNumber)
+  const exactMatch = normalizedGates.find((gate) => gate === normalizedCode)
+  if (exactMatch) return exactMatch
+
+  const prefixMatches = normalizedGates.filter((gate) => gate.startsWith(normalizedCode))
+  return prefixMatches.length === 1 ? prefixMatches[0] : ''
+}
+
 function mapImportRecordToTruck(row: Record<string, unknown>, normalizeGateNo: (v: string) => string): TruckImportRow {
   const explicitGate = getImportValue(row, ['gate_no', 'gate', 'gate_number', 'gateno'])
   const deliveryBatchGate = getGateFromDeliveryBatch(getImportValue(row, [
@@ -182,7 +197,6 @@ function mapImportRecordToTruck(row: Record<string, unknown>, normalizeGateNo: (
     'delivery batch no',
     'batch',
   ]))
-  const gate = normalizeGateNo(explicitGate || deliveryBatchGate)
   return {
     registration_number: getImportValue(row, [
       'registration_number',
@@ -202,7 +216,8 @@ function mapImportRecordToTruck(row: Record<string, unknown>, normalizeGateNo: (
       'truck_number',
       'number',
     ]),
-    gate_no: gate || '',
+    gate_no: explicitGate ? normalizeGateNo(explicitGate) : '',
+    delivery_batch_code: explicitGate ? null : deliveryBatchGate || null,
   }
 }
 
@@ -320,7 +335,9 @@ export default function TrucksPage() {
   const [importPreviewData, setImportPreviewData] = useState<Array<{
     registration_number: string
     gate_no: string
+    delivery_batch_code: string | null
   }>>([])
+  const [importGateMappings, setImportGateMappings] = useState<Record<string, string>>({})
   const didSyncActiveSnapshot = useRef(false)
 
   const [fRegNo, setFRegNo] = useState('')
@@ -500,17 +517,70 @@ export default function TrucksPage() {
         return
       }
 
+      const configuredGateNumbers = gates.map((gate) => gate.number)
+      const batchCodes = [...new Set(
+        parsed
+          .map((row) => row.delivery_batch_code)
+          .filter((code): code is string => Boolean(code))
+      )]
+      setImportGateMappings(Object.fromEntries(
+        batchCodes.map((code) => [code, suggestGateForBatchCode(code, configuredGateNumbers)])
+      ))
       setImportPreviewData(parsed)
       setShowImportPreview(true)
     } catch (error) {
       showToast(`Import failed: ${error instanceof Error ? error.message : String(error)}`, 'error')
     }
-  }, [normalizeGateNo])
+  }, [gates, normalizeGateNo])
+
+  const importBatchCodes = useMemo(
+    () => [...new Set(
+      importPreviewData
+        .map((row) => row.delivery_batch_code)
+        .filter((code): code is string => Boolean(code))
+    )].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+    [importPreviewData]
+  )
+
+  const configuredImportGateNumbers = useMemo(
+    () => new Set(gates.map((gate) => normalizeGateNumber(gate.number))),
+    [gates]
+  )
+
+  const resolvedImportPreviewData = useMemo(
+    () => importPreviewData.map((row) => {
+      const mappedGate = row.delivery_batch_code
+        ? normalizeGateNumber(importGateMappings[row.delivery_batch_code] ?? '')
+        : normalizeGateNumber(row.gate_no)
+      return {
+        ...row,
+        gate_no: configuredImportGateNumbers.has(mappedGate) ? mappedGate : '',
+      }
+    }),
+    [configuredImportGateNumbers, importGateMappings, importPreviewData]
+  )
+
+  const unresolvedImportCount = useMemo(
+    () => resolvedImportPreviewData.filter((row) => !row.gate_no).length,
+    [resolvedImportPreviewData]
+  )
+
+  const closeImportPreview = () => {
+    setShowImportPreview(false)
+    setImportPreviewData([])
+    setImportGateMappings({})
+  }
 
   const handleConfirmImport = () => {
+    if (unresolvedImportCount > 0) {
+      showToast('Map every delivery batch code to a configured gate before importing.', 'error')
+      return
+    }
+
     const count = importTrucks(
-      importPreviewData.map((d) => ({
-        ...d,
+      resolvedImportPreviewData.map((d) => ({
+        registration_number: d.registration_number,
+        gate_no: d.gate_no,
         is_waiting: true,
         is_loading: false,
         is_in: false,
@@ -522,8 +592,7 @@ export default function TrucksPage() {
       }))
     )
     showToast(`${count} truck${count !== 1 ? 's' : ''} imported successfully`, 'success')
-    setImportPreviewData([])
-    setShowImportPreview(false)
+    closeImportPreview()
   }
 
   const allGateNumbers = useMemo(() => {
@@ -1111,12 +1180,13 @@ export default function TrucksPage() {
       {/* ── IMPORT PREVIEW MODAL ──────────────────────────────────────────────── */}
       <Modal
         isOpen={showImportPreview}
-        onClose={() => { setShowImportPreview(false); setImportPreviewData([]) }}
+        onClose={closeImportPreview}
         title={`Import ${importPreviewData.length} Trucks`}
+        contentClassName="sm:max-w-3xl"
         actions={
           <>
-            <Button variant="outline" onClick={() => { setShowImportPreview(false); setImportPreviewData([]) }}>Cancel</Button>
-            <Button onClick={handleConfirmImport}>
+            <Button variant="outline" onClick={closeImportPreview}>Cancel</Button>
+            <Button onClick={handleConfirmImport} disabled={unresolvedImportCount > 0}>
               <FileSpreadsheet className="mr-1.5 size-4" /> Confirm Import
             </Button>
           </>
@@ -1125,23 +1195,108 @@ export default function TrucksPage() {
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
             {importPreviewData.length} truck record{importPreviewData.length !== 1 ? 's' : ''} found.
-            Review below and click &quot;Confirm Import&quot; to add them.
+            Map the detected delivery batch codes, then review the trucks before importing.
           </p>
+          {importBatchCodes.length > 0 && (
+            <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-4">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Delivery Batch Gate Mapping</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Each code is the final character found in the Del. Batch column.
+                </p>
+              </div>
+
+              {gates.length === 0 ? (
+                <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
+                  No gates are configured. Add gates on the Screens page before importing these trucks.
+                </p>
+              ) : (
+                <div className="grid gap-2">
+                  {importBatchCodes.map((batchCode) => {
+                    const affectedCount = importPreviewData.filter(
+                      (row) => row.delivery_batch_code === batchCode
+                    ).length
+                    return (
+                      <div
+                        key={batchCode}
+                        className="grid grid-cols-1 items-center gap-3 rounded-md border border-border/50 bg-background/50 p-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.4fr)]"
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Badge variant="outline" className="font-mono text-sm uppercase">
+                            {batchCode}
+                          </Badge>
+                          <span className="truncate text-xs text-muted-foreground">
+                            {affectedCount} truck{affectedCount !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <ArrowRight className="hidden size-4 text-muted-foreground sm:block" aria-hidden="true" />
+                        <Select
+                          value={importGateMappings[batchCode] || undefined}
+                          onValueChange={(gateNumber) => {
+                            setImportGateMappings((current) => ({
+                              ...current,
+                              [batchCode]: normalizeGateNumber(gateNumber),
+                            }))
+                          }}
+                        >
+                          <SelectTrigger className="min-w-0">
+                            <SelectValue placeholder="Select gate" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {gates.map((gate) => (
+                              <SelectItem key={gate.id} value={gate.number}>
+                                Gate {gate.number.toUpperCase()}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {unresolvedImportCount > 0 && (
+                <p className="text-xs font-medium text-amber-500">
+                  {unresolvedImportCount} truck{unresolvedImportCount !== 1 ? 's' : ''} still need a configured gate.
+                </p>
+              )}
+            </div>
+          )}
+          {importBatchCodes.length === 0 && unresolvedImportCount > 0 && (
+            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
+              One or more gate values do not match a configured gate. Update the file or add the missing gate before importing.
+            </p>
+          )}
           <div className="max-h-[350px] overflow-auto rounded-lg border border-border/60">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>#</TableHead>
                   <TableHead>Truck Number</TableHead>
+                  {importBatchCodes.length > 0 && <TableHead>Batch Code</TableHead>}
                   <TableHead>Gate No</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {importPreviewData.map((row, i) => (
+                {resolvedImportPreviewData.map((row, i) => (
                   <TableRow key={i}>
                     <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                     <TableCell className="font-mono font-medium">{row.registration_number}</TableCell>
-                    <TableCell>{row.gate_no || '—'}</TableCell>
+                    {importBatchCodes.length > 0 && (
+                      <TableCell>
+                        {row.delivery_batch_code ? (
+                          <Badge variant="outline" className="font-mono uppercase">
+                            {row.delivery_batch_code}
+                          </Badge>
+                        ) : 'Direct gate'}
+                      </TableCell>
+                    )}
+                    <TableCell>
+                      {row.gate_no ? `Gate ${row.gate_no.toUpperCase()}` : (
+                        <span className="font-medium text-amber-500">Select gate</span>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -1153,7 +1308,7 @@ export default function TrucksPage() {
               <p className="font-medium">Import Format Tip</p>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 Your CSV or Excel file can use <code className="rounded bg-muted px-1 font-mono text-[11px]">truck_number, gate</code> or <code className="rounded bg-muted px-1 font-mono text-[11px]">vehicle_number, del.batch</code>.
-                When <code className="rounded bg-muted px-1 font-mono text-[11px]">del.batch</code> is used, the last character becomes the gate.
+                When <code className="rounded bg-muted px-1 font-mono text-[11px]">del.batch</code> is used, its final character is mapped to one of your configured gates above.
               </p>
             </div>
           </div>
