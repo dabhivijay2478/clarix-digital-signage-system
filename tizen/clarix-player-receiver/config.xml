@@ -2,7 +2,7 @@
 <widget xmlns="http://www.w3.org/ns/widgets"
         xmlns:tizen="http://tizen.org/ns/widgets"
         id="http://mg-enterprise.local/player-receiver"
-        version="1.0.28"
+        version="1.0.33"
         viewmodes="fullscreen">
     <tizen:application id="MgEntRcv01.MGEnterpriseReceiver"
                        package="MgEntRcv01"

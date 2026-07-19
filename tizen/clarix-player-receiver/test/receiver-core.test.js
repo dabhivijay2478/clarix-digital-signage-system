@@ -36,7 +36,7 @@ test("allows only HTTP URLs at the exact configured origin", () => {
   assert.equal(trusted.isAllowed("http://10.236.100.245.evil.test:7420/player"), false);
 });
 
-test("keeps the manifest, CSP, and controller player navigation controlled", () => {
+test("keeps the manifest, CSP, and direct controller player navigation controlled", () => {
   const manifest = fs.readFileSync(path.join(projectDir, "config.xml"), "utf8");
   const html = fs.readFileSync(path.join(projectDir, "index.html"), "utf8");
   const main = fs.readFileSync(path.join(projectDir, "js/main.js"), "utf8");
@@ -55,26 +55,30 @@ test("keeps the manifest, CSP, and controller player navigation controlled", () 
   assert.doesNotMatch(html, /inputmode="numeric"/);
   assert.match(main, /trusted\.isAllowed\(target\)/);
   assert.match(main, /openControllerPlayer\(\)/);
-  assert.match(main, /loadControllerPlayer\(target\)/);
-  assert.match(main, /\/api\/proxy\?url=/);
-  assert.match(main, /__CLARIX_CONTROLLER_ORIGIN__/);
-  assert.match(main, /showPlayerFrame\(target, xhr\.responseText\)/);
-  assert.doesNotMatch(main, /\?receiver=tizen/);
+  assert.match(main, /tizen\.preference/);
+  assert.match(main, /window\.widget\.preferences/);
+  assert.match(main, /playerTargetUrl/);
+  assert.match(main, /native IME requires input key events to remain unmodified/);
+  assert.match(main, /window\.location\.replace\(target\)/);
+  assert.doesNotMatch(main, /appendQueryParam/);
+  assert.doesNotMatch(main, /receiver=tizen/);
+  assert.doesNotMatch(main, /\/api\/proxy\?url=/);
+  assert.doesNotMatch(main, /document\.createElement\("iframe"\)/);
+  assert.doesNotMatch(main, /doc\.write/);
   assert.match(main, /clarix_receiver_controller/);
   assert.match(main, /Enter controller IP/);
   assert.match(main, /focusableControls/);
   assert.match(main, /moveFocus/);
-  assert.match(main, /controllerForm\.requestSubmit/);
-  assert.match(main, /connectButton\.click\(\)/);
+  assert.match(main, /addEventListener\("keyup"/);
+  assert.match(main, /event\.target !== controllerIpInput/);
+  assert.doesNotMatch(main, /controllerForm\.requestSubmit/);
+  assert.match(main, /document\.activeElement\.click\(\)/);
   assert.doesNotMatch(packageScript, /receiver-config\.json/);
   assert.doesNotMatch(main, /receiver-config\.json/);
   assert.doesNotMatch(main, /requestJson\("\/api\/screens"/);
   assert.doesNotMatch(main, /requestJson\("\/api\/trucks"/);
   assert.doesNotMatch(main, /renderTruckDisplay/);
-  assert.doesNotMatch(main, /clarix_player_screen_id/);
-  assert.match(main, /document\.createElement\("iframe"\)/);
   assert.doesNotMatch(main, /new DOMParser\(\)/);
-  assert.match(main, /doc\.write\(injectControllerContext/);
   assert.doesNotMatch(main, /setAttribute\("sandbox"/);
 });
 

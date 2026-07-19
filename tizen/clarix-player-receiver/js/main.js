@@ -26,6 +26,21 @@
     }
   }
 
+  function writeJsonStore(key, payload) {
+    var value = JSON.stringify(payload);
+    try { localStorage.setItem(key, value); } catch (_error) {}
+    try {
+      if (window.tizen && tizen.preference) tizen.preference.setValue(key, value);
+    } catch (_error) {}
+    try {
+      if (window.widget && window.widget.preferences) window.widget.preferences.setItem(key, value);
+    } catch (_error) {}
+  }
+
+  function readSavedController() {
+    return readJsonStore(storageKey);
+  }
+
   function saveController(config) {
     try {
       localStorage.setItem(storageKey, JSON.stringify({
@@ -73,63 +88,8 @@
     focusInputEnd();
   }
 
-  function controllerOrigin() {
-    return activeConfig ? activeConfig.origin : "";
-  }
-
-  function injectControllerContext(html, origin) {
-    var base = "<base href=\"" + origin + "/\">";
-    var context = "<script>window.__CLARIX_CONTROLLER_ORIGIN__=\"" + origin.replace(/"/g, "%22") + "\";<\/script>";
-    if (/<head[^>]*>/i.test(html)) {
-      return html.replace(/<head([^>]*)>/i, "<head$1>" + base + context);
-    }
-    return base + context + html;
-  }
-
-  function showPlayerFrame(target, html) {
-    var frame = document.createElement("iframe");
-    frame.className = "player-frame";
-    frame.title = "MG Enterprise Controller Player";
-    frame.setAttribute("allow", "autoplay; fullscreen");
-    frame.setAttribute("allowfullscreen", "true");
-    playerHost.innerHTML = "";
-    playerHost.appendChild(frame);
-    offline.hidden = true;
-    playerHost.hidden = false;
-
-    var doc = frame.contentWindow && frame.contentWindow.document;
-    if (!doc) {
-      showOffline("Player frame is unavailable.");
-      return;
-    }
-    doc.open();
-    doc.write(injectControllerContext(html, controllerOrigin()));
-    doc.close();
-  }
-
-  function loadControllerPlayer(target) {
-    var xhr = new XMLHttpRequest();
-    var requestUrl = controllerOrigin() + "/api/proxy?url=" + encodeURIComponent(target);
-    xhr.open("GET", requestUrl, true);
-    xhr.timeout = 8000;
-    xhr.onload = function () {
-      if (xhr.status < 200 || xhr.status >= 300) {
-        showOffline("Controller player page returned HTTP " + xhr.status + ".");
-        return;
-      }
-      showPlayerFrame(target, xhr.responseText);
-    };
-    xhr.onerror = function () {
-      showOffline("Controller player page could not load through the controller proxy.");
-    };
-    xhr.ontimeout = function () {
-      showOffline("Controller player page timed out.");
-    };
-    try {
-      xhr.send();
-    } catch (_error) {
-      showOffline("Controller player page request was blocked.");
-    }
+  function playerTargetUrl() {
+    return trusted.playerUrl();
   }
 
   function openControllerPlayer() {
@@ -141,16 +101,11 @@
     stopManager();
     status.textContent = "Opening Controller Player...";
     retry.textContent = target;
-    var startedFrom = window.location.href;
     try {
-      window.location.href = target;
+      window.location.replace(target);
     } catch (_error) {
-      loadControllerPlayer(target);
-      return;
+      showOffline("Controller player page could not open.");
     }
-    window.setTimeout(function () {
-      if (window.location.href === startedFrom) loadControllerPlayer(target);
-    }, 1500);
   }
 
   function showPlayer() {
@@ -254,7 +209,6 @@
   controllerIpInput.addEventListener("click", focusInputEnd);
   controllerIpInput.addEventListener("mousedown", focusInputEnd);
   controllerIpInput.addEventListener("touchstart", focusInputEnd);
-
   document.addEventListener("contextmenu", function (event) { event.preventDefault(); });
   document.addEventListener("dragstart", function (event) { event.preventDefault(); });
   document.addEventListener("keydown", function (event) {
@@ -280,6 +234,13 @@
     if (blocked.indexOf(event.keyCode) !== -1 || event.altKey || event.metaKey || event.ctrlKey) {
       event.preventDefault();
       event.stopPropagation();
+    }
+  }, true);
+  document.addEventListener("keyup", function (event) {
+    if (event.target !== controllerIpInput) return;
+    var direction = directionFromKey(event);
+    if (direction !== 0 && (event.keyCode === 38 || event.keyCode === 40 || keyName(event) === "ArrowUp" || keyName(event) === "ArrowDown")) {
+      moveFocus(direction);
     }
   }, true);
   document.addEventListener("tizenhwkey", function (event) {
