@@ -52,6 +52,7 @@ import {
   TRUCK_DISPLAY_ROTATION_OPTIONS,
 } from '@/store/gateStore'
 import { cn } from '@/lib/utils'
+import { buildDispatchedTrucksCsv } from '@/lib/truck-csv'
 
 // ── Compact Stat Card ──────────────────────────────────────────────────────
 
@@ -181,17 +182,6 @@ function suggestGateForBatchCode(batchCode: string, configuredGates: string[]): 
 
   const prefixMatches = normalizedGates.filter((gate) => gate.startsWith(normalizedCode))
   return prefixMatches.length === 1 ? prefixMatches[0] : ''
-}
-
-function escapeCsvValue(value: unknown): string {
-  const text = value === null || value === undefined ? '' : String(value)
-  return `"${text.replace(/"/g, '""')}"`
-}
-
-function getExportTruckStatus(row: Record<string, unknown>): string {
-  if (row.out_at || row.is_out) return 'dispatched'
-  if (row.loading_at || row.in_at || row.is_loading || row.is_in) return 'loading'
-  return 'waiting'
 }
 
 function mapImportRecordToTruck(row: Record<string, unknown>, normalizeGateNo: (v: string) => string): TruckImportRow {
@@ -613,73 +603,45 @@ export default function TrucksPage() {
     setIsExportingTrucks(true)
 
     try {
-      const recordsById = new Map<string, { row: Record<string, unknown>; source: string }>()
-      const addRecords = (rows: Record<string, unknown>[], source: string) => {
+      const recordsById = new Map<string, Record<string, unknown>>()
+      const addRecords = (rows: Record<string, unknown>[]) => {
         rows.forEach((row, index) => {
           const registrationNumber = stringifyImportValue(row.registration_number)
           if (!registrationNumber) return
           const key = stringifyImportValue(row.id)
-            || `${source}:${registrationNumber}:${stringifyImportValue(row.created_at)}:${index}`
-          if (source !== 'dispatched' && recordsById.get(key)?.source === 'dispatched') return
-          recordsById.set(key, { row, source })
+            || `${registrationNumber}:${stringifyImportValue(row.out_at)}:${index}`
+          recordsById.set(key, row)
         })
       }
 
       try {
-        const [activeTable, dispatchedTable] = await Promise.all([
-          databaseApi.getTableData('active_trucks'),
-          databaseApi.getTableData('dispatched_trucks'),
-        ])
-        addRecords(activeTable.rows, 'active')
-        addRecords(dispatchedTable.rows, 'dispatched')
+        const dispatchedTable = await databaseApi.getTableData('dispatched_trucks')
+        addRecords(dispatchedTable.rows)
       } catch (error) {
-        console.warn('Database truck export fell back to the live truck store:', error)
+        console.warn('Database dispatched-truck export fell back to the live truck store:', error)
       }
 
       addRecords(
-        trucks.map((truck) => ({ ...truck }) as Record<string, unknown>),
-        'active'
+        trucks
+          .filter((truck) => truck.is_out)
+          .map((truck) => ({ ...truck }) as Record<string, unknown>)
       )
 
-      const records = [...recordsById.values()]
+      const records = [...recordsById.values()].filter((row) => Boolean(row.out_at || row.is_out))
       if (records.length === 0) {
-        showToast('No truck records are available to export.', 'error')
+        showToast('No dispatched truck records are available to export.', 'error')
         return
       }
 
-      const columns = [
-        'truck_number',
-        'gate',
-        'status',
-        'waiting_at',
-        'loading_at',
-        'in_at',
-        'out_at',
-        'created_at',
-        'loading_duration_seconds',
-        'record_source',
-      ]
-      const lines = records.map(({ row, source }) => [
-        row.registration_number,
-        row.gate_no,
-        getExportTruckStatus(row),
-        row.waiting_at,
-        row.loading_at,
-        row.in_at,
-        row.out_at,
-        row.created_at,
-        row.loading_duration,
-        source,
-      ].map(escapeCsvValue).join(','))
-      const csvContent = `\uFEFF${columns.join(',')}\n${lines.join('\n')}`
-      const filename = `truck-token-records-${new Date().toISOString().slice(0, 10)}.csv`
+      const csvContent = buildDispatchedTrucksCsv(records)
+      const filename = 'dispatched_trucks_export.csv'
       const tauriWindow = window as typeof window & { __TAURI_INTERNALS__?: unknown }
 
       if (tauriWindow.__TAURI_INTERNALS__) {
         const { invoke } = await import('@tauri-apps/api/core')
         const savePath = await invoke<string | null>('plugin:dialog|save', {
           options: {
-            title: 'Export Truck Token Records',
+            title: 'Export Dispatched Trucks',
             defaultPath: filename,
             filters: [{ name: 'CSV', extensions: ['csv'] }],
           },
@@ -698,7 +660,7 @@ export default function TrucksPage() {
         URL.revokeObjectURL(url)
       }
 
-      showToast(`${records.length} truck record${records.length !== 1 ? 's' : ''} exported`, 'success')
+      showToast(`${records.length} dispatched truck record${records.length !== 1 ? 's' : ''} exported`, 'success')
     } catch (error) {
       console.error('Failed to export truck records:', error)
       showToast(`Truck CSV export failed: ${error instanceof Error ? error.message : String(error)}`, 'error')

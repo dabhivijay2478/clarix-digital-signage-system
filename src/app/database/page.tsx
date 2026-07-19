@@ -53,6 +53,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { databaseApi } from '@/lib/tauri'
 import { APP_NAME } from '@/lib/branding'
+import { buildDispatchedTrucksCsv } from '@/lib/truck-csv'
 
 const tablesMetadata: Record<string, { label: string; desc: string }> = {
   screens: { label: 'Screens', desc: 'Registered signage screens, location, resolution, and configurations' },
@@ -205,68 +206,7 @@ export default function DatabasePage() {
       let csvContent = ''
       
       if (selectedTable === 'dispatched_trucks') {
-        const headers = [
-          'Sr. No.',
-          'Truck Number',
-          'Gate',
-          'Date (YYYY-MM-DD)',
-          'Loading In Time (HH:MM 24h)',
-          'Loading Out Time (HH:MM 24h)',
-          'Loading Duration (HH:MM)'
-        ]
-        
-        const formatTime24 = (isoStr: string | null | undefined): string => {
-          if (!isoStr) return ''
-          const d = new Date(isoStr)
-          if (isNaN(d.getTime())) return ''
-          const hrs = String(d.getHours()).padStart(2, '0')
-          const mins = String(d.getMinutes()).padStart(2, '0')
-          return `${hrs}:${mins}`
-        }
-
-        const formatDate = (isoStr: string | null | undefined): string => {
-          if (!isoStr) return ''
-          const d = new Date(isoStr)
-          if (isNaN(d.getTime())) return ''
-          const yr = d.getFullYear()
-          const mon = String(d.getMonth() + 1).padStart(2, '0')
-          const day = String(d.getDate()).padStart(2, '0')
-          return `${yr}-${mon}-${day}`
-        }
-
-        const formatDurationHHMM = (seconds: any): string => {
-          if (seconds === null || seconds === undefined || seconds === '') return ''
-          const secs = Number(seconds)
-          if (isNaN(secs) || secs < 0) return ''
-          const mins = Math.floor(secs / 60)
-          const hrs = Math.floor(mins / 60)
-          const remainingMins = mins % 60
-          const paddedHours = String(hrs).padStart(2, '0')
-          const paddedMinutes = String(remainingMins).padStart(2, '0')
-          return `${paddedHours}:${paddedMinutes}`
-        }
-
-        const headerLine = headers.map(h => `"${h}"`).join(',')
-        const rowLines = rowsToExport.map((row, index) => {
-          const srNo = String(index + 1)
-          const truckNo = String(row.registration_number || '')
-          const gate = String(row.gate_no || '')
-          const date = formatDate(row.loading_at || row.created_at)
-          const loadingIn = formatTime24(row.loading_at)
-          const loadingOut = formatTime24(row.out_at)
-          const duration = formatDurationHHMM(row.loading_duration)
-          
-          return [
-            `"${srNo}"`,
-            `"${truckNo.replace(/"/g, '""')}"`,
-            `"${gate.replace(/"/g, '""')}"`,
-            `"${date}"`,
-            `"${loadingIn}"`,
-            `"${loadingOut}"`,
-            `"${duration}"`
-          ].join(',')
-        })
-        csvContent = [headerLine, ...rowLines].join('\n')
+        csvContent = buildDispatchedTrucksCsv(rowsToExport)
       } else {
         // Create CSV format
         const headerLine = tableData.columns.map(col => `"${col.replace(/"/g, '""')}"`).join(',')
