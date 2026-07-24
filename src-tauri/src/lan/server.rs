@@ -122,6 +122,7 @@ pub async fn start_controller_server(
         .route("/api/production/dashboards", get(read_production_dashboards))
         .route("/api/production/dashboards/{id}", get(read_production_dashboard))
         .route("/api/production/datasets/{id}", get(read_production_dataset))
+        .route("/api/production/live", get(read_live_production))
         .route("/media/{filename}", get(legacy_media))
         .route("/presentation/{filename}", get(presentation_viewer))
         .route("/api/proxy", get(proxy_url));
@@ -449,6 +450,14 @@ async fn read_production_dataset(
         .map_err(internal_error)?
         .map(Json)
         .ok_or((StatusCode::NOT_FOUND, "Production dataset not found".to_string()))
+}
+
+async fn read_live_production(
+    State(state): State<AppState>,
+) -> Result<Json<crate::commands::production_api::ProductionLiveSnapshot>, (StatusCode, String)> {
+    crate::commands::production_api::query_live_snapshot(&state.pool)
+        .map(Json)
+        .map_err(internal_error)
 }
 
 async fn legacy_media(

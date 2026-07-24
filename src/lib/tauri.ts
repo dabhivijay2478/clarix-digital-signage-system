@@ -27,11 +27,16 @@ import type {
   ContentStorageInfo,
 } from './types';
 import { APP_NAME } from './branding';
+import type {
+  ProductionApiConfig,
+  ProductionApiConfigUpdate,
+  ProductionLiveSnapshot,
+} from './production-data';
 
 // ── Safe invoke wrapper ─────────────────────────────────────────────────────
 // Tauri APIs are only available in the browser (WebView), not during SSG build.
 
-function isTauriRuntime(): boolean {
+export function isTauriRuntime(): boolean {
   if (typeof window === 'undefined') return false;
   const globalRuntime = globalThis as typeof globalThis & { isTauri?: boolean };
   const tauriWindow = window as typeof window & {
@@ -417,6 +422,22 @@ export const contentLibraryApi = {
 export const productionApi = {
   importFile: (filename: string, bytes: Uint8Array) =>
     tauriInvoke<ProductionImportResult>('import_production_file', { filename, bytes: Array.from(bytes) }),
+  getLiveConfig: () =>
+    tauriInvoke<ProductionApiConfig>('get_production_api_config'),
+  updateLiveConfig: (config: ProductionApiConfigUpdate) =>
+    tauriInvoke<ProductionApiConfig>('update_production_api_config', { config }),
+  refreshLiveData: () =>
+    tauriInvoke<ProductionLiveSnapshot>('refresh_production_api'),
+  getLiveData: async (): Promise<ProductionLiveSnapshot> => {
+    const response = await fetch(`${getBrowserControllerOrigin()}/api/production/live`, {
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) {
+      throw new Error(`Controller production request failed: ${response.status}`);
+    }
+    return response.json() as Promise<ProductionLiveSnapshot>;
+  },
 };
 
 // ── Truck Alert API ────────────────────────────────────────────────────────

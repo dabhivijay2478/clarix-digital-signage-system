@@ -7,6 +7,7 @@ pub mod lan;
 pub mod network;
 pub mod playlists;
 pub mod production;
+pub mod production_api;
 pub mod schedule;
 pub mod screens;
 pub mod trucks;

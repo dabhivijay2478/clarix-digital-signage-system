@@ -363,6 +363,23 @@ const SCHEMA: &str = r#"
         updated_at        TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS production_api_settings (
+        singleton             INTEGER PRIMARY KEY CHECK (singleton = 1),
+        endpoint              TEXT NOT NULL DEFAULT 'https://172.16.254.249:443/DSC_DSB_API/api/production-summary',
+        api_key               TEXT NOT NULL DEFAULT '',
+        refresh_interval_secs INTEGER NOT NULL DEFAULT 900,
+        cached_payload        TEXT,
+        last_attempt_at       TEXT,
+        last_success_at       TEXT,
+        last_error            TEXT,
+        updated_at            TEXT NOT NULL
+    );
+
+    INSERT OR IGNORE INTO production_api_settings
+        (singleton, endpoint, api_key, refresh_interval_secs, updated_at)
+    VALUES
+        (1, 'https://172.16.254.249:443/DSC_DSB_API/api/production-summary', '', 900, datetime('now'));
+
     CREATE TABLE IF NOT EXISTS marquee_settings (
         singleton  INTEGER PRIMARY KEY CHECK (singleton = 1),
         enabled    BOOLEAN NOT NULL DEFAULT 0,

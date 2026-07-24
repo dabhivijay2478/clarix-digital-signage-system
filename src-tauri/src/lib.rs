@@ -164,6 +164,16 @@ pub fn run() {
             });
 
             if identity.role == DeviceRole::Controller && server_port > 0 {
+                let production_pool = pool.clone();
+                let production_events = app.state::<lan::server::SyncEventBus>().inner().clone();
+                tauri::async_runtime::spawn(async move {
+                    commands::production_api::run_production_api_loop(
+                        production_pool,
+                        production_events,
+                    )
+                    .await;
+                });
+
                 let refresh_discovery = lan_discovery.clone();
                 let refresh_identity = identity.clone();
                 tauri::async_runtime::spawn(async move {
@@ -265,6 +275,10 @@ pub fn run() {
             commands::production::delete_production_dataset,
             commands::production::add_production_dashboard_to_content,
             commands::production::clear_all_production_data,
+            commands::production_api::get_production_api_config,
+            commands::production_api::update_production_api_config,
+            commands::production_api::get_production_live_data,
+            commands::production_api::refresh_production_api,
             // Truck screen alerts
             commands::trucks::publish_truck_alert,
             commands::trucks::save_dispatched_truck,
