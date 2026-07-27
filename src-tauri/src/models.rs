@@ -465,6 +465,12 @@ pub struct ActiveTruck {
     pub id: String,
     pub registration_number: String,
     pub gate_no: Option<String>,
+    #[serde(default)]
+    pub delivery_batch_no: Option<String>,
+    #[serde(default)]
+    pub delivery_batch_gate: Option<String>,
+    #[serde(default)]
+    pub shipment_document_no: Option<String>,
     pub is_waiting: bool,
     pub is_loading: bool,
     pub is_in: bool,

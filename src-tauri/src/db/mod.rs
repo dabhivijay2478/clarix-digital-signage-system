@@ -76,6 +76,29 @@ pub fn init_db(app_data_dir: &str) -> Result<DbPool> {
     let _ = conn.execute("ALTER TABLE screens ADD COLUMN operating_hours TEXT DEFAULT '{}'", []);
     let _ = conn.execute("ALTER TABLE active_trucks ADD COLUMN loading_duration INTEGER", []);
     let _ = conn.execute("ALTER TABLE dispatched_trucks ADD COLUMN loading_duration INTEGER", []);
+    let _ = conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS all_trucks (
+            id                   TEXT PRIMARY KEY,
+            import_key           TEXT NOT NULL UNIQUE,
+            registration_number  TEXT NOT NULL,
+            gate_no              TEXT,
+            delivery_batch_no    TEXT,
+            delivery_batch_gate  TEXT,
+            shipment_document_no TEXT,
+            is_waiting           BOOLEAN NOT NULL DEFAULT 0,
+            is_loading           BOOLEAN NOT NULL DEFAULT 0,
+            is_in                BOOLEAN NOT NULL DEFAULT 0,
+            is_out               BOOLEAN NOT NULL DEFAULT 0,
+            waiting_at           TEXT,
+            loading_at           TEXT,
+            in_at                TEXT,
+            out_at               TEXT,
+            created_at           TEXT NOT NULL,
+            updated_at           TEXT NOT NULL,
+            loading_duration     INTEGER
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_all_trucks_import_key ON all_trucks(import_key);"
+    );
     
     // Backfill loading_duration for historical records
     let _ = conn.execute(
@@ -187,6 +210,27 @@ const SCHEMA: &str = r#"
         created_at          TEXT NOT NULL,
         order_index         INTEGER NOT NULL DEFAULT 0,
         loading_duration    INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS all_trucks (
+        id                   TEXT PRIMARY KEY,
+        import_key           TEXT NOT NULL UNIQUE,
+        registration_number  TEXT NOT NULL,
+        gate_no              TEXT,
+        delivery_batch_no    TEXT,
+        delivery_batch_gate  TEXT,
+        shipment_document_no TEXT,
+        is_waiting           BOOLEAN NOT NULL DEFAULT 0,
+        is_loading           BOOLEAN NOT NULL DEFAULT 0,
+        is_in                BOOLEAN NOT NULL DEFAULT 0,
+        is_out               BOOLEAN NOT NULL DEFAULT 0,
+        waiting_at           TEXT,
+        loading_at           TEXT,
+        in_at                TEXT,
+        out_at               TEXT,
+        created_at           TEXT NOT NULL,
+        updated_at           TEXT NOT NULL,
+        loading_duration     INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS content_items (

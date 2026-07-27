@@ -30,6 +30,7 @@ function defaultTruckToWaiting(truck: Truck): Truck {
     ...truck,
     gate_no: truck.gate_no ?? null,
     delivery_batch_no: truck.delivery_batch_no ?? null,
+    delivery_batch_gate: truck.delivery_batch_gate ?? truck.gate_no ?? null,
     shipment_document_no: truck.shipment_document_no ?? null,
     is_waiting: isWaiting,
     is_loading: truck.is_loading ?? false,
@@ -71,9 +72,11 @@ interface TruckStore {
   addTruck: (data: Omit<Truck, 'id' | 'created_at'>) => Truck
   editTruck: (id: string, data: Partial<Omit<Truck, 'id' | 'created_at'>>) => void
   deleteTruck: (id: string) => void
+  deleteTrucks: (ids: string[]) => void
   updateTruckChecks: (id: string, field: 'is_waiting' | 'is_loading' | 'is_in' | 'is_out', value: boolean) => void
   importTrucks: (data: Omit<Truck, 'id' | 'created_at'>[]) => number
   moveTruck: (id: string, direction: 'up' | 'down') => void
+  replaceTrucks: (trucks: Truck[]) => void
 }
 
 // ── Store Implementation ────────────────────────────────────────────────────
@@ -91,6 +94,7 @@ export const useTruckStore = create<TruckStore>()(
           created_at: now(),
           gate_no: data.gate_no ?? null,
           delivery_batch_no: data.delivery_batch_no ?? null,
+          delivery_batch_gate: data.delivery_batch_gate ?? data.gate_no ?? null,
           shipment_document_no: data.shipment_document_no ?? null,
           is_waiting: isWaiting,
           is_loading: data.is_loading ?? false,
@@ -103,6 +107,9 @@ export const useTruckStore = create<TruckStore>()(
           loading_duration: data.is_out ? (data.loading_duration ?? null) : null,
         }
         set((s) => ({ trucks: [...s.trucks, truck] }))
+        void trucksApi.upsertAll([truck]).catch((error) => {
+          console.warn('Failed to save truck record:', error)
+        })
         scheduleActiveTruckSnapshot(get().trucks)
         return truck
       },
@@ -111,6 +118,12 @@ export const useTruckStore = create<TruckStore>()(
         set((s) => ({
           trucks: s.trucks.map((t) => (t.id === id ? { ...t, ...data } : t)),
         }))
+        const updated = get().trucks.find((t) => t.id === id)
+        if (updated) {
+          void trucksApi.upsertAll([updated]).catch((error) => {
+            console.warn('Failed to update truck record:', error)
+          })
+        }
         scheduleActiveTruckSnapshot(get().trucks)
       },
 
@@ -118,6 +131,20 @@ export const useTruckStore = create<TruckStore>()(
         set((s) => ({
           trucks: s.trucks.filter((t) => t.id !== id),
         }))
+        void trucksApi.deleteAll([id]).catch((error) => {
+          console.warn('Failed to delete truck record:', error)
+        })
+        scheduleActiveTruckSnapshot(get().trucks)
+      },
+
+      deleteTrucks: (ids) => {
+        const idSet = new Set(ids)
+        set((s) => ({
+          trucks: s.trucks.filter((t) => !idSet.has(t.id)),
+        }))
+        void trucksApi.deleteAll(ids).catch((error) => {
+          console.warn('Failed to delete truck records:', error)
+        })
         scheduleActiveTruckSnapshot(get().trucks)
       },
 
@@ -186,6 +213,12 @@ export const useTruckStore = create<TruckStore>()(
             return updated
           }),
         }))
+        const updated = get().trucks.find((t) => t.id === id)
+        if (updated) {
+          void trucksApi.upsertAll([updated]).catch((error) => {
+            console.warn('Failed to update truck record:', error)
+          })
+        }
         scheduleActiveTruckSnapshot(get().trucks)
       },
 
@@ -196,6 +229,7 @@ export const useTruckStore = create<TruckStore>()(
           created_at: now(),
           gate_no: d.gate_no ?? null,
           delivery_batch_no: d.delivery_batch_no ?? null,
+          delivery_batch_gate: d.delivery_batch_gate ?? d.gate_no ?? null,
           shipment_document_no: d.shipment_document_no ?? null,
           is_waiting: d.is_waiting ?? true,
           is_loading: d.is_loading ?? false,
@@ -208,6 +242,9 @@ export const useTruckStore = create<TruckStore>()(
           loading_duration: d.loading_duration ?? null,
         }))
         set((s) => ({ trucks: [...s.trucks, ...newTrucks] }))
+        void trucksApi.upsertAll(newTrucks).catch((error) => {
+          console.warn('Failed to save imported truck records:', error)
+        })
         scheduleActiveTruckSnapshot(get().trucks)
         return newTrucks.length
       },
@@ -250,6 +287,11 @@ export const useTruckStore = create<TruckStore>()(
           }
           return { trucks: newTrucks }
         })
+        scheduleActiveTruckSnapshot(get().trucks)
+      },
+
+      replaceTrucks: (trucks) => {
+        set({ trucks: trucks.map(defaultTruckToWaiting) })
         scheduleActiveTruckSnapshot(get().trucks)
       },
     }),

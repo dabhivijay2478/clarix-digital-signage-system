@@ -100,9 +100,15 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
       case 'get_active_trucks':
         url = `${baseUrl}/api/trucks`;
         break;
+      case 'get_all_trucks':
+        url = `${baseUrl}/api/trucks`;
+        break;
       case 'get_truck_dispatch_summary':
         url = `${baseUrl}/api/trucks/dispatch-summary`;
         break;
+      case 'upsert_all_trucks':
+      case 'delete_all_trucks':
+        return undefined as T;
       case 'save_active_trucks': {
         const response = await fetch(`${baseUrl}/api/trucks`, {
           method: 'POST',
@@ -431,6 +437,11 @@ export const truckAlertsApi = {
 };
 
 export const trucksApi = {
+  getAll: () => tauriInvoke<Truck[]>('get_all_trucks'),
+  upsertAll: (trucks: Truck[]) =>
+    tauriInvoke<void>('upsert_all_trucks', { trucks }),
+  deleteAll: (ids: string[]) =>
+    tauriInvoke<void>('delete_all_trucks', { ids }),
   getActive: () => tauriInvoke<Truck[]>('get_active_trucks'),
   saveActiveSnapshot: (trucks: Truck[]) =>
     tauriInvoke<void>('save_active_trucks', { trucks }),

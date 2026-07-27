@@ -106,6 +106,7 @@ type TruckImportRow = {
   gate_no: string
   delivery_batch_no: string | null
   delivery_batch_code: string | null
+  delivery_batch_gate: string | null
   shipment_document_no: string | null
 }
 
@@ -257,6 +258,7 @@ function mapImportRecordToTruck(row: Record<string, unknown>, normalizeGateNo: (
     gate_no: explicitGate ? normalizeGateNo(explicitGate) : '',
     delivery_batch_no: deliveryBatchNo || null,
     delivery_batch_code: explicitGate ? null : deliveryBatchGate || null,
+    delivery_batch_gate: deliveryBatchGate || (explicitGate ? normalizeGateNo(explicitGate) : null),
     shipment_document_no: getImportValue(row, shipmentDocumentColumnNames) || null,
   }
 }
@@ -266,16 +268,18 @@ function getImportDuplicateKey(row: {
   gate_no?: string | null
   delivery_batch_no?: string | null
   delivery_batch_code?: string | null
+  delivery_batch_gate?: string | null
   shipment_document_no?: string | null
 }): string {
   const registrationNumber = normalizeDuplicateValue(row.registration_number)
-  const deliveryBatch = normalizeDuplicateValue(row.delivery_batch_no)
   const shipmentDocument = normalizeDuplicateValue(row.shipment_document_no)
-  const fallbackLocation = normalizeDuplicateValue(row.delivery_batch_code || row.gate_no)
+  const deliveryBatchGate = normalizeDuplicateValue(
+    row.delivery_batch_gate || row.delivery_batch_code || row.gate_no
+  )
   return [
     registrationNumber,
-    deliveryBatch || fallbackLocation,
     shipmentDocument,
+    deliveryBatchGate,
   ].join('|')
 }
 
@@ -387,10 +391,12 @@ export default function TrucksPage() {
     addTruck,
     editTruck,
     deleteTruck,
+    deleteTrucks,
     updateTruckChecks,
     importTrucks,
     getTruckById,
     moveTruck,
+    replaceTrucks,
   } = useTrucks()
 
   const { gates, displayRotationSecs, updateDisplayRotationSecs } = useGateStore()
@@ -405,6 +411,7 @@ export default function TrucksPage() {
   const [showAddTruck, setShowAddTruck] = useState(false)
   const [editingTruckId, setEditingTruckId] = useState<string | null>(null)
   const [selectedTruckForDetails, setSelectedTruckForDetails] = useState<TruckType | null>(null)
+  const [selectedTruckIds, setSelectedTruckIds] = useState<string[]>([])
   const [showImportPreview, setShowImportPreview] = useState(false)
   const [dispatchSummary, setDispatchSummary] = useState<TruckDispatchSummary | null>(null)
   const [lastAlert, setLastAlert] = useState<TruckScreenAlert | null>(null)
@@ -413,11 +420,13 @@ export default function TrucksPage() {
     gate_no: string
     delivery_batch_no: string | null
     delivery_batch_code: string | null
+    delivery_batch_gate: string | null
     shipment_document_no: string | null
   }>>([])
   const [importGateMappings, setImportGateMappings] = useState<Record<string, string>>({})
   const [isExportingTrucks, setIsExportingTrucks] = useState(false)
   const didSyncActiveSnapshot = useRef(false)
+  const didLoadTruckRecords = useRef(false)
 
   const [fRegNo, setFRegNo] = useState('')
   const [fGateNo, setFGateNo] = useState('')
@@ -435,6 +444,23 @@ export default function TrucksPage() {
   }, [refreshDispatchSummary])
 
   useEffect(() => {
+    if (didLoadTruckRecords.current) return
+    didLoadTruckRecords.current = true
+
+    void trucksApi.getAll().then((dbTrucks) => {
+      if (dbTrucks.length > 0) {
+        replaceTrucks(dbTrucks)
+      } else if (trucks.length > 0) {
+        void trucksApi.upsertAll(trucks).catch((error) => {
+          console.warn('Failed to backfill truck records:', error)
+        })
+      }
+    }).catch((error) => {
+      console.warn('Failed to load truck records:', error)
+    })
+  }, [replaceTrucks, trucks])
+
+  useEffect(() => {
     if (didSyncActiveSnapshot.current || trucks.length === 0) return
     didSyncActiveSnapshot.current = true
     void trucksApi.saveActiveSnapshot(trucks).catch((error) => {
@@ -450,6 +476,11 @@ export default function TrucksPage() {
       })
     }, 500)
     return () => clearTimeout(timer)
+  }, [trucks])
+
+  useEffect(() => {
+    const activeIds = new Set(trucks.map((truck) => truck.id))
+    setSelectedTruckIds((current) => current.filter((id) => activeIds.has(id)))
   }, [trucks])
 
   const resetTruckForm = () => {
@@ -684,6 +715,7 @@ export default function TrucksPage() {
         registration_number: d.registration_number,
         gate_no: d.gate_no,
         delivery_batch_no: d.delivery_batch_no,
+        delivery_batch_gate: d.delivery_batch_gate ?? d.gate_no,
         shipment_document_no: d.shipment_document_no,
         is_waiting: true,
         is_loading: false,
@@ -850,6 +882,34 @@ export default function TrucksPage() {
   const loadingCount = trucks.filter(t => t.is_loading && !t.is_out).length
   const dispatchedOutCount = trucks.filter(t => t.is_out).length
   const dispatchedTodayCount = dispatchSummary?.today ?? 0
+  const visibleTruckIds = filteredTrucks.map((truck) => truck.id)
+  const selectedVisibleTruckIds = selectedTruckIds.filter((id) => visibleTruckIds.includes(id))
+  const allVisibleSelected = visibleTruckIds.length > 0 && selectedVisibleTruckIds.length === visibleTruckIds.length
+
+  const toggleTruckSelection = (id: string, checked: boolean) => {
+    setSelectedTruckIds((current) => {
+      if (checked) return current.includes(id) ? current : [...current, id]
+      return current.filter((selectedId) => selectedId !== id)
+    })
+  }
+
+  const toggleVisibleTruckSelection = (checked: boolean) => {
+    setSelectedTruckIds((current) => {
+      if (!checked) return current.filter((id) => !visibleTruckIds.includes(id))
+      const next = new Set(current)
+      visibleTruckIds.forEach((id) => next.add(id))
+      return [...next]
+    })
+  }
+
+  const handleBulkDeleteTrucks = async () => {
+    if (selectedTruckIds.length === 0) return
+    const confirmed = await customConfirm(`Delete ${selectedTruckIds.length} selected truck${selectedTruckIds.length !== 1 ? 's' : ''}?`)
+    if (!confirmed) return
+    deleteTrucks(selectedTruckIds)
+    setSelectedTruckIds([])
+    showToast(`${selectedTruckIds.length} truck${selectedTruckIds.length !== 1 ? 's' : ''} deleted`, 'success')
+  }
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -949,6 +1009,11 @@ export default function TrucksPage() {
                 </span>
               )
             )}
+            {selectedTruckIds.length > 0 && (
+              <span className="text-xs font-medium text-primary">
+                {selectedTruckIds.length} selected
+              </span>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-2">
@@ -984,6 +1049,16 @@ export default function TrucksPage() {
             <Button onClick={() => { resetTruckForm(); setShowAddTruck(true) }}>
               <Plus className="mr-1 size-4" /> Add Truck
             </Button>
+            {selectedTruckIds.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => void handleBulkDeleteTrucks()}
+                className="border-destructive/40 text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="mr-1.5 size-4" />
+                Delete Selected
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={() => void handleExportTruckCsv()}
@@ -1029,6 +1104,13 @@ export default function TrucksPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="border-border/60 hover:bg-transparent">
+                    <TableHead className="w-[44px] text-center">
+                      <Checkbox
+                        checked={allVisibleSelected}
+                        disabled={visibleTruckIds.length === 0}
+                        onCheckedChange={(checked) => toggleVisibleTruckSelection(checked === true)}
+                      />
+                    </TableHead>
                     <TableHead className="w-[52px] text-[11px] font-semibold uppercase tracking-wide">#</TableHead>
                     <TableHead className="min-w-[150px] text-[11px] font-semibold uppercase tracking-wide">Truck Number</TableHead>
                     <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Status</TableHead>
@@ -1076,6 +1158,12 @@ export default function TrucksPage() {
                         className="cursor-pointer hover:bg-muted/40 transition-colors border-border/40"
                         onClick={() => setSelectedTruckForDetails(truck)}
                       >
+                        <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={selectedTruckIds.includes(truck.id)}
+                            onCheckedChange={(checked) => toggleTruckSelection(truck.id, checked === true)}
+                          />
+                        </TableCell>
                         <TableCell className="text-muted-foreground font-mono text-xs">
                           {index + 1}
                         </TableCell>

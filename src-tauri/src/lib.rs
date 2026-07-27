@@ -268,6 +268,9 @@ pub fn run() {
             // Truck screen alerts
             commands::trucks::publish_truck_alert,
             commands::trucks::save_dispatched_truck,
+            commands::trucks::get_all_trucks,
+            commands::trucks::upsert_all_trucks,
+            commands::trucks::delete_all_trucks,
             commands::trucks::get_active_trucks,
             commands::trucks::save_active_trucks,
             commands::trucks::get_truck_dispatch_summary,
