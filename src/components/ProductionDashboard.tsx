@@ -268,6 +268,7 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
   const [settingsEndpoint, setSettingsEndpoint] = useState(DEFAULT_API_ENDPOINT)
   const [settingsApiKey, setSettingsApiKey] = useState('')
   const [clearApiKey, setClearApiKey] = useState(false)
+  const [allowInvalidCertificates, setAllowInvalidCertificates] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
 
   const loadSnapshot = useCallback(async (silent = false) => {
@@ -296,6 +297,7 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
       const next = await productionApi.getLiveConfig()
       setConfig(next)
       setSettingsEndpoint(next.endpoint)
+      setAllowInvalidCertificates(next.allowInvalidCertificates)
     } catch {
       // Browser-only controller views can read cached data but credentials are
       // intentionally configurable only from the desktop controller.
@@ -397,6 +399,7 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
     endpoint: snapshot.endpoint,
     refreshIntervalSecs: snapshot.refreshIntervalSecs,
     apiKeyConfigured: snapshot.configured,
+    allowInvalidCertificates: false,
     lastAttemptAt: snapshot.lastAttemptAt,
     lastSuccessAt: snapshot.lastSuccessAt,
     lastError: snapshot.lastError,
@@ -412,6 +415,7 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
       const next = await productionApi.updateLiveConfig(token, {
         endpoint: effectiveConfig.endpoint,
         refreshIntervalSecs,
+        allowInvalidCertificates: effectiveConfig.allowInvalidCertificates,
       })
       setConfig(next)
       setSnapshot((current) => current ? { ...current, refreshIntervalSecs } : current)
@@ -446,6 +450,7 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
         refreshIntervalSecs: effectiveConfig?.refreshIntervalSecs ?? 900,
         apiKey: settingsApiKey || undefined,
         clearApiKey,
+        allowInvalidCertificates,
       })
       setConfig(next)
       setSettingsApiKey('')
@@ -802,6 +807,20 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
               className="size-4 accent-emerald-500"
             />
             Remove the saved API key
+          </label>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={allowInvalidCertificates}
+              onChange={(event) => setAllowInvalidCertificates(event.target.checked)}
+              className="mt-0.5 size-4 accent-emerald-500"
+            />
+            <span>
+              Trust private/self-signed certificate
+              <span className="mt-1 block text-xs text-muted-foreground">
+                Enabled for the documented private LAN API. The connection remains HTTPS encrypted.
+              </span>
+            </span>
           </label>
         </div>
       </Modal>

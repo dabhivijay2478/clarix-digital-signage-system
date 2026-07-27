@@ -24,6 +24,7 @@ export interface ProductionApiConfig {
   endpoint: string
   refreshIntervalSecs: number
   apiKeyConfigured: boolean
+  allowInvalidCertificates: boolean
   lastAttemptAt: string | null
   lastSuccessAt: string | null
   lastError: string | null
@@ -44,6 +45,7 @@ export interface ProductionApiConfigUpdate {
   refreshIntervalSecs: number
   apiKey?: string
   clearApiKey?: boolean
+  allowInvalidCertificates: boolean
 }
 
 type UnknownRecord = Record<string, unknown>

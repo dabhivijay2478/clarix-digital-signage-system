@@ -107,6 +107,11 @@ pub fn init_db(app_data_dir: &str) -> Result<DbPool> {
     let _ = conn.execute("ALTER TABLE content_items ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'", []);
     let _ = conn.execute("ALTER TABLE production_datasets ADD COLUMN selected_table_id TEXT", []);
     let _ = conn.execute(
+        "ALTER TABLE production_api_settings
+         ADD COLUMN allow_invalid_certs BOOLEAN NOT NULL DEFAULT 0",
+        [],
+    );
+    let _ = conn.execute(
         "UPDATE screens SET endpoint = ip_address, pairing_status = 'repair_required'
          WHERE ip_address IS NOT NULL AND endpoint IS NULL AND device_id IS NULL",
         [],
@@ -368,6 +373,7 @@ const SCHEMA: &str = r#"
         endpoint              TEXT NOT NULL DEFAULT 'https://172.16.254.249:443/DSC_DSB_API/api/production-summary',
         api_key               TEXT NOT NULL DEFAULT '',
         refresh_interval_secs INTEGER NOT NULL DEFAULT 900,
+        allow_invalid_certs   BOOLEAN NOT NULL DEFAULT 0,
         cached_payload        TEXT,
         last_attempt_at       TEXT,
         last_success_at       TEXT,

@@ -1,4 +1,4 @@
-use std::{sync::OnceLock, time::Duration};
+use std::{error::Error as _, sync::OnceLock, time::Duration};
 
 use chrono::{DateTime, Utc};
 use rusqlite::{params, OptionalExtension};
@@ -28,6 +28,7 @@ struct StoredProductionApiConfig {
     endpoint: String,
     api_key: String,
     refresh_interval_secs: i64,
+    allow_invalid_certs: bool,
     cached_payload: Option<serde_json::Value>,
     last_attempt_at: Option<DateTime<Utc>>,
     last_success_at: Option<DateTime<Utc>>,
@@ -52,6 +53,7 @@ pub struct ProductionApiConfig {
     pub endpoint: String,
     pub refresh_interval_secs: i64,
     pub api_key_configured: bool,
+    pub allow_invalid_certificates: bool,
     pub last_attempt_at: Option<DateTime<Utc>>,
     pub last_success_at: Option<DateTime<Utc>>,
     pub last_error: Option<String>,
@@ -65,6 +67,8 @@ pub struct ProductionApiConfigUpdate {
     pub api_key: Option<String>,
     #[serde(default)]
     pub clear_api_key: bool,
+    #[serde(default = "default_allow_invalid_certificates")]
+    pub allow_invalid_certificates: bool,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -100,6 +104,7 @@ impl From<StoredProductionApiConfig> for ProductionApiConfig {
             endpoint: config.endpoint,
             refresh_interval_secs: config.refresh_interval_secs,
             api_key_configured,
+            allow_invalid_certificates: config.allow_invalid_certs,
             last_attempt_at: config.last_attempt_at,
             last_success_at: config.last_success_at,
             last_error: config.last_error,
@@ -145,12 +150,14 @@ pub async fn update_production_api_config(
         let conn = pool.get()?;
         conn.execute(
             "UPDATE production_api_settings
-             SET endpoint = ?1, api_key = ?2, refresh_interval_secs = ?3, updated_at = ?4
+             SET endpoint = ?1, api_key = ?2, refresh_interval_secs = ?3,
+                 allow_invalid_certs = ?4, updated_at = ?5
              WHERE singleton = 1",
             params![
                 config.endpoint.trim(),
                 api_key,
                 config.refresh_interval_secs,
+                config.allow_invalid_certificates,
                 now
             ],
         )?;
@@ -221,11 +228,14 @@ async fn refresh_live_production(
     let attempt_at = Utc::now();
     record_attempt(&pool, attempt_at)?;
 
-    let allow_invalid_certs = std::env::var("PRODUCTION_API_ALLOW_INVALID_CERTS")
+    let allow_invalid_certs = config.allow_invalid_certs
+        || std::env::var("PRODUCTION_API_ALLOW_INVALID_CERTS")
         .map(|value| value.eq_ignore_ascii_case("true") || value == "1")
         .unwrap_or(false);
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(12))
+        .no_proxy()
         .danger_accept_invalid_certs(allow_invalid_certs)
         .build()?;
 
@@ -238,7 +248,7 @@ async fn refresh_live_production(
     {
         Ok(response) => response,
         Err(error) => {
-            let message = format!("Production API request failed: {error}");
+            let message = describe_request_error(&error, &config.endpoint);
             record_failure(&pool, &message)?;
             anyhow::bail!(message);
         }
@@ -312,27 +322,84 @@ fn validate_refresh_interval(seconds: i64) -> Result<(), String> {
     }
 }
 
+fn default_allow_invalid_certificates() -> bool {
+    false
+}
+
+fn describe_request_error(error: &reqwest::Error, endpoint: &str) -> String {
+    let host = reqwest::Url::parse(endpoint)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_string))
+        .unwrap_or_else(|| endpoint.to_string());
+    let mut causes = Vec::new();
+    let mut source = error.source();
+    while let Some(cause) = source {
+        let detail = cause.to_string();
+        if !detail.is_empty() && !causes.iter().any(|existing| existing == &detail) {
+            causes.push(detail);
+        }
+        source = cause.source();
+    }
+    let technical_detail = if causes.is_empty() {
+        error.to_string()
+    } else {
+        causes.join(": ")
+    };
+    let normalized_detail = technical_detail.to_ascii_lowercase();
+
+    if error.is_timeout() {
+        return format!(
+            "Production API connection timed out before a response from {host}. \
+             Connect the controller to the plant LAN/VPN and confirm TCP 443 is allowed. \
+             Technical detail: {technical_detail}"
+        );
+    }
+
+    if normalized_detail.contains("certificate")
+        || normalized_detail.contains("unknown issuer")
+        || normalized_detail.contains("tls")
+        || normalized_detail.contains("ssl")
+    {
+        return format!(
+            "Production API TLS certificate validation failed for {host}. \
+             Enable \"Trust private/self-signed certificate\" in Production API Settings, \
+             or install the API certificate on the controller. Technical detail: {technical_detail}"
+        );
+    }
+
+    if error.is_connect() {
+        return format!(
+            "The controller could not connect to production API host {host}. \
+             Confirm the endpoint address, plant LAN/VPN connection, and firewall access to TCP 443. \
+             Technical detail: {technical_detail}"
+        );
+    }
+
+    format!("Production API request failed for {host}. Technical detail: {technical_detail}")
+}
+
 fn read_stored_config(pool: &DbPool) -> anyhow::Result<StoredProductionApiConfig> {
     let conn = pool.get()?;
     conn.query_row(
-        "SELECT endpoint, api_key, refresh_interval_secs, cached_payload,
-                last_attempt_at, last_success_at, last_error
+        "SELECT endpoint, api_key, refresh_interval_secs, allow_invalid_certs,
+                cached_payload, last_attempt_at, last_success_at, last_error
          FROM production_api_settings WHERE singleton = 1",
         [],
         |row| {
-            let payload_json: Option<String> = row.get(3)?;
-            let last_attempt_at: Option<String> = row.get(4)?;
-            let last_success_at: Option<String> = row.get(5)?;
+            let payload_json: Option<String> = row.get(4)?;
+            let last_attempt_at: Option<String> = row.get(5)?;
+            let last_success_at: Option<String> = row.get(6)?;
             Ok(StoredProductionApiConfig {
                 endpoint: row.get(0)?,
                 api_key: row.get(1)?,
                 refresh_interval_secs: row.get(2)?,
+                allow_invalid_certs: row.get(3)?,
                 cached_payload: payload_json
                     .as_deref()
                     .and_then(|value| serde_json::from_str(value).ok()),
                 last_attempt_at: last_attempt_at.as_deref().and_then(parse_datetime),
                 last_success_at: last_success_at.as_deref().and_then(parse_datetime),
-                last_error: row.get(6)?,
+                last_error: row.get(7)?,
             })
         },
     )
@@ -393,4 +460,38 @@ fn parse_datetime(value: &str) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(value)
         .ok()
         .map(|date| date.with_timezone(&Utc))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn certificate_bypass_is_disabled_when_the_setting_is_missing() {
+        let update: ProductionApiConfigUpdate = serde_json::from_value(serde_json::json!({
+            "endpoint": DEFAULT_PRODUCTION_API_ENDPOINT,
+            "refreshIntervalSecs": 900
+        }))
+        .expect("config should deserialize");
+
+        assert!(!update.allow_invalid_certificates);
+    }
+
+    #[tokio::test]
+    async fn connection_errors_include_actionable_network_guidance() {
+        let error = reqwest::Client::builder()
+            .no_proxy()
+            .connect_timeout(Duration::from_secs(1))
+            .build()
+            .expect("client should build")
+            .get("http://127.0.0.1:9/production-summary")
+            .send()
+            .await
+            .expect_err("closed local port should fail");
+
+        let message = describe_request_error(&error, DEFAULT_PRODUCTION_API_ENDPOINT);
+        assert!(message.contains("could not connect") || message.contains("timed out"));
+        assert!(message.contains("plant LAN/VPN"));
+        assert!(message.contains("TCP 443"));
+    }
 }
