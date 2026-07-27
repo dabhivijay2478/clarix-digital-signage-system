@@ -49,6 +49,22 @@ fn ensure_super_admin(conn: &rusqlite::Connection, token: &str) -> anyhow::Resul
     Ok(user)
 }
 
+pub(crate) fn ensure_manager_or_developer(
+    conn: &rusqlite::Connection,
+    token: &str,
+) -> anyhow::Result<AuthUser> {
+    let user = query_user_by_token(conn, token)?
+        .ok_or_else(|| anyhow::anyhow!("Please log in again."))?;
+    if !can_manage_production_refresh(&user) {
+        anyhow::bail!("Only Managers and Developers can change production refresh settings.");
+    }
+    Ok(user)
+}
+
+fn can_manage_production_refresh(user: &AuthUser) -> bool {
+    user.is_developer || user.role == AdminRole::Manager
+}
+
 #[tauri::command]
 pub async fn login_user(
     email: String,
@@ -484,6 +500,38 @@ pub async fn update_team_member(
     .await
     .map_err(|error| error.to_string())?
     .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_user(role: AdminRole, is_developer: bool) -> AuthUser {
+        AuthUser {
+            id: "test-user".to_string(),
+            name: "Test User".to_string(),
+            email: "test@example.com".to_string(),
+            role,
+            is_developer,
+            created_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn production_refresh_is_available_to_managers_and_developers() {
+        assert!(can_manage_production_refresh(&test_user(AdminRole::Manager, false)));
+        assert!(can_manage_production_refresh(&test_user(AdminRole::User, true)));
+    }
+
+    #[test]
+    fn production_refresh_is_denied_to_other_non_developer_roles() {
+        assert!(!can_manage_production_refresh(&test_user(AdminRole::User, false)));
+        assert!(!can_manage_production_refresh(&test_user(AdminRole::SuperAdmin, false)));
+        assert!(!can_manage_production_refresh(&test_user(
+            AdminRole::SiteSuperAdmin,
+            false,
+        )));
+    }
 }
 
 #[tauri::command]

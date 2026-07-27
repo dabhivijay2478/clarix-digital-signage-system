@@ -424,10 +424,10 @@ export const productionApi = {
     tauriInvoke<ProductionImportResult>('import_production_file', { filename, bytes: Array.from(bytes) }),
   getLiveConfig: () =>
     tauriInvoke<ProductionApiConfig>('get_production_api_config'),
-  updateLiveConfig: (config: ProductionApiConfigUpdate) =>
-    tauriInvoke<ProductionApiConfig>('update_production_api_config', { config }),
-  refreshLiveData: () =>
-    tauriInvoke<ProductionLiveSnapshot>('refresh_production_api'),
+  updateLiveConfig: (token: string, config: ProductionApiConfigUpdate) =>
+    tauriInvoke<ProductionApiConfig>('update_production_api_config', { token, config }),
+  refreshLiveData: (token: string) =>
+    tauriInvoke<ProductionLiveSnapshot>('refresh_production_api', { token }),
   getLiveData: async (): Promise<ProductionLiveSnapshot> => {
     const response = await fetch(`${getBrowserControllerOrigin()}/api/production/live`, {
       cache: 'no-store',

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
+    commands::auth::ensure_manager_or_developer,
     db::DbPool,
     lan::server::{publish_revision, SyncEventBus},
 };
@@ -117,6 +118,7 @@ pub async fn get_production_api_config(
 
 #[tauri::command]
 pub async fn update_production_api_config(
+    token: String,
     config: ProductionApiConfigUpdate,
     pool: State<'_, DbPool>,
 ) -> Result<ProductionApiConfig, String> {
@@ -125,6 +127,10 @@ pub async fn update_production_api_config(
 
     let pool = pool.inner().clone();
     tokio::task::spawn_blocking(move || {
+        {
+            let conn = pool.get()?;
+            ensure_manager_or_developer(&conn, &token)?;
+        }
         let existing = read_stored_config(&pool)?;
         let api_key = if config.clear_api_key {
             String::new()
@@ -164,10 +170,16 @@ pub async fn get_production_live_data(
 
 #[tauri::command]
 pub async fn refresh_production_api(
+    token: String,
     pool: State<'_, DbPool>,
     events: State<'_, SyncEventBus>,
 ) -> Result<ProductionLiveSnapshot, String> {
-    refresh_live_production(pool.inner().clone(), events.inner().clone(), true)
+    let pool = pool.inner().clone();
+    {
+        let conn = pool.get().map_err(|error| error.to_string())?;
+        ensure_manager_or_developer(&conn, &token).map_err(|error| error.to_string())?;
+    }
+    refresh_live_production(pool, events.inner().clone(), true)
         .await
         .map_err(|error| error.to_string())
 }

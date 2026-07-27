@@ -58,6 +58,7 @@ import {
 } from '@/lib/production-data'
 import { getBrowserControllerOrigin, productionApi } from '@/lib/tauri'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/store/authStore'
 
 const PRODUCTION_LINES: ProductionLine[] = ['FSL', 'PSL1', 'PSL2']
 const DEFAULT_API_ENDPOINT = 'https://172.16.254.249:443/DSC_DSB_API/api/production-summary'
@@ -254,6 +255,11 @@ interface ProductionDashboardProps {
 
 export function ProductionDashboard({ mode = 'application' }: ProductionDashboardProps) {
   const isPlayer = mode === 'player'
+  const token = useAuthStore((state) => state.token)
+  const user = useAuthStore((state) => state.user)
+  const canManageProductionRefresh = Boolean(
+    token && user && (user.is_developer || user.role === 'Manager'),
+  )
   const [snapshot, setSnapshot] = useState<ProductionLiveSnapshot | null>(null)
   const [config, setConfig] = useState<ProductionApiConfig | null>(null)
   const [loading, setLoading] = useState(true)
@@ -395,12 +401,15 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
     lastSuccessAt: snapshot.lastSuccessAt,
     lastError: snapshot.lastError,
   } : null)
+  const refreshOptionLabel = REFRESH_OPTIONS.find(
+    (option) => option.seconds === (effectiveConfig?.refreshIntervalSecs ?? 900),
+  )?.label ?? '15 minutes'
 
   const updateRefreshInterval = async (value: string) => {
-    if (!effectiveConfig) return
+    if (!effectiveConfig || !token || !canManageProductionRefresh) return
     const refreshIntervalSecs = Number(value)
     try {
-      const next = await productionApi.updateLiveConfig({
+      const next = await productionApi.updateLiveConfig(token, {
         endpoint: effectiveConfig.endpoint,
         refreshIntervalSecs,
       })
@@ -413,9 +422,10 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
   }
 
   const refreshNow = async () => {
+    if (!token || !canManageProductionRefresh) return
     setRefreshing(true)
     try {
-      const next = await productionApi.refreshLiveData()
+      const next = await productionApi.refreshLiveData(token)
       setSnapshot(next)
       await loadConfig()
       showToast('Production data refreshed', 'success')
@@ -428,10 +438,10 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
   }
 
   const saveApiSettings = async () => {
-    if (!effectiveConfig && !settingsEndpoint) return
+    if ((!effectiveConfig && !settingsEndpoint) || !token || !canManageProductionRefresh) return
     setSavingSettings(true)
     try {
-      const next = await productionApi.updateLiveConfig({
+      const next = await productionApi.updateLiveConfig(token, {
         endpoint: settingsEndpoint.trim(),
         refreshIntervalSecs: effectiveConfig?.refreshIntervalSecs ?? 900,
         apiKey: settingsApiKey || undefined,
@@ -478,35 +488,46 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
             {snapshot?.lastError
               || (isPlayer
                 ? 'Configure the production API from the controller.'
-                : 'Open API settings, enter the controller API key, and refresh.')}
+                : canManageProductionRefresh
+                  ? 'Open API settings, enter the controller API key, and refresh.'
+                  : 'A Manager or Developer must configure the production API.')}
           </p>
           {!isPlayer && !loading && (
             <div className="mt-6 flex flex-wrap justify-center gap-2">
-              <Select
-                value={String(effectiveConfig?.refreshIntervalSecs ?? 900)}
-                onValueChange={(value) => void updateRefreshInterval(value)}
-              >
-                <SelectTrigger className="w-[170px]" aria-label="Production refresh interval">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {REFRESH_OPTIONS.map((option) => (
-                    <SelectItem key={option.seconds} value={String(option.seconds)}>
-                      Every {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button variant="outline" onClick={() => setShowSettings(true)}>
-                <Settings className="size-4" /> API Settings
-              </Button>
-              <Button onClick={() => void refreshNow()} disabled={!snapshot?.configured || refreshing}>
-                <RefreshCw className={cn('size-4', refreshing && 'animate-spin')} /> Refresh now
-              </Button>
+              {canManageProductionRefresh ? (
+                <>
+                  <Select
+                    value={String(effectiveConfig?.refreshIntervalSecs ?? 900)}
+                    onValueChange={(value) => void updateRefreshInterval(value)}
+                  >
+                    <SelectTrigger className="w-[170px]" aria-label="Production refresh interval">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {REFRESH_OPTIONS.map((option) => (
+                        <SelectItem key={option.seconds} value={String(option.seconds)}>
+                          Every {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button variant="outline" onClick={() => setShowSettings(true)}>
+                    <Settings className="size-4" /> API Settings
+                  </Button>
+                  <Button onClick={() => void refreshNow()} disabled={!snapshot?.configured || refreshing}>
+                    <RefreshCw className={cn('size-4', refreshing && 'animate-spin')} /> Refresh now
+                  </Button>
+                </>
+              ) : (
+                <Badge variant="outline" className="gap-1.5">
+                  <RefreshCw className="size-3.5" />
+                  Refreshes every {refreshOptionLabel}
+                </Badge>
+              )}
             </div>
           )}
         </div>
-        {!isPlayer && renderSettingsModal()}
+        {!isPlayer && canManageProductionRefresh && renderSettingsModal()}
       </div>
     )
   }
@@ -545,28 +566,37 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Select
-                value={String(effectiveConfig?.refreshIntervalSecs ?? 900)}
-                onValueChange={(value) => void updateRefreshInterval(value)}
-              >
-                <SelectTrigger className="w-[170px]" aria-label="Production refresh interval">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {REFRESH_OPTIONS.map((option) => (
-                    <SelectItem key={option.seconds} value={String(option.seconds)}>
-                      Every {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button variant="outline" onClick={() => void refreshNow()} disabled={refreshing}>
-                <RefreshCw className={cn('size-4', refreshing && 'animate-spin')} />
-                Refresh
-              </Button>
-              <Button variant="outline" size="icon" onClick={() => setShowSettings(true)} title="API settings">
-                <Settings className="size-4" />
-              </Button>
+              {canManageProductionRefresh ? (
+                <>
+                  <Select
+                    value={String(effectiveConfig?.refreshIntervalSecs ?? 900)}
+                    onValueChange={(value) => void updateRefreshInterval(value)}
+                  >
+                    <SelectTrigger className="w-[170px]" aria-label="Production refresh interval">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {REFRESH_OPTIONS.map((option) => (
+                        <SelectItem key={option.seconds} value={String(option.seconds)}>
+                          Every {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button variant="outline" onClick={() => void refreshNow()} disabled={refreshing}>
+                    <RefreshCw className={cn('size-4', refreshing && 'animate-spin')} />
+                    Refresh
+                  </Button>
+                  <Button variant="outline" size="icon" onClick={() => setShowSettings(true)} title="API settings">
+                    <Settings className="size-4" />
+                  </Button>
+                </>
+              ) : (
+                <Badge variant="outline" className="gap-1.5">
+                  <RefreshCw className="size-3.5" />
+                  Refreshes every {refreshOptionLabel}
+                </Badge>
+              )}
             </div>
           </div>
 
@@ -716,7 +746,7 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
         </CardContent>
       </Card>
 
-      {!isPlayer && renderSettingsModal()}
+      {!isPlayer && canManageProductionRefresh && renderSettingsModal()}
     </div>
   )
 
