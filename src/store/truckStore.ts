@@ -29,6 +29,8 @@ function defaultTruckToWaiting(truck: Truck): Truck {
   return {
     ...truck,
     gate_no: truck.gate_no ?? null,
+    delivery_batch_no: truck.delivery_batch_no ?? null,
+    shipment_document_no: truck.shipment_document_no ?? null,
     is_waiting: isWaiting,
     is_loading: truck.is_loading ?? false,
     is_in: truck.is_in ?? false,
@@ -88,6 +90,8 @@ export const useTruckStore = create<TruckStore>()(
           id: uid(),
           created_at: now(),
           gate_no: data.gate_no ?? null,
+          delivery_batch_no: data.delivery_batch_no ?? null,
+          shipment_document_no: data.shipment_document_no ?? null,
           is_waiting: isWaiting,
           is_loading: data.is_loading ?? false,
           is_in: data.is_in ?? false,
@@ -191,6 +195,8 @@ export const useTruckStore = create<TruckStore>()(
           id: uid(),
           created_at: now(),
           gate_no: d.gate_no ?? null,
+          delivery_batch_no: d.delivery_batch_no ?? null,
+          shipment_document_no: d.shipment_document_no ?? null,
           is_waiting: d.is_waiting ?? true,
           is_loading: d.is_loading ?? false,
           is_in: d.is_in ?? false,
@@ -210,13 +216,14 @@ export const useTruckStore = create<TruckStore>()(
         set((s) => {
           const index = s.trucks.findIndex((t) => t.id === id)
           if (index === -1) return {}
+          if (s.trucks[index].is_out) return {}
 
           const newTrucks = [...s.trucks]
           if (direction === 'up') {
             // Find closest waiting truck above it
             let targetIndex = -1
             for (let i = index - 1; i >= 0; i--) {
-              if (newTrucks[i].is_waiting) {
+              if (newTrucks[i].is_waiting && !newTrucks[i].is_out) {
                 targetIndex = i
                 break
               }
@@ -230,7 +237,7 @@ export const useTruckStore = create<TruckStore>()(
             // Find closest waiting truck below it
             let targetIndex = -1
             for (let i = index + 1; i < newTrucks.length; i++) {
-              if (newTrucks[i].is_waiting) {
+              if (newTrucks[i].is_waiting && !newTrucks[i].is_out) {
                 targetIndex = i
                 break
               }

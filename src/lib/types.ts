@@ -272,6 +272,8 @@ export interface Truck {
   id: string;
   registration_number: string;
   gate_no?: string | null;
+  delivery_batch_no?: string | null;
+  shipment_document_no?: string | null;
   is_waiting: boolean;
   is_loading: boolean;
   is_in: boolean;
