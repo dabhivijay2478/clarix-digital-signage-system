@@ -198,10 +198,23 @@ export function hasProductionValues(data: NormalizedProductionData): boolean {
 export function formatProductionDateLabel(value: string): string {
   const trimmed = value.trim()
   const dayFirst = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(trimmed)
-  if (dayFirst) return `${dayFirst[1].padStart(2, '0')}-${dayFirst[2].padStart(2, '0')}`
+  if (dayFirst) return `${Number(dayFirst[2])}/${Number(dayFirst[1])}/${dayFirst[3]}`
   const yearFirst = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/.exec(trimmed)
-  if (yearFirst) return `${yearFirst[3].padStart(2, '0')}-${yearFirst[2].padStart(2, '0')}`
+  if (yearFirst) return `${Number(yearFirst[2])}/${Number(yearFirst[3])}/${yearFirst[1]}`
   return trimmed.length > 10 ? trimmed.slice(0, 10) : trimmed
+}
+
+export function getProductionDateOrder(value: string): number | null {
+  const trimmed = value.trim()
+  const dayFirst = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(trimmed)
+  if (dayFirst) {
+    return Date.UTC(Number(dayFirst[3]), Number(dayFirst[2]) - 1, Number(dayFirst[1]))
+  }
+  const yearFirst = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/.exec(trimmed)
+  if (yearFirst) {
+    return Date.UTC(Number(yearFirst[1]), Number(yearFirst[2]) - 1, Number(yearFirst[3]))
+  }
+  return null
 }
 
 export function getProductionPeriodLabel(data: NormalizedProductionData): string {

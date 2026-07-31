@@ -2,18 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Activity,
+  ChartNoAxesCombined,
+  CircleCheckBig,
+  ClipboardList,
   Factory,
+  Gauge,
   Loader2,
+  Radio,
   RefreshCw,
+  Rocket,
   Settings,
-  TrendingUp,
+  Target,
+  Zap,
   Wifi,
   WifiOff,
 } from 'lucide-react'
 import {
   CartesianGrid,
-  Legend,
   Line,
   LineChart,
   Tooltip,
@@ -26,29 +31,12 @@ import { PRODUCTION_DASHBOARD_CRITICAL_CSS } from '@/components/production-dashb
 import { showToast } from '@/components/Toast'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  ChartConfig,
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartTooltip,
-  ChartTooltipContent,
-} from '@/components/ui/chart'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableFooter,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
   formatProductionDateLabel,
+  getProductionDateOrder,
   getProductionPeriodLabel,
   hasProductionValues,
   normalizeProductionPayload,
@@ -73,15 +61,15 @@ const REFRESH_OPTIONS = [
 ] as const
 
 const LINE_COLORS: Record<ProductionLine, string> = {
-  FSL: 'hsl(239 84% 67%)',
-  PSL1: 'hsl(38 92% 50%)',
-  PSL2: 'hsl(142 71% 45%)',
+  FSL: '#156082',
+  PSL1: '#e97132',
+  PSL2: '#196b24',
 }
 
-const chartConfig: ChartConfig = {
-  FSL: { label: 'FSL', color: LINE_COLORS.FSL },
-  PSL1: { label: 'PSL1', color: LINE_COLORS.PSL1 },
-  PSL2: { label: 'PSL2', color: LINE_COLORS.PSL2 },
+const LINE_LABELS: Record<ProductionLine, string> = {
+  FSL: 'FSL1',
+  PSL1: 'PSL1',
+  PSL2: 'PSL2',
 }
 
 type Metric = number | null
@@ -98,9 +86,11 @@ interface ProductionTableRow {
   abp: Metric
   plan: Metric
   actual: Metric
+  achievement: Metric
   prodRate: Metric
   askRate: Metric
   forecast: Metric
+  live: Metric
 }
 
 function sumMetrics(values: Metric[]): Metric {
@@ -109,7 +99,11 @@ function sumMetrics(values: Metric[]): Metric {
 }
 
 function formatMetric(value: Metric): string {
-  return value === null ? '--' : Math.round(value).toLocaleString()
+  return value === null ? '--' : String(Math.round(value))
+}
+
+function formatAchievement(value: Metric): string {
+  return value === null ? '--' : `${Math.round(value)}%`
 }
 
 function formatLastUpdated(value: string | null | undefined): string {
@@ -125,44 +119,11 @@ function formatLastUpdated(value: string | null | undefined): string {
   })
 }
 
-function AskRateBadge({ value, isPlayer = false }: { value: Metric; isPlayer?: boolean }) {
-  if (value === null) {
-    return <span className="text-muted-foreground">--</span>
-  }
-
-  if (value < 0) {
-    return (
-      <span
-        className={cn(
-          'inline-flex items-center justify-center rounded px-2.5 py-0.5 text-xs font-bold',
-          isPlayer && 'mg-prod-ask-badge text-lg text-black',
-        )}
-        style={isPlayer ? undefined : { background: '#ffe600', color: '#1a1a1a', minWidth: 56 }}
-      >
-        {Math.round(value)}
-      </span>
-    )
-  }
-
-  return (
-    <Badge
-      variant="outline"
-      className={cn(
-        'border-green-500/30 bg-green-500/10 px-2.5 font-bold text-green-500',
-        isPlayer && 'text-lg text-black',
-      )}
-    >
-      +{Math.round(value)}
-    </Badge>
-  )
-}
-
-function PlayerProductionChart({ data }: { data: ChartPoint[] }) {
+function ProductionTrendChart({ data }: { data: ChartPoint[] }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 1920, height: 720 })
-  const chartFontSize = Math.round(Math.max(12, Math.min(22, size.height * 0.028)))
-  const chartLabelSize = Math.round(Math.max(14, Math.min(24, size.height * 0.032)))
-  const legendFontSize = Math.round(Math.max(12, Math.min(22, size.height * 0.027)))
+  const chartFontSize = Math.round(Math.max(10, Math.min(16, size.height * 0.026)))
+  const chartLabelSize = Math.round(Math.max(12, Math.min(18, size.height * 0.032)))
 
   useEffect(() => {
     const element = hostRef.current
@@ -195,27 +156,33 @@ function PlayerProductionChart({ data }: { data: ChartPoint[] }) {
           width={size.width}
           height={size.height}
           data={data}
-          margin={{ top: 4, right: 18, left: 0, bottom: 4 }}
+          margin={{ top: 8, right: 28, left: 4, bottom: 2 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+          <CartesianGrid vertical={false} stroke="#d9d9d9" />
           <XAxis
             dataKey="date"
             tickLine={false}
-            axisLine={false}
+            axisLine={{ stroke: '#a6a6a6' }}
             tick={{ fontSize: chartFontSize, fill: '#000000' }}
+            angle={-90}
+            textAnchor="end"
+            interval={0}
+            tickMargin={7}
             label={{
               value: 'Date',
               position: 'insideBottom',
-              offset: -6,
+              offset: -2,
               fontSize: chartLabelSize,
               fontWeight: 700,
               fill: '#000000',
             }}
-            height={Math.max(34, chartLabelSize + 14)}
+            height={Math.max(82, chartFontSize * 5.4)}
           />
           <YAxis
             tickLine={false}
             axisLine={false}
+            allowDecimals={false}
+            domain={[0, 'auto']}
             tick={{ fontSize: chartFontSize, fill: '#000000' }}
             label={{
               value: 'Qty',
@@ -228,18 +195,24 @@ function PlayerProductionChart({ data }: { data: ChartPoint[] }) {
             }}
             width={Math.max(48, chartFontSize * 2.7)}
           />
-          <Tooltip />
-          <Legend wrapperStyle={{ fontSize: legendFontSize, fontWeight: 700, color: '#000000' }} />
+          <Tooltip
+            contentStyle={{
+              background: '#ffffff',
+              border: '1px solid #a6a6a6',
+              borderRadius: 4,
+              color: '#000000',
+            }}
+          />
           {PRODUCTION_LINES.map((line) => (
             <Line
               key={line}
-              type="monotone"
+              type="linear"
               dataKey={line}
               stroke={LINE_COLORS[line]}
-              strokeWidth={2.5}
+              strokeWidth={3}
               dot={{ r: 4, strokeWidth: 0, fill: LINE_COLORS[line] }}
-              activeDot={{ r: 6 }}
-              name={line}
+              activeDot={{ r: 6, strokeWidth: 0 }}
+              name={LINE_LABELS[line]}
               connectNulls
             />
           ))}
@@ -338,54 +311,76 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
   )
   const hasData = hasProductionValues(normalized)
   const periodLabel = getProductionPeriodLabel(normalized)
-  const workingDays = normalized.monthlyProduction.filter((point) => (
-    PRODUCTION_LINES.some((line) => (point[line] ?? 0) > 0)
-  )).length
-  const remainingDays = normalized.monthlyProduction.filter((point) => (
-    PRODUCTION_LINES.every((line) => point[line] === 0)
-  )).length
-  const hasDailySeries = normalized.monthlyProduction.length > 1
-    || normalized.monthlyProduction.some((point) => /\d{1,4}[-/]\d{1,2}[-/]\d{1,4}/.test(point.date))
+  const activeMonthlyProduction = useMemo(() => {
+    const todayOrder = getProductionDateOrder(normalized.todayProduction?.date ?? '')
+    if (todayOrder !== null) {
+      const throughToday = normalized.monthlyProduction.filter((point) => {
+        const pointOrder = getProductionDateOrder(point.date)
+        return pointOrder === null || pointOrder <= todayOrder
+      })
+      if (throughToday.length > 0) return throughToday
+    }
+
+    let lastActiveIndex = -1
+    normalized.monthlyProduction.forEach((point, index) => {
+      if (PRODUCTION_LINES.some((line) => (point[line] ?? 0) !== 0)) {
+        lastActiveIndex = index
+      }
+    })
+    return lastActiveIndex >= 0
+      ? normalized.monthlyProduction.slice(0, lastActiveIndex + 1)
+      : normalized.monthlyProduction
+  }, [normalized.monthlyProduction, normalized.todayProduction?.date])
+  const elapsedDays = activeMonthlyProduction.length
 
   const tableRows = useMemo<ProductionTableRow[]>(() => (
     PRODUCTION_LINES.map((line) => {
       const plan = normalized.planning.find((entry) => entry.line === line)
-      const actual = sumMetrics(normalized.monthlyProduction.map((point) => point[line]))
-      const prodRate = hasDailySeries && actual !== null && workingDays > 0
-        ? Math.round(actual / workingDays)
+      const actual = sumMetrics(activeMonthlyProduction.map((point) => point[line]))
+      const planValue = plan?.monthlyPlan ?? null
+      const achievement = actual !== null && planValue !== null && planValue > 0
+        ? (actual / planValue) * 100
         : null
-      const askRate = plan?.monthlyPlan !== null
-        && plan?.monthlyPlan !== undefined
-        && actual !== null
-        && remainingDays > 0
-        ? Math.round((plan.monthlyPlan - actual) / remainingDays)
+      const prodRate = actual !== null && elapsedDays > 0
+        ? actual / elapsedDays
         : null
-      const forecast = actual !== null && prodRate !== null && remainingDays > 0
-        ? actual + prodRate * remainingDays
+      const askRate = planValue !== null && actual !== null
+        ? Math.max(planValue - actual, 0)
+        : null
+      const forecast = actual !== null && prodRate !== null
+        ? actual + prodRate
         : null
       return {
         line,
         abp: plan?.abp ?? null,
-        plan: plan?.monthlyPlan ?? null,
+        plan: planValue,
         actual,
+        achievement,
         prodRate,
         askRate,
         forecast,
+        live: normalized.todayProduction?.[line] ?? null,
       }
     })
-  ), [hasDailySeries, normalized.monthlyProduction, normalized.planning, remainingDays, workingDays])
+  ), [activeMonthlyProduction, elapsedDays, normalized.planning, normalized.todayProduction])
 
-  const totals = useMemo(() => ({
-    abp: sumMetrics(tableRows.map((row) => row.abp)),
-    plan: sumMetrics(tableRows.map((row) => row.plan)),
-    actual: sumMetrics(tableRows.map((row) => row.actual)),
-    prodRate: sumMetrics(tableRows.map((row) => row.prodRate)),
-    askRate: sumMetrics(tableRows.map((row) => row.askRate)),
-    forecast: sumMetrics(tableRows.map((row) => row.forecast)),
-  }), [tableRows])
+  const totals = useMemo(() => {
+    const plan = sumMetrics(tableRows.map((row) => row.plan))
+    const actual = sumMetrics(tableRows.map((row) => row.actual))
+    return {
+      abp: sumMetrics(tableRows.map((row) => row.abp)),
+      plan,
+      actual,
+      achievement: actual !== null && plan !== null && plan > 0 ? (actual / plan) * 100 : null,
+      prodRate: sumMetrics(tableRows.map((row) => row.prodRate)),
+      askRate: sumMetrics(tableRows.map((row) => row.askRate)),
+      forecast: sumMetrics(tableRows.map((row) => row.forecast)),
+      live: sumMetrics(tableRows.map((row) => row.live)),
+    }
+  }, [tableRows])
 
   const chartData = useMemo<ChartPoint[]>(() => (
-    normalized.monthlyProduction
+    activeMonthlyProduction
       .filter((point) => PRODUCTION_LINES.some((line) => point[line] !== null))
       .map((point) => ({
         date: formatProductionDateLabel(point.date),
@@ -393,7 +388,7 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
         PSL1: point.PSL1,
         PSL2: point.PSL2,
       }))
-  ), [normalized.monthlyProduction])
+  ), [activeMonthlyProduction])
 
   const effectiveConfig = config ?? (snapshot ? {
     endpoint: snapshot.endpoint,
@@ -537,15 +532,15 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
     )
   }
 
-  const today = normalized.todayProduction
-
   return (
     <div
       className={cn(
-        isPlayer ? 'mg-prod-player-layout production-player-surface bg-white text-slate-950' : 'space-y-6 pb-8',
+        isPlayer
+          ? 'mg-prod-player-layout production-player-surface bg-white text-slate-950'
+          : 'space-y-4 pb-6',
       )}
     >
-      {isPlayer && <style dangerouslySetInnerHTML={{ __html: PRODUCTION_DASHBOARD_CRITICAL_CSS }} />}
+      <style dangerouslySetInnerHTML={{ __html: PRODUCTION_DASHBOARD_CRITICAL_CSS }} />
 
       {!isPlayer && (
         <>
@@ -610,146 +605,69 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
               Showing the last successful production data. Latest refresh: {snapshot.lastError}
             </div>
           )}
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            {PRODUCTION_LINES.map((line) => (
-              <Card key={line} className="relative overflow-hidden border border-border/60 bg-card/80 shadow-sm">
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="mb-1 text-[11px] font-bold uppercase tracking-widest" style={{ color: LINE_COLORS[line] }}>
-                        Latest - {line}
-                      </p>
-                      <p className="text-4xl font-extrabold leading-none text-foreground">
-                        {formatMetric(today?.[line] ?? null)}
-                      </p>
-                      <p className="mt-1.5 text-[11px] text-muted-foreground">MT from production API</p>
-                    </div>
-                    <div className="rounded-lg p-2" style={{ background: `${LINE_COLORS[line]}18` }}>
-                      <Activity size={18} style={{ color: LINE_COLORS[line] }} />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
         </>
       )}
 
-      <Card className={cn(isPlayer && 'mg-prod-table-card border-slate-200 bg-white text-slate-950 shadow-sm backdrop-blur-none')}>
-        <CardHeader className={cn('pb-3', isPlayer && 'mg-prod-card-header border-b border-slate-200')}>
-          <CardTitle className={cn('flex items-center gap-2 text-base', isPlayer && 'mg-prod-card-title text-black')}>
-            <TrendingUp className={cn('size-4 text-primary', isPlayer && 'mg-prod-card-title-icon text-black')} />
-            Production Summary - {periodLabel}
-          </CardTitle>
-          {!isPlayer && (
-            <CardDescription className="text-xs">
-              Actual production from the API. Undocumented metrics remain blank unless supplied by the service.
-            </CardDescription>
-          )}
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow className={cn('border-b bg-muted/40 hover:bg-transparent', isPlayer && 'border-slate-200 bg-slate-50')}>
-                {['Lines', 'ABP', 'Plan', 'Actual', 'Production Rate', 'Asking Rate', 'Forecast'].map((heading) => (
-                  <TableHead
-                    key={heading}
-                    className={cn(
-                      'h-11 px-4 text-center text-[11px] font-bold uppercase tracking-wider text-muted-foreground',
-                      isPlayer && 'mg-prod-th text-black',
-                    )}
-                  >
-                    {heading}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+      <section className="production-report" aria-label={`Production summary ${periodLabel}`}>
+        <div className="production-report-table-wrap">
+          <table className="production-report-table">
+            <thead>
+              <tr>
+                <th>LINES</th>
+                <th><span><Gauge aria-hidden="true" />ABP</span></th>
+                <th><span><ClipboardList aria-hidden="true" />PLAN</span></th>
+                <th><span><CircleCheckBig aria-hidden="true" />ACTUAL</span></th>
+                <th><span><Target aria-hidden="true" />ACH%</span></th>
+                <th><span><Zap aria-hidden="true" />PROD RATE</span></th>
+                <th><span><Rocket aria-hidden="true" />ASK RATE</span></th>
+                <th><span><ChartNoAxesCombined aria-hidden="true" />FORECAST</span></th>
+                <th><span><Radio aria-hidden="true" />LIVE DATA</span></th>
+              </tr>
+            </thead>
+            <tbody>
               {tableRows.map((row) => (
-                <TableRow key={row.line} className={cn(isPlayer && 'border-slate-200 hover:bg-slate-50')}>
-                  <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'mg-prod-td text-black')}>
-                    <span className="inline-flex items-center gap-1.5 font-bold" style={{ color: isPlayer ? '#000' : LINE_COLORS[row.line] }}>
-                      <span className={cn('size-2 rounded-full', isPlayer && 'mg-prod-line-dot')} style={{ background: LINE_COLORS[row.line] }} />
-                      {row.line}
-                    </span>
-                  </TableCell>
-                  <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'mg-prod-td text-black')}>{formatMetric(row.abp)}</TableCell>
-                  <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'mg-prod-td text-black')}>{formatMetric(row.plan)}</TableCell>
-                  <TableCell className={cn('px-4 py-3 text-center font-semibold', isPlayer && 'mg-prod-td text-black')}>{formatMetric(row.actual)}</TableCell>
-                  <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'mg-prod-td text-black')}>{formatMetric(row.prodRate)}</TableCell>
-                  <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'mg-prod-td text-black')}><AskRateBadge value={row.askRate} isPlayer={isPlayer} /></TableCell>
-                  <TableCell className={cn('px-4 py-3 text-center font-semibold', isPlayer && 'mg-prod-td text-black')}>{formatMetric(row.forecast)}</TableCell>
-                </TableRow>
+                <tr key={row.line} className="production-line-row">
+                  <th scope="row">{LINE_LABELS[row.line]}</th>
+                  <td>{formatMetric(row.abp)}</td>
+                  <td>{formatMetric(row.plan)}</td>
+                  <td>{formatMetric(row.actual)}</td>
+                  <td>{formatAchievement(row.achievement)}</td>
+                  <td>{formatMetric(row.prodRate)}</td>
+                  <td className="production-ask-cell">{formatMetric(row.askRate)}</td>
+                  <td className="production-forecast-cell">{formatMetric(row.forecast)}</td>
+                  <td className="production-live-cell">{formatMetric(row.live)}</td>
+                </tr>
               ))}
-            </TableBody>
-            <TableFooter>
-              <TableRow className={cn('bg-muted/60 font-bold', isPlayer && 'border-slate-200 bg-slate-100 text-slate-950')}>
-                <TableCell className={cn('px-4 py-3 text-center font-extrabold', isPlayer && 'mg-prod-td text-black')}>Total</TableCell>
-                <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'mg-prod-td text-black')}>{formatMetric(totals.abp)}</TableCell>
-                <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'mg-prod-td text-black')}>{formatMetric(totals.plan)}</TableCell>
-                <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'mg-prod-td text-black')}>{formatMetric(totals.actual)}</TableCell>
-                <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'mg-prod-td text-black')}>{formatMetric(totals.prodRate)}</TableCell>
-                <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'mg-prod-td text-black')}><AskRateBadge value={totals.askRate} isPlayer={isPlayer} /></TableCell>
-                <TableCell className={cn('px-4 py-3 text-center', isPlayer && 'mg-prod-td text-black')}>{formatMetric(totals.forecast)}</TableCell>
-              </TableRow>
-            </TableFooter>
-          </Table>
-        </CardContent>
-      </Card>
+              <tr className="production-total-row">
+                <th scope="row">TOTAL</th>
+                <td>{formatMetric(totals.abp)}</td>
+                <td>{formatMetric(totals.plan)}</td>
+                <td>{formatMetric(totals.actual)}</td>
+                <td>{formatAchievement(totals.achievement)}</td>
+                <td>{formatMetric(totals.prodRate)}</td>
+                <td>{formatMetric(totals.askRate)}</td>
+                <td>{formatMetric(totals.forecast)}</td>
+                <td>{formatMetric(totals.live)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-      <Card className={cn(isPlayer && 'mg-prod-chart-card border-slate-200 bg-white text-slate-950 shadow-sm backdrop-blur-none')}>
-        <CardHeader className={cn(isPlayer && 'mg-prod-card-header')}>
-          <CardTitle className={cn('text-center text-base underline decoration-primary/40 underline-offset-4', isPlayer && 'mg-prod-card-title text-black no-underline')}>
-            Production trend {periodLabel} (MT)
-          </CardTitle>
-          {!isPlayer && (
-            <CardDescription className="text-center text-xs">
-              Production quantities returned by the controller API
-            </CardDescription>
-          )}
-        </CardHeader>
-        <CardContent className={cn(isPlayer && 'mg-prod-chart-content')}>
-          {isPlayer ? (
-            <PlayerProductionChart data={chartData} />
-          ) : (
-            <ChartContainer config={chartConfig} className="h-[360px] w-full">
-              <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border/40" />
-                <XAxis
-                  dataKey="date"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 11 }}
-                  label={{ value: 'Date', position: 'insideBottom', offset: -12, fontSize: 12, fontWeight: 600 }}
-                  height={46}
-                />
-                <YAxis
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 11 }}
-                  label={{ value: 'Qty', angle: -90, position: 'insideLeft', offset: 12, fontSize: 12, fontWeight: 600 }}
-                />
-                <ChartTooltip content={<ChartTooltipContent indicator="dot" />} />
-                <ChartLegend content={<ChartLegendContent />} />
-                {PRODUCTION_LINES.map((line) => (
-                  <Line
-                    key={line}
-                    type="monotone"
-                    dataKey={line}
-                    stroke={`var(--color-${line})`}
-                    strokeWidth={2.5}
-                    dot={{ r: 4, strokeWidth: 0, fill: `var(--color-${line})` }}
-                    activeDot={{ r: 6 }}
-                    name={line}
-                    connectNulls
-                  />
-                ))}
-              </LineChart>
-            </ChartContainer>
-          )}
-        </CardContent>
-      </Card>
+        <div className="production-chart-panel">
+          <h2>Production trend {periodLabel} (MT)</h2>
+          <div className="production-chart-host">
+            <ProductionTrendChart data={chartData} />
+          </div>
+          <div className="production-chart-legend" aria-label="Production line chart legend">
+            {PRODUCTION_LINES.map((line) => (
+              <span key={line}>
+                <i style={{ color: LINE_COLORS[line] }} aria-hidden="true" />
+                {LINE_LABELS[line]}
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {!isPlayer && canManageProductionRefresh && renderSettingsModal()}
     </div>
