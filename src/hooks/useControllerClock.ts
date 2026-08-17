@@ -8,6 +8,11 @@ import { APP_TIME_ZONE, getValidTimeZone } from '@/lib/signage-schedule'
 const TICK_INTERVAL_MS = 1000
 const RESYNC_INTERVAL_MS = 30000
 
+export interface ControllerClockOptions {
+  tickIntervalMs?: number
+  resyncIntervalMs?: number
+}
+
 export interface ControllerClockState {
   now: Date
   timeZone: string
@@ -17,7 +22,9 @@ export interface ControllerClockState {
   syncNow: () => Promise<void>
 }
 
-export function useControllerClock(): ControllerClockState {
+export function useControllerClock(options: ControllerClockOptions = {}): ControllerClockState {
+  const tickIntervalMs = options.tickIntervalMs ?? TICK_INTERVAL_MS
+  const resyncIntervalMs = options.resyncIntervalMs ?? RESYNC_INTERVAL_MS
   const offsetMsRef = useRef(0)
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [timeZone, setTimeZone] = useState(APP_TIME_ZONE)
@@ -53,11 +60,11 @@ export function useControllerClock(): ControllerClockState {
 
     const tickTimer = window.setInterval(() => {
       setNowMs(getControllerNowMs())
-    }, TICK_INTERVAL_MS)
+    }, tickIntervalMs)
 
     const syncTimer = window.setInterval(() => {
       void syncNow()
-    }, RESYNC_INTERVAL_MS)
+    }, resyncIntervalMs)
 
     const handleReconnect = () => {
       void syncNow()
@@ -72,7 +79,7 @@ export function useControllerClock(): ControllerClockState {
       window.removeEventListener('focus', handleReconnect)
       window.removeEventListener('online', handleReconnect)
     }
-  }, [getControllerNowMs, syncNow])
+  }, [getControllerNowMs, resyncIntervalMs, syncNow, tickIntervalMs])
 
   return useMemo(() => ({
     now: new Date(nowMs),

@@ -34,9 +34,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useControllerClock } from '@/hooks/useControllerClock'
 import {
+  calculateProductionDerivedMetrics,
   formatProductionDateLabel,
   getProductionDateOrder,
+  getProductionMonthTiming,
   getProductionPeriodLabel,
   hasProductionValues,
   normalizeProductionPayload,
@@ -51,6 +54,8 @@ import { useAuthStore } from '@/store/authStore'
 const PRODUCTION_LINES: ProductionLine[] = ['FSL', 'PSL1', 'PSL2']
 const DEFAULT_API_ENDPOINT = 'https://172.16.254.249:443/DSC_DSB_API/api/production-summary'
 const PLAYER_CACHE_POLL_MS = 30_000
+const PRODUCTION_CLOCK_TICK_MS = 60_000
+const PRODUCTION_CLOCK_RESYNC_MS = 300_000
 
 const REFRESH_OPTIONS = [
   { seconds: 300, label: '5 minutes' },
@@ -228,6 +233,10 @@ interface ProductionDashboardProps {
 
 export function ProductionDashboard({ mode = 'application' }: ProductionDashboardProps) {
   const isPlayer = mode === 'player'
+  const { now: controllerNow, timeZone: controllerTimeZone } = useControllerClock({
+    tickIntervalMs: PRODUCTION_CLOCK_TICK_MS,
+    resyncIntervalMs: PRODUCTION_CLOCK_RESYNC_MS,
+  })
   const token = useAuthStore((state) => state.token)
   const user = useAuthStore((state) => state.user)
   const canManageProductionRefresh = Boolean(
@@ -331,25 +340,24 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
       ? normalized.monthlyProduction.slice(0, lastActiveIndex + 1)
       : normalized.monthlyProduction
   }, [normalized.monthlyProduction, normalized.todayProduction?.date])
-  const elapsedDays = activeMonthlyProduction.length
+  const productionPeriodDate = normalized.todayProduction?.date
+    || normalized.monthlyProduction.find((point) => getProductionDateOrder(point.date) !== null)?.date
+    || ''
+  const monthTiming = useMemo(
+    () => getProductionMonthTiming(productionPeriodDate, controllerNow, controllerTimeZone),
+    [controllerNow, controllerTimeZone, productionPeriodDate],
+  )
 
   const tableRows = useMemo<ProductionTableRow[]>(() => (
     PRODUCTION_LINES.map((line) => {
       const plan = normalized.planning.find((entry) => entry.line === line)
-      const actual = sumMetrics(activeMonthlyProduction.map((point) => point[line]))
+      const actual = sumMetrics(normalized.monthlyProduction.map((point) => point[line]))
       const planValue = plan?.monthlyPlan ?? null
-      const achievement = actual !== null && planValue !== null && planValue > 0
-        ? (actual / planValue) * 100
-        : null
-      const prodRate = actual !== null && elapsedDays > 0
-        ? actual / elapsedDays
-        : null
-      const askRate = planValue !== null && actual !== null
-        ? Math.max(planValue - actual, 0)
-        : null
-      const forecast = actual !== null && prodRate !== null
-        ? actual + prodRate
-        : null
+      const { achievement, prodRate, askRate, forecast } = calculateProductionDerivedMetrics(
+        actual,
+        planValue,
+        monthTiming,
+      )
       return {
         line,
         abp: plan?.abp ?? null,
@@ -362,7 +370,7 @@ export function ProductionDashboard({ mode = 'application' }: ProductionDashboar
         live: normalized.todayProduction?.[line] ?? null,
       }
     })
-  ), [activeMonthlyProduction, elapsedDays, normalized.planning, normalized.todayProduction])
+  ), [monthTiming, normalized.monthlyProduction, normalized.planning, normalized.todayProduction])
 
   const totals = useMemo(() => {
     const plan = sumMetrics(tableRows.map((row) => row.plan))

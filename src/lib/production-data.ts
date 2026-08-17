@@ -48,9 +48,71 @@ export interface ProductionApiConfigUpdate {
   allowInvalidCertificates: boolean
 }
 
+export interface ProductionMonthTiming {
+  totalDays: number
+  elapsedDays: number
+  remainingDays: number
+}
+
+export interface ProductionDerivedMetrics {
+  achievement: number | null
+  prodRate: number | null
+  askRate: number | null
+  forecast: number | null
+}
+
 type UnknownRecord = Record<string, unknown>
 
 const LINES: ProductionLine[] = ['FSL', 'PSL1', 'PSL2']
+
+interface ProductionDateParts {
+  year: number
+  month: number
+  day: number
+}
+
+function parseProductionDateParts(value: string): ProductionDateParts | null {
+  const trimmed = value.trim()
+  const dayFirst = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(trimmed)
+  const yearFirst = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/.exec(trimmed)
+  const parts = dayFirst
+    ? { year: Number(dayFirst[3]), month: Number(dayFirst[2]), day: Number(dayFirst[1]) }
+    : yearFirst
+      ? { year: Number(yearFirst[1]), month: Number(yearFirst[2]), day: Number(yearFirst[3]) }
+      : null
+
+  if (!parts) return null
+  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day))
+  return date.getUTCFullYear() === parts.year
+    && date.getUTCMonth() === parts.month - 1
+    && date.getUTCDate() === parts.day
+    ? parts
+    : null
+}
+
+function getZonedDateParts(now: Date, timeZone: string): ProductionDateParts {
+  try {
+    const values = Object.fromEntries(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+      }).formatToParts(now).map((part) => [part.type, part.value]),
+    )
+    return {
+      year: Number(values.year),
+      month: Number(values.month),
+      day: Number(values.day),
+    }
+  } catch {
+    return {
+      year: now.getUTCFullYear(),
+      month: now.getUTCMonth() + 1,
+      day: now.getUTCDate(),
+    }
+  }
+}
 
 function asRecord(value: unknown): UnknownRecord | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -205,16 +267,57 @@ export function formatProductionDateLabel(value: string): string {
 }
 
 export function getProductionDateOrder(value: string): number | null {
-  const trimmed = value.trim()
-  const dayFirst = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(trimmed)
-  if (dayFirst) {
-    return Date.UTC(Number(dayFirst[3]), Number(dayFirst[2]) - 1, Number(dayFirst[1]))
+  const parts = parseProductionDateParts(value)
+  return parts ? Date.UTC(parts.year, parts.month - 1, parts.day) : null
+}
+
+export function getProductionMonthTiming(
+  periodDate: string,
+  now: Date,
+  timeZone: string,
+): ProductionMonthTiming {
+  const current = getZonedDateParts(now, timeZone)
+  const period = parseProductionDateParts(periodDate) ?? current
+  const totalDays = new Date(Date.UTC(period.year, period.month, 0)).getUTCDate()
+  const currentMonth = current.year * 12 + current.month
+  const periodMonth = period.year * 12 + period.month
+
+  let elapsedDays: number
+  if (currentMonth < periodMonth) {
+    elapsedDays = 0
+  } else if (currentMonth > periodMonth) {
+    elapsedDays = totalDays
+  } else {
+    // Matches Summary!H1: TODAY() - the first day of the production month.
+    elapsedDays = Math.min(Math.max(current.day - 1, 0), totalDays)
   }
-  const yearFirst = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/.exec(trimmed)
-  if (yearFirst) {
-    return Date.UTC(Number(yearFirst[1]), Number(yearFirst[2]) - 1, Number(yearFirst[3]))
+
+  return {
+    totalDays,
+    elapsedDays,
+    remainingDays: Math.max(totalDays - elapsedDays, 0),
   }
-  return null
+}
+
+export function calculateProductionDerivedMetrics(
+  actual: number | null,
+  plan: number | null,
+  timing: ProductionMonthTiming,
+): ProductionDerivedMetrics {
+  const achievement = actual !== null && plan !== null && plan > 0
+    ? (actual / plan) * 100
+    : null
+  const prodRate = actual !== null && timing.elapsedDays > 0
+    ? actual / timing.elapsedDays
+    : null
+  const askRate = actual !== null && plan !== null
+    ? timing.remainingDays > 0
+      ? (plan - actual) / timing.remainingDays
+      : 0
+    : null
+  const forecast = prodRate !== null ? prodRate * timing.totalDays : null
+
+  return { achievement, prodRate, askRate, forecast }
 }
 
 export function getProductionPeriodLabel(data: NormalizedProductionData): string {
