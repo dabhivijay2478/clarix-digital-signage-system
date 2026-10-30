@@ -1,0 +1,181 @@
+use chrono::{Datelike, Duration, TimeZone, Utc};
+use rusqlite::params;
+
+use crate::{models::{ActiveTruck, TruckDispatchSummary, TruckScreenAlert}, state::AppCore};
+
+pub fn save_dispatched_truck(core: &AppCore, truck: ActiveTruck) -> Result<(), String> {
+    let conn = core.pool.get().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR REPLACE INTO dispatched_trucks (
+            id, registration_number, gate_no,
+            waiting_at, loading_at, in_at, out_at, created_at, loading_duration
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![
+            truck.id,
+            truck.registration_number,
+            truck.gate_no,
+            truck.waiting_at,
+            truck.loading_at,
+            truck.in_at,
+            truck.out_at,
+            truck.created_at,
+            truck.loading_duration
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn get_active_trucks(pool: &crate::db::DbPool) -> Result<Vec<ActiveTruck>, String> {
+    let conn = pool.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, registration_number, gate_no,
+                    waiting_at, loading_at, in_at, out_at, created_at, loading_duration
+             FROM active_trucks
+             ORDER BY order_index ASC, created_at ASC"
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            let waiting_at: Option<String> = row.get(3)?;
+            let loading_at: Option<String> = row.get(4)?;
+            let in_at: Option<String> = row.get(5)?;
+            let out_at: Option<String> = row.get(6)?;
+            Ok(ActiveTruck {
+                id: row.get(0)?,
+                registration_number: row.get(1)?,
+                gate_no: row.get(2)?,
+                is_waiting: waiting_at.is_some(),
+                is_loading: loading_at.is_some(),
+                is_in: in_at.is_some(),
+                is_out: out_at.is_some(),
+                waiting_at,
+                loading_at,
+                in_at,
+                out_at,
+                created_at: row.get(7)?,
+                loading_duration: row.get(8)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut trucks = Vec::new();
+    for truck in rows {
+        trucks.push(truck.map_err(|e| e.to_string())?);
+    }
+    Ok(trucks)
+}
+
+pub fn save_active_trucks(core: &AppCore, trucks: Vec<ActiveTruck>) -> Result<(), String> {
+    let mut conn = core.pool.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM active_trucks", [])
+        .map_err(|e| e.to_string())?;
+
+    {
+        let mut stmt = tx
+            .prepare(
+                "INSERT INTO active_trucks (
+                    id, registration_number, gate_no,
+                    waiting_at, loading_at, in_at, out_at, created_at, order_index, loading_duration
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            )
+            .map_err(|e| e.to_string())?;
+
+        for (index, truck) in trucks.into_iter().enumerate() {
+            stmt.execute(params![
+                truck.id,
+                truck.registration_number,
+                truck.gate_no,
+                truck.waiting_at,
+                truck.loading_at,
+                truck.in_at,
+                truck.out_at,
+                truck.created_at,
+                index as i64,
+                truck.loading_duration,
+            ])
+            .map_err(|e| e.to_string())?;
+        }
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn publish_truck_alert(core: &AppCore, alert: TruckScreenAlert) {
+    let _ = core.truck_alerts.0.send(alert);
+}
+
+pub fn get_truck_dispatch_summary(core: &AppCore) -> Result<TruckDispatchSummary, String> {
+    query_truck_dispatch_summary(&core.pool)
+}
+
+pub fn query_truck_dispatch_summary(pool: &crate::db::DbPool) -> Result<TruckDispatchSummary, String> {
+    let conn = pool.get().map_err(|e| e.to_string())?;
+    let now = Utc::now();
+    let today_start = Utc
+        .with_ymd_and_hms(now.year(), now.month(), now.day(), 0, 0, 0)
+        .single()
+        .unwrap_or(now)
+        .to_rfc3339();
+    let last_24h_start = (now - Duration::hours(24)).to_rfc3339();
+    let month_start = Utc
+        .with_ymd_and_hms(now.year(), now.month(), 1, 0, 0, 0)
+        .single()
+        .unwrap_or(now)
+        .to_rfc3339();
+
+    let today: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM dispatched_trucks WHERE out_at IS NOT NULL AND out_at >= ?1",
+            params![today_start],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let last_24h: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM dispatched_trucks WHERE out_at IS NOT NULL AND out_at >= ?1",
+            params![last_24h_start],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let this_month: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM dispatched_trucks WHERE out_at IS NOT NULL AND out_at >= ?1",
+            params![month_start],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare("SELECT loading_at, out_at FROM dispatched_trucks WHERE loading_at IS NOT NULL AND out_at IS NOT NULL")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .map_err(|e| e.to_string())?;
+    let mut total_secs = 0i64;
+    let mut count = 0i64;
+    for row in rows {
+        let (loading_at, out_at) = row.map_err(|e| e.to_string())?;
+        let Ok(start) = chrono::DateTime::parse_from_rfc3339(&loading_at) else {
+            continue;
+        };
+        let Ok(end) = chrono::DateTime::parse_from_rfc3339(&out_at) else {
+            continue;
+        };
+        let secs = end.signed_duration_since(start).num_seconds();
+        if secs >= 0 {
+            total_secs += secs;
+            count += 1;
+        }
+    }
+
+    Ok(TruckDispatchSummary {
+        today: today as u32,
+        last_24h: last_24h as u32,
+        this_month: this_month as u32,
+        avg_loading_secs: if count > 0 { Some((total_secs / count) as u32) } else { None },
+    })
+}
