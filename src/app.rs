@@ -181,28 +181,31 @@ impl eframe::App for ClarixApp {
         let ctx = ui.ctx().clone();
         let signed_in = self.session.is_some();
 
-        let full_bleed = !signed_in || self.page == Page::Player;
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(theme::BG))
-            .show(ui, |ui| {
-                if !signed_in {
-                    // Login takes the whole window.
+        if !signed_in {
+            // Login takes the whole window.
+            egui::CentralPanel::default()
+                .frame(egui::Frame::new().fill(theme::BG))
+                .show(ui, |ui| {
                     if let Some(session) = self.login.show(ui, &self.core) {
                         self.session = Some(session);
                         self.page = Page::Dashboard;
                     }
-                } else if self.page == Page::Player {
+                });
+        } else if self.page == Page::Player {
+            egui::CentralPanel::default()
+                .frame(egui::Frame::new().fill(theme::BG))
+                .show(ui, |ui| {
                     self.player.show(ui, &self.core);
                     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
                         if self.player.exit_to_admin() {
                             self.page = Page::Dashboard;
                         }
                     }
-                }
-            });
-        let _ = full_bleed;
-
-        if signed_in && self.page != Page::Player {
+                });
+        } else {
+            // Admin shell: side/top panels + content panel are added directly to
+            // the root ui. A full-size CentralPanel must NOT come first — it would
+            // consume all remaining space and starve the panels (blank window).
             self.draw_admin_layout(ui);
         }
 
@@ -236,17 +239,28 @@ impl eframe::App for ClarixApp {
 }
 
 impl ClarixApp {
+    fn sign_out(&mut self) {
+        if let Some(session) = self.session.take() {
+            let core = self.core.clone();
+            std::thread::spawn(move || {
+                let _ = crate::backend::auth::logout_user(&core, session.token);
+            });
+        }
+        self.session = None;
+        self.page = Page::Dashboard;
+    }
+
     fn draw_admin_layout(&mut self, ui: &mut Ui) {
         egui::Panel::left("sidebar")
-            .default_size(208.0)
+            .default_size(218.0)
             .resizable(false)
-            .frame(egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::same(10)))
+            .frame(egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::same(12)))
             .show(ui, |ui| {
                 draw_sidebar(ui, self);
             });
 
         egui::Panel::top("topbar")
-            .frame(egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(12, 8)))
+            .frame(egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(14, 9)))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
@@ -256,18 +270,35 @@ impl ClarixApp {
                             .color(theme::TEXT),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if let Some(user) = self.user() {
-                            theme::muted(ui, &format!("{} · {}", user.name, user.role.as_str()));
+                        if ui.button(egui::RichText::new("Sign out").size(13.0)).clicked() {
+                            self.sign_out();
                         }
-                        if ui.button("Sign out").clicked() {
-                            if let Some(session) = self.session.take() {
-                                let core = self.core.clone();
-                                std::thread::spawn(move || {
-                                    let _ = crate::backend::auth::logout_user(&core, session.token);
-                                });
-                            }
-                            self.session = None;
-                            self.page = Page::Dashboard;
+                        let port = self.core.server_port.lock().map(|p| *p).unwrap_or(0);
+                        theme::badge(ui, &format!("controller · port {port}"), theme::GREEN);
+                        if let Some(user) = self.user() {
+                            let (rect, _) = ui
+                                .allocate_exact_size(egui::vec2(26.0, 26.0), egui::Sense::hover());
+                            ui.painter().circle_filled(
+                                rect.center(),
+                                13.0,
+                                theme::with_alpha(theme::PRIMARY, 0.22),
+                            );
+                            ui.painter().text(
+                                rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                initials_of(&user.name),
+                                egui::FontId::proportional(11.0),
+                                theme::PRIMARY,
+                            );
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "{} · {}",
+                                    user.name,
+                                    user.role.as_str()
+                                ))
+                                .size(12.5)
+                                .color(theme::MUTED),
+                            );
                         }
                     });
                 });
@@ -302,76 +333,167 @@ impl ClarixApp {
     }
 }
 
+fn nav_item(ui: &mut egui::Ui, selected: bool, label: &str) -> bool {
+    let width = ui.available_width();
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 30.0), egui::Sense::click());
+    let painter = ui.painter_at(rect);
+    if selected {
+        painter.rect_filled(rect, 8.0, theme::with_alpha(theme::PRIMARY, 0.16));
+        let bar = egui::Rect::from_center_size(
+            egui::pos2(rect.left() + 5.0, rect.center().y),
+            egui::vec2(3.0, 16.0),
+        );
+        painter.rect_filled(bar, 2.0, theme::PRIMARY);
+        painter.rect_stroke(
+            rect,
+            8.0,
+            egui::Stroke::new(1.0, theme::with_alpha(theme::PRIMARY, 0.28)),
+            egui::StrokeKind::Inside,
+        );
+    } else if resp.hovered() {
+        painter.rect_filled(rect, 8.0, theme::with_alpha(theme::CARD_HOVER, 0.8));
+    }
+    painter.text(
+        egui::pos2(rect.left() + 14.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        label,
+        egui::FontId::proportional(14.0),
+        if selected { theme::TEXT } else { theme::MUTED },
+    );
+    resp.clicked()
+}
+
+fn initials_of(name: &str) -> String {
+    name.split_whitespace()
+        .flat_map(|word| word.chars().next())
+        .take(2)
+        .collect::<String>()
+        .to_uppercase()
+}
+
 fn draw_sidebar(ui: &mut Ui, app: &mut ClarixApp) {
-    ui.vertical(|ui| {
-        ui.horizontal(|ui| {
-            let (rect, _) = ui.allocate_exact_size(egui::vec2(26.0, 26.0), egui::Sense::hover());
-            ui.painter().rect_filled(rect, 6.0, theme::PRIMARY);
-            ui.painter().text(
-                rect.center(),
-                egui::Align2::CENTER_CENTER,
-                "C",
-                egui::FontId::proportional(16.0),
-                theme::TEXT,
-            );
-            ui.label(egui::RichText::new("Clarix").size(17.0).strong().color(theme::TEXT));
-        });
-        theme::muted(ui, "MG Enterprise Signage");
-        ui.add_space(10.0);
-        ui.separator();
+    // Brand.
+    ui.horizontal(|ui| {
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(32.0, 32.0), egui::Sense::hover());
+        ui.painter().rect_filled(rect, 9.0, theme::PRIMARY);
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "C",
+            egui::FontId::proportional(18.0),
+            theme::TEXT,
+        );
+        ui.add_space(2.0);
+        ui.label(egui::RichText::new("Clarix").size(17.0).strong().color(theme::TEXT));
+    });
+    ui.add_space(2.0);
+    theme::muted(ui, "MG Enterprise Signage");
+    ui.add_space(6.0);
+    ui.separator();
 
-        let mut sections: Vec<(String, Vec<(Page, String)>)> = Vec::new();
-        sections.push((
-            "Manage".to_string(),
-            vec![
-                (Page::Dashboard, "🏠 Dashboard".to_string()),
-                (Page::Screens, "🖥  Screens".to_string()),
-                (Page::Content, "🗂  Content".to_string()),
-                (Page::Playlists, "▶  Playlists".to_string()),
-                (Page::Schedule, "🕑  Schedule".to_string()),
-            ],
-        ));
-        sections.push((
-            "Operations".to_string(),
-            vec![
-                (Page::Trucks, "🚚  Trucks".to_string()),
-                (Page::Marquee, "📜  Marquee".to_string()),
-                (Page::Production, "📊  Production".to_string()),
-            ],
-        ));
-        sections.push((
-            "Insights".to_string(),
-            vec![
-                (Page::Analytics, "📈  Analytics".to_string()),
-                (Page::Database, "🗄  Database".to_string()),
-            ],
-        ));
-        let mut system = vec![
-            (Page::Settings, "⚙  Settings".to_string()),
-            (Page::Player, "📺  Player".to_string()),
-        ];
-        if app.is_super_admin() {
-            system.push((Page::Team, "👥  Team".to_string()));
-        }
-        sections.push(("System".to_string(), system));
+    let mut sections: Vec<(String, Vec<(Page, String)>)> = Vec::new();
+    sections.push((
+        "Manage".to_string(),
+        vec![
+            (Page::Dashboard, "🏠  Dashboard".to_string()),
+            (Page::Screens, "🖥  Screens".to_string()),
+            (Page::Content, "🗂  Content".to_string()),
+            (Page::Playlists, "▶  Playlists".to_string()),
+            (Page::Schedule, "🕑  Schedule".to_string()),
+        ],
+    ));
+    sections.push((
+        "Operations".to_string(),
+        vec![
+            (Page::Trucks, "🚚  Trucks".to_string()),
+            (Page::Marquee, "📜  Marquee".to_string()),
+            (Page::Production, "📊  Production".to_string()),
+        ],
+    ));
+    sections.push((
+        "Insights".to_string(),
+        vec![
+            (Page::Analytics, "📈  Analytics".to_string()),
+            (Page::Database, "🗄  Database".to_string()),
+        ],
+    ));
+    let mut system = vec![
+        (Page::Settings, "⚙  Settings".to_string()),
+        (Page::Player, "📺  Player".to_string()),
+    ];
+    if app.is_super_admin() {
+        system.push((Page::Team, "👥  Team".to_string()));
+    }
+    sections.push(("System".to_string(), system));
 
-        for (title, items) in &sections {
-            ui.add_space(6.0);
-            ui.label(egui::RichText::new(title.clone()).size(10.5).color(theme::MUTED));
-            for (entry, label) in items {
-                let selected = app.page == *entry;
-                if ui
-                    .add_sized(
-                        [ui.available_width(), 28.0],
-                        egui::Button::selectable(selected, egui::RichText::new(label.clone()).size(14.0)),
-                    )
-                    .clicked()
-                {
-                    app.page = *entry;
-                }
+    for (title, items) in &sections {
+        ui.add_space(6.0);
+        ui.label(egui::RichText::new(title.to_uppercase()).size(10.0).strong().color(theme::MUTED));
+        for (entry, label) in items {
+            if nav_item(ui, app.page == *entry, label) {
+                app.page = *entry;
             }
         }
-    });
+    }
+
+    // User card pinned to the bottom of the sidebar.
+    let remaining = ui.available_height();
+    let block = 108.0;
+    if remaining > block + 8.0 {
+        ui.add_space(remaining - block);
+    }
+
+    let mut sign_out_clicked = false;
+    egui::Frame::new()
+        .fill(theme::with_alpha(theme::CARD_HOVER, 0.55))
+        .stroke(egui::Stroke::new(1.0, theme::STROKE))
+        .inner_margin(egui::Margin::same(10))
+        .corner_radius(10.0)
+        .show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            if let Some(user) = app.user() {
+                ui.horizontal(|ui| {
+                    let (rect, _) =
+                        ui.allocate_exact_size(egui::vec2(34.0, 34.0), egui::Sense::hover());
+                    ui.painter().circle_filled(
+                        rect.center(),
+                        17.0,
+                        theme::with_alpha(theme::PRIMARY, 0.22),
+                    );
+                    ui.painter().text(
+                        rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        initials_of(&user.name),
+                        egui::FontId::proportional(13.0),
+                        theme::PRIMARY,
+                    );
+                    ui.add_space(4.0);
+                    ui.vertical(|ui| {
+                        ui.label(
+                            egui::RichText::new(user.name.to_string())
+                                .size(12.5)
+                                .strong()
+                                .color(theme::TEXT),
+                        );
+                        ui.label(
+                            egui::RichText::new(user.role.as_str().to_string())
+                                .size(10.5)
+                                .color(theme::MUTED),
+                        );
+                    });
+                });
+            }
+            ui.add_space(4.0);
+            sign_out_clicked = ui
+                .add_sized(
+                    [ui.available_width(), 24.0],
+                    egui::Button::new(egui::RichText::new("Sign out").size(12.0)),
+                )
+                .clicked();
+        });
+    if sign_out_clicked {
+        app.sign_out();
+    }
 }
 
 fn draw_toasts(ui: &mut Ui, toasts: &mut Vec<Toast>) {

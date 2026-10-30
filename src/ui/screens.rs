@@ -165,8 +165,23 @@ impl ScreensPage {
         }
 
         for screen in screens {
+            let status_color = if screen.is_online { theme::GREEN } else { theme::RED };
+            let status_text = if screen.is_online { "online" } else { "offline" };
             theme::card(ui, |ui| {
                 ui.horizontal(|ui| {
+                    // Leading device chip tinted by connection status.
+                    let (chip, _) =
+                        ui.allocate_exact_size(egui::vec2(40.0, 40.0), egui::Sense::hover());
+                    ui.painter()
+                        .rect_filled(chip, 10.0, theme::with_alpha(status_color, 0.16));
+                    ui.painter().text(
+                        chip.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "🖥",
+                        egui::FontId::proportional(18.0),
+                        status_color,
+                    );
+                    ui.add_space(4.0);
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
                             ui.label(
@@ -175,11 +190,7 @@ impl ScreensPage {
                                     .strong()
                                     .color(theme::TEXT),
                             );
-                            let status_color = if screen.is_online { theme::GREEN } else { theme::MUTED };
-                            let (dot, _) =
-                                ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
-                            ui.painter().circle_filled(dot.center(), 5.0, status_color);
-                            theme::muted(ui, if screen.is_online { "online" } else { "offline" });
+                            theme::badge(ui, status_text, status_color);
                             if screen.is_fullscreen {
                                 theme::badge(ui, "fullscreen", theme::PRIMARY);
                             }

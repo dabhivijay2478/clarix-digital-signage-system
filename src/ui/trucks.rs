@@ -339,7 +339,7 @@ impl TrucksPage {
             ui.add_sized([220.0, 26.0], egui::TextEdit::singleline(&mut self.search).hint_text("🔍 Search trucks…"));
             theme::muted(ui, &format!("{} shown", self.filtered().len()));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("＋ Add Truck").clicked() {
+                if ui.button("+ Add Truck").clicked() {
                     self.f_reg_no.clear();
                     self.f_gate_no = self
                         .gates

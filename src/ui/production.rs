@@ -75,6 +75,10 @@ impl ProductionPage {
         ui.add_space(6.0);
 
         // ── Datasets grid ───────────────────────────────────────────────────
+        widgets::section_header(ui, "Player rendering");
+        theme::muted(ui,
+            "Screens with purpose \"production_dashboard\" render the dataset widgets natively (bars/tables). Content shortcuts to a dashboard can also be added from the API.");
+        ui.add_space(4.0);
         if self.datasets.is_empty() {
             widgets::empty_state(ui, "No production datasets yet. Import an Excel or CSV report to create one.");
         }
@@ -243,10 +247,6 @@ impl ProductionPage {
                 }
             }
         }
-
-        widgets::section_header(ui, "Player rendering");
-        theme::muted(ui,
-            "Screens with purpose \"production_dashboard\" render the dataset widgets natively (bars/tables). Content shortcuts to a dashboard can also be added from the API.");
     }
 
     fn start_import(&mut self, toasts: &mut Vec<Toast>) {

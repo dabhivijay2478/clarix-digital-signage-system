@@ -58,6 +58,73 @@ fn clean_controller_url(value: &str) -> String {
     url
 }
 
+/// Paint the fixed background of a device-mode card (icon chip, title,
+/// description, optional ACTIVE badge) and return its rect so the caller can
+/// place interactive rows inside it. Hand-painted at an exact rect so two
+/// cards share the panel width deterministically.
+fn draw_device_mode_card(
+    ui: &mut egui::Ui,
+    width: f32,
+    glyph: &str,
+    title: &str,
+    desc: &str,
+    active: bool,
+) -> egui::Rect {
+    let height = 128.0;
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
+
+    ui.painter().rect_filled(
+        egui::Rect::from_min_size(rect.min + egui::vec2(0.0, 3.0), rect.size()),
+        10.0,
+        egui::Color32::from_black_alpha(34),
+    );
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 10.0, theme::CARD);
+    painter.rect_stroke(rect, 10.0, egui::Stroke::new(1.0, theme::STROKE), egui::StrokeKind::Inside);
+
+    let chip = egui::Rect::from_center_size(
+        egui::pos2(rect.left() + 27.0, rect.top() + 27.0),
+        egui::vec2(30.0, 30.0),
+    );
+    painter.rect_filled(chip, 8.0, theme::with_alpha(theme::PRIMARY, 0.14));
+    painter.text(
+        chip.center(),
+        egui::Align2::CENTER_CENTER,
+        glyph,
+        egui::FontId::proportional(15.5),
+        theme::TEXT,
+    );
+
+    let title_x = chip.right() + 10.0;
+    painter.text(
+        egui::pos2(title_x, chip.center().y - 7.0),
+        egui::Align2::LEFT_CENTER,
+        title,
+        egui::FontId::proportional(14.5),
+        theme::TEXT,
+    );
+    painter.text(
+        egui::pos2(title_x, chip.center().y + 10.0),
+        egui::Align2::LEFT_CENTER,
+        desc,
+        egui::FontId::proportional(11.0),
+        theme::MUTED,
+    );
+
+    if active {
+        let mut badge_child = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(egui::Rect::from_min_max(
+                    egui::pos2(rect.right() - 92.0, rect.top() + 12.0),
+                    egui::pos2(rect.right() - 10.0, rect.top() + 42.0),
+                ))
+                .layout(egui::Layout::right_to_left(egui::Align::Center)),
+        );
+        theme::badge(&mut badge_child, "ACTIVE", theme::GREEN);
+    }
+    rect
+}
+
 impl SettingsPage {
     pub fn show(&mut self, ui: &mut egui::Ui, core: &Arc<AppCore>, toasts: &mut Vec<Toast>) {
         if widgets::should_refresh(self.last_refresh, Duration::from_secs(5)) || !self.loaded_once {
@@ -76,22 +143,45 @@ impl SettingsPage {
 
         // ── Device mode ─────────────────────────────────────────────────────
         widgets::section_header(ui, "Device operation mode");
+        let avail = ui.available_width();
+        let card_w = (avail / 2.0 - 9.0).clamp(300.0, 640.0);
         ui.horizontal(|ui| {
-            // Controller card
-            theme::card(ui, |ui| {
-                ui.set_min_width(ui.available_width() * 0.47);
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("🛡").size(20.0));
-                    ui.vertical(|ui| {
-                        ui.label(egui::RichText::new("Controller").size(14.0).strong().color(theme::TEXT));
-                        theme::muted(ui, "Hosts the database, media assets, schedule and pairing service.");
-                    });
-                    if role == DeviceRole::Controller {
-                        theme::badge(ui, "ACTIVE", theme::GREEN);
-                    }
-                });
-                if role != DeviceRole::Controller
-                    && ui.add_sized([ui.available_width(), 30.0], egui::Button::new("Use as Controller")).clicked()
+            // Controller card (background painted; actionable rows below).
+            let c1 = draw_device_mode_card(
+                ui,
+                card_w,
+                "🛡",
+                "Controller",
+                "Hosts the database, media assets,\nschedule and pairing service.",
+                role == DeviceRole::Controller,
+            );
+            ui.add_space(6.0);
+            // Player card.
+            let c2 = draw_device_mode_card(
+                ui,
+                card_w,
+                "📺",
+                "Player",
+                "Connects to a controller and plays\nsynced playlists offline.",
+                role == DeviceRole::Player,
+            );
+
+            // Controller card: switch button when inactive.
+            if role != DeviceRole::Controller {
+                let mut btn = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(egui::Rect::from_min_max(
+                            egui::pos2(c1.left() + 12.0, c1.bottom() - 38.0),
+                            egui::pos2(c1.right() - 12.0, c1.bottom() - 12.0),
+                        ))
+                        .layout(egui::Layout::top_down(egui::Align::Min)),
+                );
+                if btn
+                    .add_sized(
+                        [btn.available_width(), 26.0],
+                        egui::Button::new("Use as Controller"),
+                    )
+                    .clicked()
                 {
                     match crate::backend::network::set_device_mode(core, "Controller".to_string(), None) {
                         Ok(_) => toasts.push(Toast::new(ToastKind::Success, "Device is now a controller. The LAN server and discovery restart automatically.")),
@@ -99,38 +189,48 @@ impl SettingsPage {
                     }
                     self.last_refresh = Instant::now() - Duration::from_secs(3600);
                 }
-            });
-            ui.add_space(6.0);
-            // Player card
-            theme::card(ui, |ui| {
-                ui.set_min_width(ui.available_width() * 0.47);
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("📺").size(20.0));
-                    ui.vertical(|ui| {
-                        ui.label(egui::RichText::new("Player").size(14.0).strong().color(theme::TEXT));
-                        theme::muted(ui, "Connects to a controller and plays synced playlists offline.");
-                    });
-                    if role == DeviceRole::Player {
-                        theme::badge(ui, "ACTIVE", theme::GREEN);
-                    }
-                });
-                widgets::labeled_text(
-                    ui,
-                    "Controller",
-                    &mut self.controller_url,
-                    "http://controller-ip:7420",
-                );
-                if ui.add_sized([ui.available_width(), 30.0], egui::Button::new(
-                    if role == DeviceRole::Player { "Re-save Player mode" } else { "Use as Player" },
-                )).clicked() {
-                    let cleaned = clean_controller_url(&self.controller_url.clone());
-                    match crate::backend::network::set_device_mode(core, "Player".to_string(), Some(cleaned)) {
-                        Ok(_) => toasts.push(Toast::new(ToastKind::Success, "Device mode saved as Player.")),
-                        Err(error) => toasts.push(Toast::new(ToastKind::Error, format!("Mode change failed: {error}"))),
-                    }
-                    self.last_refresh = Instant::now() - Duration::from_secs(3600);
+            }
+
+            // Player card: controller URL field + save button.
+            let mut field = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(egui::Rect::from_min_max(
+                        egui::pos2(c2.left() + 12.0, c2.top() + 62.0),
+                        egui::pos2(c2.right() - 12.0, c2.top() + 90.0),
+                    ))
+                    .layout(egui::Layout::left_to_right(egui::Align::Center)),
+            );
+            field.label(egui::RichText::new("Controller").size(12.0).color(theme::MUTED));
+            field.add_space(8.0);
+            field.add_sized(
+                [field.available_width(), 26.0],
+                egui::TextEdit::singleline(&mut self.controller_url)
+                    .hint_text("http://controller-ip:7420"),
+            );
+            let mut btn = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(egui::Rect::from_min_max(
+                        egui::pos2(c2.left() + 12.0, c2.bottom() - 38.0),
+                        egui::pos2(c2.right() - 12.0, c2.bottom() - 12.0),
+                    ))
+                    .layout(egui::Layout::top_down(egui::Align::Min)),
+            );
+            if btn
+                .add_sized(
+                    [btn.available_width(), 26.0],
+                    egui::Button::new(
+                        if role == DeviceRole::Player { "Re-save Player mode" } else { "Use as Player" },
+                    ),
+                )
+                .clicked()
+            {
+                let cleaned = clean_controller_url(&self.controller_url.clone());
+                match crate::backend::network::set_device_mode(core, "Player".to_string(), Some(cleaned)) {
+                    Ok(_) => toasts.push(Toast::new(ToastKind::Success, "Device mode saved as Player.")),
+                    Err(error) => toasts.push(Toast::new(ToastKind::Error, format!("Mode change failed: {error}"))),
                 }
-            });
+                self.last_refresh = Instant::now() - Duration::from_secs(3600);
+            }
         });
         ui.add_space(8.0);
 

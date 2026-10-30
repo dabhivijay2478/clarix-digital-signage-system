@@ -105,9 +105,13 @@ impl ContentPage {
 
         // Upload progress note removed for brevity; item grid:
         egui::ScrollArea::vertical().show(ui, |ui| {
-            let card_w = ((ui.available_width() - 30.0) / 4.0).max(240.0);
+            // Responsive card grid: 4 columns on wide panels, fewer as the
+            // window narrows (cards clamp within a comfortable range).
+            let avail = ui.available_width();
+            let cols = ((((avail + 10.0) / 300.0).floor() as usize).clamp(1, 4)).max(1);
+            let card_w = ((avail - 10.0 * (cols as f32 - 1.0)) / cols as f32).clamp(200.0, 420.0);
             let items = self.items.clone();
-            for chunk in items.chunks(4) {
+            for chunk in items.chunks(cols) {
                 ui.horizontal(|ui| {
                     for item in chunk {
                         self.draw_item_card(ui, core, toasts, item, card_w);
@@ -170,78 +174,128 @@ impl ContentPage {
         item: &ContentItem,
         width: f32,
     ) {
-        let thumb_size = egui::vec2(width - 12.0, (width * 0.56).min(150.0));
-        let texture = self.texture_for(ui.ctx(), item, &thumb_size);
+        let pad = 8.0;
+        let thumb_h = 116.0;
+        let title_h = 40.0;
+        let card_h = pad + thumb_h + 6.0 + title_h + 2.0 + 18.0 + 4.0 + 28.0 + pad;
+        let (card, resp) = ui.allocate_exact_size(egui::vec2(width, card_h), egui::Sense::hover());
 
-        egui::Frame::new()
-            .fill(theme::CARD)
-            .stroke(egui::Stroke::new(1.0, theme::STROKE))
-            .inner_margin(egui::Margin::same(8))
-            .corner_radius(8.0)
-            .show(ui, |ui| {
-                ui.set_width(width);
-                // Thumbnail area.
-                let rect = ui.allocate_exact_size(thumb_size, egui::Sense::hover()).0;
-                let painter = ui.painter();
-                painter.rect_filled(rect, 6.0, theme::INPUT_BG);
-                match &texture {
-                    Some(handle) => {
-                        let fitted = fit_within(handle.size_vec2(), thumb_size);
-                        let image_rect =
-                            egui::Rect::from_min_size(rect.center() - fitted / 2.0, fitted);
-                        painter.image(
-                            handle.id(),
-                            image_rect,
-                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                            egui::Color32::WHITE,
-                        );
-                    }
-                    None => {
-                        painter.text(
-                            rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            type_glyph(&item.content_type),
-                            egui::FontId::proportional(30.0),
-                            theme::MUTED,
-                        );
-                    }
-                }
+        // Drop shadow, then the card body.
+        ui.painter().rect_filled(
+            egui::Rect::from_min_size(card.min + egui::vec2(0.0, 3.0), card.size()),
+            10.0,
+            egui::Color32::from_black_alpha(34),
+        );
+        let painter = ui.painter_at(card);
+        painter.rect_filled(card, 10.0, theme::CARD);
+        painter.rect_stroke(card, 10.0, egui::Stroke::new(1.0, theme::STROKE), egui::StrokeKind::Inside);
 
-                ui.label(
-                    egui::RichText::new(item.name.clone())
-                        .size(13.5)
-                        .strong()
-                        .color(theme::TEXT),
+        // Thumbnail area.
+        let thumb = egui::Rect::from_min_size(
+            card.min + egui::vec2(pad, pad),
+            egui::vec2(width - pad * 2.0, thumb_h),
+        );
+        painter.rect_filled(thumb, 6.0, theme::INPUT_BG);
+        let texture = self.texture_for(ui.ctx(), item, &thumb.size());
+        match &texture {
+            Some(handle) => {
+                let fitted = fit_within(handle.size_vec2(), thumb.size());
+                let image_rect = egui::Rect::from_min_size(thumb.center() - fitted / 2.0, fitted);
+                painter.image(
+                    handle.id(),
+                    image_rect,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    egui::Color32::WHITE,
                 );
-                theme::muted(
-                    ui,
-                    &format!(
-                        "{} · {}",
-                        type_label(&item.content_type),
-                        if item.duration_secs > 0 {
-                            format!("{}s", item.duration_secs)
-                        } else {
-                            "—".to_string()
-                        }
-                    ),
+            }
+            None => {
+                painter.text(
+                    thumb.center(),
+                    egui::Align2::CENTER_CENTER,
+                    type_glyph(&item.content_type),
+                    egui::FontId::proportional(30.0),
+                    theme::MUTED,
                 );
-                ui.horizontal(|ui| {
-                    if ui.button("🗑").on_hover_text("Delete").clicked() {
-                        self.delete_queue.push(item.id.clone());
-                    }
-                    if ui.button("⏱").on_hover_text("Adjust duration").clicked() {
-                        self.add_dialog = Some(AddDraft {
-                            name: item.name.clone(),
-                            content_type: type_label(&item.content_type).to_string(),
-                            file_path: Some(format!("::{id}", id = item.id)),
-                            url: item.url.clone().unwrap_or_default(),
-                            duration_secs: item.duration_secs.max(1),
-                            open: true,
-                        });
-                    }
-                });
+            }
+        }
+
+        // Title: bounded child (top-down) so long names wrap within the card;
+        // fit_label caps the text at two lines worth of characters.
+        let title_rect = egui::Rect::from_min_max(
+            egui::pos2(card.left() + pad, thumb.bottom() + 6.0),
+            egui::pos2(card.right() - pad, thumb.bottom() + 6.0 + title_h),
+        );
+        let mut title_child = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(title_rect)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        title_child.label(
+            egui::RichText::new(fit_label(&item.name, 70))
+                .size(13.0)
+                .strong()
+                .color(theme::TEXT),
+        );
+
+        // Meta line under the title.
+        let meta = format!(
+            "{} · {}",
+            type_label(&item.content_type),
+            if item.duration_secs > 0 {
+                format!("{}s", item.duration_secs)
+            } else {
+                "—".to_string()
+            }
+        );
+        painter.text(
+            egui::pos2(card.left() + pad, title_rect.bottom() + 10.0),
+            egui::Align2::LEFT_CENTER,
+            meta,
+            egui::FontId::proportional(11.5),
+            theme::MUTED,
+        );
+
+        // Action buttons pinned to the bottom of the card.
+        let actions_rect = egui::Rect::from_min_max(
+            egui::pos2(card.left() + pad - 6.0, card.bottom() - pad - 28.0),
+            egui::pos2(card.right() - pad, card.bottom() - pad),
+        );
+        let mut actions = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(actions_rect)
+                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+        );
+        if actions
+            .add(egui::Button::new("🗑").small())
+            .on_hover_text("Delete")
+            .clicked()
+        {
+            self.delete_queue.push(item.id.clone());
+        }
+        if actions
+            .add(egui::Button::new("⏱").small())
+            .on_hover_text("Adjust duration")
+            .clicked()
+        {
+            self.add_dialog = Some(AddDraft {
+                name: item.name.clone(),
+                content_type: type_label(&item.content_type).to_string(),
+                file_path: Some(format!("::{id}", id = item.id)),
+                url: item.url.clone().unwrap_or_default(),
+                duration_secs: item.duration_secs.max(1),
+                open: true,
             });
-        ui.add_space(4.0);
+        }
+
+        // Subtle hover highlight.
+        if resp.hovered() {
+            painter.rect_stroke(
+                card,
+                10.0,
+                egui::Stroke::new(1.0, theme::with_alpha(theme::PRIMARY, 0.4)),
+                egui::StrokeKind::Inside,
+            );
+        }
     }
 
     /// Load (and cache) the texture for an image item.
@@ -461,6 +515,16 @@ fn type_glyph(content_type: &ContentType) -> &'static str {
         ContentType::Spreadsheet => "📊",
         ContentType::Presentation => "📽",
         _ => "🖼",
+    }
+}
+
+/// Trim long media names to a fixed character budget so titles stay within
+/// the two wrapped lines the card reserves for them.
+fn fit_label(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        text.to_string()
+    } else {
+        format!("{}…", text.chars().take(max_chars).collect::<String>())
     }
 }
 

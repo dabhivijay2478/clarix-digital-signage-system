@@ -22,6 +22,9 @@ pub fn apply(ctx: &egui::Context) {
         style.visuals = dark_visuals();
         style.spacing.item_spacing = egui::vec2(10.0, 8.0);
         style.spacing.button_padding = egui::vec2(10.0, 6.0);
+        // Longer sliders read better on dashboard-scale panels (marquee speed,
+        // duration editors).
+        style.spacing.slider_width = 320.0;
     });
 }
 
@@ -30,10 +33,12 @@ fn dark_visuals() -> Visuals {
     v.panel_fill = PANEL;
     v.window_fill = CARD;
     v.extreme_bg_color = INPUT_BG;
+    v.text_edit_bg_color = Some(INPUT_BG);
     v.faint_bg_color = Color32::from_rgb(26, 30, 45);
     v.widgets.noninteractive.bg_fill = CARD;
     v.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, TEXT);
     v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, STROKE);
+    v.widgets.noninteractive.corner_radius = egui::CornerRadius::same(6);
     for widget in [
         &mut v.widgets.inactive,
         &mut v.widgets.hovered,
@@ -43,6 +48,7 @@ fn dark_visuals() -> Visuals {
         widget.bg_fill = CARD_HOVER;
         widget.fg_stroke = egui::Stroke::new(1.0, TEXT);
         widget.bg_stroke = egui::Stroke::new(1.0, STROKE);
+        widget.corner_radius = egui::CornerRadius::same(8);
     }
     v.widgets.hovered.bg_fill = Color32::from_rgb(42, 48, 70);
     v.widgets.active.bg_fill = PRIMARY;
@@ -50,6 +56,8 @@ fn dark_visuals() -> Visuals {
     v.selection.stroke = egui::Stroke::new(1.0, TEXT);
     v.hyperlink_color = PRIMARY;
     v.override_text_color = Some(TEXT);
+    v.window_corner_radius = egui::CornerRadius::same(10);
+    v.menu_corner_radius = egui::CornerRadius::same(8);
     v
 }
 
@@ -58,8 +66,14 @@ pub fn card(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
     egui::Frame::new()
         .fill(CARD)
         .stroke(egui::Stroke::new(1.0, STROKE))
-        .inner_margin(egui::Margin::same(10))
-        .corner_radius(6.0)
+        .inner_margin(egui::Margin::same(12))
+        .corner_radius(10.0)
+        .shadow(egui::Shadow {
+            offset: [0, 3],
+            blur: 10,
+            spread: 0,
+            color: egui::Color32::from_black_alpha(46),
+        })
         .show(ui, |ui| add(ui));
 }
 

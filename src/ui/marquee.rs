@@ -59,11 +59,25 @@ impl MarqueePage {
             ui.horizontal(|ui| {
                 ui.checkbox(&mut self.enabled, "Enabled on screens");
             });
+            ui.add_space(4.0);
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Scroll speed").size(13.0).color(theme::MUTED));
-                ui.add(egui::Slider::new(&mut self.speed, 15..=120).suffix(" px/s"));
-                theme::muted(ui, "(15 = slow · 120 = fast)");
+                ui.label(
+                    egui::RichText::new("Scroll speed")
+                        .size(13.0)
+                        .color(theme::MUTED),
+                );
+                ui.label(
+                    egui::RichText::new(format!("{} px/s", self.speed))
+                        .size(13.0)
+                        .strong()
+                        .color(theme::TEXT),
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    theme::muted(ui, "(15 = slow · 120 = fast)");
+                });
             });
+            ui.add(egui::Slider::new(&mut self.speed, 15..=120));
+            ui.add_space(2.0);
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 if ui.button("Save Settings").clicked() {

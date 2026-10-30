@@ -120,7 +120,7 @@ impl SchedulePage {
         ui.add_space(10.0);
 
         ui.horizontal(|ui| {
-            if ui.button("＋ Add Schedule Slot").clicked() {
+            if ui.button("+ Add Schedule Slot").clicked() {
                 self.draft = AddDraft::default();
                 // Preselect the first screen for convenience.
                 self.draft.selected_screens = self.screens.iter().take(1).map(|s| s.id.clone()).collect();
