@@ -83,7 +83,10 @@ fn format_days(days: &[AppWeekday]) -> String {
     if days.len() >= 7 {
         return "Every day".to_string();
     }
-    let mut indices = days.iter().map(|day| day_index(day.clone())).collect::<Vec<_>>();
+    let mut indices = days
+        .iter()
+        .map(|day| day_index(day.clone()))
+        .collect::<Vec<_>>();
     indices.sort_unstable();
     let all_weekdays = indices == vec![0, 1, 2, 3, 4];
     let all_weekend = indices == vec![5, 6];
@@ -119,22 +122,30 @@ impl SchedulePage {
             "Time slots assign a playlist to screens for part of the day. Higher priority wins when slots overlap.");
         ui.add_space(10.0);
 
-        ui.horizontal(|ui| {
-            if ui.button("+ Add Schedule Slot").clicked() {
+        ui.horizontal_wrapped(|ui| {
+            if theme::primary_button(ui, "+ Add Schedule Slot").clicked() {
                 self.draft = AddDraft::default();
                 // Preselect the first screen for convenience.
-                self.draft.selected_screens = self.screens.iter().take(1).map(|s| s.id.clone()).collect();
+                self.draft.selected_screens =
+                    self.screens.iter().take(1).map(|s| s.id.clone()).collect();
                 if let Some(playlist) = self.playlists.first() {
                     self.draft.playlist_id = playlist.id.clone();
                 }
                 self.show_add = true;
             }
-            theme::badge(ui, &format!("{} active slots", self.slots.len()), theme::PRIMARY);
+            theme::badge(
+                ui,
+                &format!("{} active slots", self.slots.len()),
+                theme::tokens(ui).primary,
+            );
         });
         ui.add_space(6.0);
 
         if self.slots.is_empty() {
-            widgets::empty_state(ui, "No schedule slots yet. Add one to control playlists by time of day.");
+            widgets::empty_state(
+                ui,
+                "No schedule slots yet. Add one to control playlists by time of day.",
+            );
         }
 
         for slot in &self.slots {
@@ -159,7 +170,7 @@ impl SchedulePage {
                 .join(", ");
 
             theme::card(ui, |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label(
                         egui::RichText::new(format!(
                             "{} – {}",
@@ -168,18 +179,25 @@ impl SchedulePage {
                         ))
                         .size(16.0)
                         .strong()
-                        .color(theme::PRIMARY),
+                        .color(theme::tokens(ui).primary),
                     );
                     ui.label(
                         egui::RichText::new(&slot.name)
                             .size(15.0)
                             .strong()
-                            .color(theme::TEXT),
+                            .color(theme::tokens(ui).text),
                     );
-                    theme::badge(ui, &format!("Priority {}", slot.priority), theme::AMBER);
+                    theme::badge(
+                        ui,
+                        &format!("Priority {}", slot.priority),
+                        theme::tokens(ui).amber,
+                    );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("🗑 Delete").clicked() {
-                            match crate::backend::schedule::delete_schedule_slot(core, slot.id.clone()) {
+                        if ui.button(" Delete").clicked() {
+                            match crate::backend::schedule::delete_schedule_slot(
+                                core,
+                                slot.id.clone(),
+                            ) {
                                 Ok(()) => toasts.push(Toast::new(
                                     ToastKind::Success,
                                     format!("Slot \"{}\" deleted", slot.name),
@@ -204,26 +222,31 @@ impl SchedulePage {
 
         if self.show_add {
             let mut keep_open = true;
-            egui::Window::new("add-slot-window")
+            super::layout::dialog(ui, "New schedule slot", 500.0)
+                .id(egui::Id::unique("add-slot-window"))
                 .title_bar(true)
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .open(&mut keep_open)
                 .show(ui.ctx(), |ui| {
-                    ui.set_width_range(460.0..=620.0);
+                    ui.set_width(ui.available_width().min(620.0));
                     ui.label(
                         egui::RichText::new("New Schedule Slot")
                             .size(16.0)
                             .strong()
-                            .color(theme::TEXT),
+                            .color(theme::tokens(ui).text),
                     );
                     ui.add_space(6.0);
 
                     widgets::labeled_text(ui, "Name", &mut self.draft.name, "e.g. Morning Loop");
 
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Playlist").size(13.0).color(theme::MUTED));
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            egui::RichText::new("Playlist")
+                                .size(13.0)
+                                .color(theme::tokens(ui).muted),
+                        );
                         if self.playlists.is_empty() {
                             theme::muted(ui, "Create a playlist first");
                         } else {
@@ -236,7 +259,8 @@ impl SchedulePage {
                             egui::ComboBox::from_id_salt("add-slot-playlist")
                                 .width(240.0)
                                 .selected_text(
-                                    selected_name.is_empty()
+                                    selected_name
+                                        .is_empty()
                                         .then(|| "Select playlist…")
                                         .unwrap_or(&selected_name),
                                 )
@@ -252,15 +276,33 @@ impl SchedulePage {
                         }
                     });
 
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Start (HH:MM)").size(13.0).color(theme::MUTED));
-                        ui.add_sized([90.0, 26.0], egui::TextEdit::singleline(&mut self.draft.start_time));
-                        ui.label(egui::RichText::new("Duration").size(13.0).color(theme::MUTED));
-                        ui.add(egui::Slider::new(&mut self.draft.duration_mins, 1..=720).suffix(" min"));
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            egui::RichText::new("Start (HH:MM)")
+                                .size(13.0)
+                                .color(theme::tokens(ui).muted),
+                        );
+                        ui.add_sized(
+                            [90.0, 34.0],
+                            egui::TextEdit::singleline(&mut self.draft.start_time),
+                        );
+                        ui.label(
+                            egui::RichText::new("Duration")
+                                .size(13.0)
+                                .color(theme::tokens(ui).muted),
+                        );
+                        ui.add(
+                            egui::Slider::new(&mut self.draft.duration_mins, 1..=720)
+                                .suffix(" min"),
+                        );
                     });
 
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Priority").size(13.0).color(theme::MUTED));
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            egui::RichText::new("Priority")
+                                .size(13.0)
+                                .color(theme::tokens(ui).muted),
+                        );
                         ui.add(egui::Slider::new(&mut self.draft.priority, 1..=10));
                     });
 
@@ -282,7 +324,7 @@ impl SchedulePage {
                     });
 
                     widgets::section_header(ui, "Days of week");
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         for (index, label) in DAY_LABELS.iter().enumerate() {
                             let mut checked = self.draft.days[index];
                             if ui.checkbox(&mut checked, *label).changed() {
@@ -301,7 +343,7 @@ impl SchedulePage {
                     });
 
                     ui.add_space(8.0);
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         if ui.button("Create Slot").clicked() {
                             self.submit_add(ui, core, toasts);
                         }
@@ -322,7 +364,10 @@ impl SchedulePage {
             return;
         }
         if self.draft.playlist_id.is_empty() {
-            toasts.push(Toast::new(ToastKind::Error, "Pick a playlist for this slot"));
+            toasts.push(Toast::new(
+                ToastKind::Error,
+                "Pick a playlist for this slot",
+            ));
             return;
         }
         if self.draft.selected_screens.is_empty() {
@@ -330,7 +375,10 @@ impl SchedulePage {
             return;
         }
         if parse_hhmm(&self.draft.start_time).is_none() {
-            toasts.push(Toast::new(ToastKind::Error, "Start time must be HH:MM (e.g. 08:30)"));
+            toasts.push(Toast::new(
+                ToastKind::Error,
+                "Start time must be HH:MM (e.g. 08:30)",
+            ));
             return;
         }
         let days: Vec<AppWeekday> = (0..7)
@@ -338,7 +386,10 @@ impl SchedulePage {
             .map(|index| day_from_index(index))
             .collect();
         if days.is_empty() {
-            toasts.push(Toast::new(ToastKind::Error, "Select at least one day of the week"));
+            toasts.push(Toast::new(
+                ToastKind::Error,
+                "Select at least one day of the week",
+            ));
             return;
         }
 
@@ -353,13 +404,19 @@ impl SchedulePage {
             self.draft.priority,
         ) {
             Ok(_) => {
-                toasts.push(Toast::new(ToastKind::Success, "Schedule slot created and synced"));
+                toasts.push(Toast::new(
+                    ToastKind::Success,
+                    "Schedule slot created and synced",
+                ));
                 self.show_add = false;
                 self.draft = AddDraft::default();
                 let _ = ui;
                 self.last_refresh = Instant::now() - Duration::from_secs(3600);
             }
-            Err(error) => toasts.push(Toast::new(ToastKind::Error, format!("Create failed: {error}"))),
+            Err(error) => toasts.push(Toast::new(
+                ToastKind::Error,
+                format!("Create failed: {error}"),
+            )),
         }
     }
 

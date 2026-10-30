@@ -17,6 +17,11 @@ mod ui;
 use std::sync::Arc;
 
 fn main() {
+    #[cfg(debug_assertions)]
+    if std::env::args().any(|arg| arg == "--ui-review") {
+        app::run_ui_review();
+        return;
+    }
     // Optional .env next to the executable / repository root.
     let _ = dotenvy::dotenv();
 
@@ -36,7 +41,10 @@ fn main() {
 
     let config_dir = state::resolve_app_data_dir();
     if let Err(error) = std::fs::create_dir_all(&config_dir) {
-        tracing::error!("Could not create app data dir {}: {error}", config_dir.display());
+        tracing::error!(
+            "Could not create app data dir {}: {error}",
+            config_dir.display()
+        );
     }
     tracing::info!("App data dir: {}", config_dir.display());
 
@@ -48,14 +56,18 @@ fn main() {
         }
     };
 
-    let core = Arc::new(state::AppCore::new(pool, config_dir.clone(), runtime.clone()));
+    let core = Arc::new(state::AppCore::new(
+        pool,
+        config_dir.clone(),
+        runtime.clone(),
+    ));
     core.scheduler.reload(&core.pool);
     bg::spawn_all(core.clone());
 
     let icon = load_icon();
     let mut viewport = egui::ViewportBuilder::default()
         .with_inner_size([1280.0, 800.0])
-        .with_min_inner_size([1024.0, 640.0])
+        .with_min_inner_size([800.0, 600.0])
         .with_title("MG Enterprise — Clarix");
     if let Some(icon) = icon {
         viewport = viewport.with_icon(icon);

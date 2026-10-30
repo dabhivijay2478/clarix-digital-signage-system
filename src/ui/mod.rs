@@ -16,3 +16,7 @@ pub mod settings;
 pub mod team;
 pub mod trucks;
 pub mod widgets;
+
+pub mod icons;
+pub mod layout;
+pub mod signage;

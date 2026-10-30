@@ -35,7 +35,13 @@ impl Default for DatabasePage {
 fn cell_text(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::Null => String::new(),
-        serde_json::Value::Bool(b) => if *b { "✓".to_string() } else { "".to_string() },
+        serde_json::Value::Bool(b) => {
+            if *b {
+                "✓".to_string()
+            } else {
+                "".to_string()
+            }
+        }
         serde_json::Value::String(s) => s.clone(),
         other => other.to_string(),
     }
@@ -50,15 +56,22 @@ impl DatabasePage {
         }
 
         theme::heading(ui, "Database console");
-        theme::muted(ui, &format!(
-            "SQLite library at {} — read-only view with CSV export.",
-            core.config_dir.join("signage.sqlite").display()
-        ));
+        theme::muted(
+            ui,
+            &format!(
+                "SQLite library at {} — read-only view with CSV export.",
+                core.config_dir.join("clarix.db").display()
+            ),
+        );
         ui.add_space(10.0);
 
         theme::card(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
-                ui.label(egui::RichText::new("Table").size(13.0).color(theme::MUTED));
+                ui.label(
+                    egui::RichText::new("Table")
+                        .size(13.0)
+                        .color(theme::tokens(ui).muted),
+                );
                 let selected_label = self.selected.clone().unwrap_or_else(|| "—".to_string());
                 egui::ComboBox::from_id_salt("db-table-select")
                     .width(220.0)
@@ -77,43 +90,59 @@ impl DatabasePage {
                 }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("⬇ Export CSV").clicked() {
+                    if ui.button(" Export CSV").clicked() {
                         self.export_csv(core, toasts);
                     }
-                    if ui.button("💾 Backup media ZIP").clicked() {
+                    if ui.button(" Backup media ZIP").clicked() {
                         self.backup_zip(core, toasts);
                     }
                 });
             });
 
             if let Some(error) = &self.error {
-                ui.label(egui::RichText::new(error).size(12.5).color(theme::RED));
+                ui.label(
+                    egui::RichText::new(error)
+                        .size(12.5)
+                        .color(theme::tokens(ui).red),
+                );
             }
         });
         ui.add_space(8.0);
 
         if let Some(table) = self.selected.clone() {
-            widgets::section_header(ui, &format!(
-                "{table} — {} rows{}",
-                self.rows.len(),
-                if self.rows.len() > MAX_PREVIEW_ROWS { " (preview capped)" } else { "" }
-            ));
+            widgets::section_header(
+                ui,
+                &format!(
+                    "{table} — {} rows{}",
+                    self.rows.len(),
+                    if self.rows.len() > MAX_PREVIEW_ROWS {
+                        " (preview capped)"
+                    } else {
+                        ""
+                    }
+                ),
+            );
 
             let columns = self.columns.clone();
-            egui::ScrollArea::both()
+            egui::ScrollArea::horizontal()
                 .max_height(520.0)
                 .show(ui, |ui| {
                     let grid = egui::Grid::new("db-table-grid")
                         .num_columns(columns.len().saturating_add(1).max(1))
                         .striped(true);
                     grid.show(ui, |ui| {
-                        ui.label(egui::RichText::new("#").size(12.0).strong().color(theme::MUTED));
+                        ui.label(
+                            egui::RichText::new("#")
+                                .size(12.0)
+                                .strong()
+                                .color(theme::tokens(ui).muted),
+                        );
                         for column in &columns {
                             ui.label(
                                 egui::RichText::new(column.clone())
                                     .size(12.0)
                                     .strong()
-                                    .color(theme::PRIMARY),
+                                    .color(theme::tokens(ui).primary),
                             );
                         }
                         ui.end_row();
@@ -122,16 +151,15 @@ impl DatabasePage {
                             ui.label(
                                 egui::RichText::new((index + 1).to_string())
                                     .size(11.5)
-                                    .color(theme::MUTED),
+                                    .color(theme::tokens(ui).muted),
                             );
                             for column in &columns {
-                                let text = row
-                                    .get(column)
-                                    .map(cell_text)
-                                    .unwrap_or_default();
+                                let text = row.get(column).map(cell_text).unwrap_or_default();
                                 ui.add(
                                     egui::Label::new(
-                                        egui::RichText::new(text).size(11.5).color(theme::TEXT),
+                                        egui::RichText::new(text)
+                                            .size(11.5)
+                                            .color(theme::tokens(ui).text),
                                     )
                                     .truncate(),
                                 );
@@ -164,7 +192,9 @@ impl DatabasePage {
         self.error = None;
         self.columns = Vec::new();
         self.rows = Vec::new();
-        let Some(table) = self.selected.clone() else { return };
+        let Some(table) = self.selected.clone() else {
+            return;
+        };
         match crate::backend::database::get_db_table_data(core, table) {
             Ok(data) => {
                 if let Some(array) = data.get("columns").and_then(|c| c.as_array()) {
@@ -201,10 +231,19 @@ impl DatabasePage {
                 path.to_string_lossy().to_string(),
                 csv_text,
             ) {
-                Ok(()) => toasts.push(Toast::new(ToastKind::Success, format!("Exported {table} rows to CSV"))),
-                Err(error) => toasts.push(Toast::new(ToastKind::Error, format!("Write failed: {error}"))),
+                Ok(()) => toasts.push(Toast::new(
+                    ToastKind::Success,
+                    format!("Exported {table} rows to CSV"),
+                )),
+                Err(error) => toasts.push(Toast::new(
+                    ToastKind::Error,
+                    format!("Write failed: {error}"),
+                )),
             },
-            Err(error) => toasts.push(Toast::new(ToastKind::Error, format!("Export failed: {error}"))),
+            Err(error) => toasts.push(Toast::new(
+                ToastKind::Error,
+                format!("Export failed: {error}"),
+            )),
         }
     }
 
@@ -220,8 +259,14 @@ impl DatabasePage {
             core,
             path.to_string_lossy().to_string(),
         ) {
-            Ok(()) => toasts.push(Toast::new(ToastKind::Success, "Content library backup saved")),
-            Err(error) => toasts.push(Toast::new(ToastKind::Error, format!("Backup failed: {error}"))),
+            Ok(()) => toasts.push(Toast::new(
+                ToastKind::Success,
+                "Content library backup saved",
+            )),
+            Err(error) => toasts.push(Toast::new(
+                ToastKind::Error,
+                format!("Backup failed: {error}"),
+            )),
         }
     }
 }

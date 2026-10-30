@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::app::{Toast, ToastKind};
-use crate::display_rules::{PlaylistItemSchedule, format_schedule_summary};
+use crate::display_rules::{format_schedule_summary, PlaylistItemSchedule};
 use crate::models::{Playlist, TransitionEffect};
 use crate::state::AppCore;
 
@@ -68,10 +68,15 @@ impl PlaylistsPage {
             self.refresh(core);
         }
         self.handle_deletes(core, toasts);
+        widgets::page_header(
+            ui,
+            "Playlists",
+            "Build playback sequences and control when each item appears.",
+        );
 
         // Toolbar
-        ui.horizontal(|ui| {
-            if ui.button(egui::RichText::new("+ New playlist").strong()).clicked() {
+        ui.horizontal_wrapped(|ui| {
+            if theme::primary_button(ui, "+ New playlist").clicked() {
                 self.create_dialog = Some(CreateDraft {
                     name: String::new(),
                     transition: 1,
@@ -83,20 +88,25 @@ impl PlaylistsPage {
         ui.add_space(6.0);
 
         // Grid: playlist list, then the editor below when something is selected.
-        let ids = self.playlists.iter().map(|p| p.id.clone()).collect::<Vec<_>>();
+        let ids = self
+            .playlists
+            .iter()
+            .map(|p| p.id.clone())
+            .collect::<Vec<_>>();
         if ids.is_empty() {
             widgets::empty_state(ui, "No playlists yet. Create one and add content to it.");
         } else {
             for (index, playlist) in self.playlists.iter().enumerate() {
                 let selected = self.selected.as_deref() == Some(playlist.id.as_str());
                 theme::card(ui, |ui| {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.vertical(|ui| {
-                            ui.horizontal(|ui| {
+                            ui.horizontal_wrapped(|ui| {
                                 if ui
-                                    .add(
-                                        egui::Button::new(egui::RichText::new(format!("▶  {}", playlist.name)).strong()),
-                                    )
+                                    .add(egui::Button::new(
+                                        egui::RichText::new(format!("  {}", playlist.name))
+                                            .strong(),
+                                    ))
                                     .clicked()
                                 {
                                     if selected {
@@ -104,17 +114,22 @@ impl PlaylistsPage {
                                         self.editing = None;
                                     } else {
                                         self.selected = Some(playlist.id.clone());
-                                        self.editing = Some(EditingPlaylist::from_playlist(playlist));
+                                        self.editing =
+                                            Some(EditingPlaylist::from_playlist(playlist));
                                     }
                                 }
-                                theme::badge(ui, &format!("{} items", playlist.items.len()), theme::PRIMARY);
+                                theme::badge(
+                                    ui,
+                                    &format!("{} items", playlist.items.len()),
+                                    theme::tokens(ui).primary,
+                                );
                                 theme::badge(
                                     ui,
                                     TRANSITIONS[transition_index(&playlist.transition)],
-                                    theme::MUTED,
+                                    theme::tokens(ui).muted,
                                 );
                                 if playlist.loop_enabled {
-                                    theme::badge(ui, "loops", theme::GREEN);
+                                    theme::badge(ui, "loops", theme::tokens(ui).green);
                                 }
                             });
                             let names = playlist
@@ -136,7 +151,10 @@ impl PlaylistsPage {
                             );
                         });
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("🗑").on_hover_text("Delete playlist").clicked() {
+                            if super::icons::button(ui, super::icons::Icon::Delete, "Delete")
+                                .on_hover_text("Delete playlist")
+                                .clicked()
+                            {
                                 self.delete_queue.push(playlist.id.clone());
                             }
                             theme::muted(ui, &format!("#{}/{}", index + 1, ids.len()));
@@ -153,8 +171,7 @@ impl PlaylistsPage {
     }
 
     fn refresh(&mut self, core: &Arc<AppCore>) {
-        self.playlists =
-            crate::backend::playlists::get_playlists(&core.pool).unwrap_or_default();
+        self.playlists = crate::backend::playlists::get_playlists(&core.pool).unwrap_or_default();
         self.content_names = crate::backend::content::get_content_items(&core.pool)
             .unwrap_or_default()
             .into_iter()
@@ -184,7 +201,9 @@ impl PlaylistsPage {
     }
 
     fn draw_editor(&mut self, ui: &mut egui::Ui, core: &Arc<AppCore>, toasts: &mut Vec<Toast>) {
-        let Some(editing) = &mut self.editing else { return };
+        let Some(editing) = &mut self.editing else {
+            return;
+        };
         if !editing.open {
             self.selected = None;
             self.editing = None;
@@ -196,7 +215,7 @@ impl PlaylistsPage {
             egui::CollapsingHeader::new(egui::RichText::new("Playlist settings").strong())
                 .default_open(false)
                 .show(ui, |ui| {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.label("Transition: ");
                         let current = TRANSITIONS[editing.transition];
                         gew_combo(ui, "editing-transition".to_string(), 140.0, current, |ui| {
@@ -225,29 +244,30 @@ impl PlaylistsPage {
                     .get(&item.content_id)
                     .cloned()
                     .unwrap_or_else(|| ("(missing)".to_string(), "—".to_string()));
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(format!("{}. ", index + 1)).color(theme::MUTED));
-                    if ui
-                        .button("⬆")
-                        .on_hover_text("Move up")
-                        .clicked() && index > 0
-                    {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(
+                        egui::RichText::new(format!("{}. ", index + 1))
+                            .color(theme::tokens(ui).muted),
+                    );
+                    if ui.button("Move up").on_hover_text("Move up").clicked() && index > 0 {
                         swaps.push(index - 1);
                     }
-                    if ui.button("⬇").on_hover_text("Move down").clicked() && index < count - 1 {
+                    if ui.button("Move down").on_hover_text("Move down").clicked()
+                        && index < count - 1
+                    {
                         swaps.push(index);
                     }
                     ui.label(
                         egui::RichText::new(format!("{} · {}", name, kind))
                             .size(13.5)
-                            .color(theme::TEXT),
+                            .color(theme::tokens(ui).text),
                     );
                     ui.label(
                         egui::RichText::new(format_schedule_summary(item.schedule.as_ref()))
                             .size(12.0)
-                            .color(theme::MUTED),
+                            .color(theme::tokens(ui).muted),
                     );
-                    if ui.button("⏱ Schedule").clicked() {
+                    if ui.button(" Schedule").clicked() {
                         schedule_opens.push(index);
                     }
                     if count > 1 && ui.button("✕").on_hover_text("Remove item").clicked() {
@@ -257,7 +277,7 @@ impl PlaylistsPage {
             }
 
             ui.add_space(4.0);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label("Add content:");
                 let ids = self
                     .content_names
@@ -272,11 +292,10 @@ impl PlaylistsPage {
                     }
                 });
 
-                if ui.button("💾 Save playlist").clicked() {
+                if theme::primary_button(ui, " Save playlist").clicked() {
                     let transition = TRANSITIONS[editing.transition];
                     save_playlist(core, toasts, editing, transition);
-                    self.last_refresh =
-                        Instant::now() - Duration::from_millis(2500);
+                    self.last_refresh = Instant::now() - Duration::from_millis(2500);
                 }
             });
 
@@ -294,9 +313,12 @@ impl PlaylistsPage {
             }
             for index in schedule_opens {
                 let item = editing.items[index].clone();
-                let schedule = PlaylistItemSchedule::parse(item.schedule.as_ref())
-                    .unwrap_or_default();
-                self.schedule_editor = Some(ScheduleDraft { order: index, schedule });
+                let schedule =
+                    PlaylistItemSchedule::parse(item.schedule.as_ref()).unwrap_or_default();
+                self.schedule_editor = Some(ScheduleDraft {
+                    order: index,
+                    schedule,
+                });
             }
         });
     }
@@ -314,10 +336,11 @@ impl PlaylistsPage {
         };
         let mut open = true;
         let weekdays = crate::display_rules::APP_WEEKDAYS;
-        egui::Window::new(egui::RichText::new(format!(
-            "Display schedule — item {}",
-            draft.order + 1
-        )).strong())
+        super::layout::dialog(
+            ui,
+            egui::RichText::new(format!("Display schedule — item {}", draft.order + 1)).strong(),
+            500.0,
+        )
         .open(&mut open)
         .default_width(540.0)
         .show(ui.ctx(), |ui| {
@@ -337,7 +360,7 @@ impl PlaylistsPage {
                         .day_times
                         .entry(day.to_string())
                         .or_insert_with(default_entry);
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.checkbox(&mut entry.enabled, day);
                         egui::TextEdit::singleline(&mut entry.start)
                             .desired_width(70.0)
@@ -356,7 +379,7 @@ impl PlaylistsPage {
                 "Restrict to a date range",
             );
             if draft.schedule.date_restricted {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("From ");
                     egui::TextEdit::singleline(&mut draft.schedule.start_date)
                         .desired_width(120.0)
@@ -370,7 +393,7 @@ impl PlaylistsPage {
                 });
             }
             ui.add_space(6.0);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label("Transition override: ");
                 let current = draft.schedule.transition.clone();
                 gew_combo(ui, "item-transition".to_string(), 120.0, &current, |ui| {
@@ -382,7 +405,7 @@ impl PlaylistsPage {
                 });
             });
             ui.add_space(8.0);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if ui.button("Apply").clicked() {
                     if let Some(editing) = &mut self.editing {
                         let order_index = draft.order;
@@ -417,13 +440,15 @@ impl PlaylistsPage {
         core: &Arc<AppCore>,
         toasts: &mut Vec<Toast>,
     ) {
-        let Some(draft) = &mut self.create_dialog else { return };
+        let Some(draft) = &mut self.create_dialog else {
+            return;
+        };
         if !draft.open {
             self.create_dialog = None;
             return;
         }
         let mut open = draft.open;
-        egui::Window::new(egui::RichText::new("New playlist").strong())
+        super::layout::dialog(ui, egui::RichText::new("New playlist").strong(), 500.0)
             .open(&mut open)
             .resizable(false)
             .show(ui.ctx(), |ui| {
@@ -432,7 +457,7 @@ impl PlaylistsPage {
                     .desired_width(260.0)
                     .show(ui);
                 ui.add_space(4.0);
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Transition:");
                     let current = TRANSITIONS[draft.transition];
                     gew_combo(ui, "create-transition".to_string(), 140.0, current, |ui| {
@@ -445,7 +470,7 @@ impl PlaylistsPage {
                     ui.checkbox(&mut draft.loop_enabled, "Loop");
                 });
                 ui.add_space(8.0);
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     if ui.button("Create").clicked() {
                         match crate::backend::playlists::create_playlist(
                             core,
@@ -540,11 +565,8 @@ fn save_playlist(
         .collect::<Vec<_>>();
     let _ = transition;
     let _ = editing.name;
-    match crate::backend::playlists::update_playlist_items(
-        core,
-        editing.playlist_id.clone(),
-        items,
-    ) {
+    match crate::backend::playlists::update_playlist_items(core, editing.playlist_id.clone(), items)
+    {
         Ok(()) => {
             let _ = crate::lan::server::publish_revision(&core.pool, &core.events);
             toasts.push(Toast::new(ToastKind::Success, "Playlist saved."));
@@ -553,6 +575,6 @@ fn save_playlist(
     }
 }
 
-use crate::ui::screens::gew_combo;
 use crate::theme;
+use crate::ui::screens::gew_combo;
 use crate::ui::widgets;

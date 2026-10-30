@@ -37,18 +37,15 @@ fn now_iso() -> String {
 }
 
 fn parse_iso(value: &str) -> Option<DateTime<Utc>> {
-    DateTime::parse_from_rfc3339(value).map(|dt| dt.with_timezone(&Utc)).ok()
+    DateTime::parse_from_rfc3339(value)
+        .map(|dt| dt.with_timezone(&Utc))
+        .ok()
 }
 
 /// Status field transition with cascade — ported from the previous zustand
 /// `updateTruckChecks`; timestamps follow the same rules (waiting⇄loading share
 /// both timestamps; unchecking cascades later flags off).
-fn apply_status_field(
-    truck: &mut ActiveTruck,
-    field: TruckField,
-    value: bool,
-    timestamp: &str,
-) {
+fn apply_status_field(truck: &mut ActiveTruck, field: TruckField, value: bool, timestamp: &str) {
     match field {
         TruckField::Waiting => truck.is_waiting = value,
         // `is_loading` and `is_in` are one concept (both timestamps set together).
@@ -108,7 +105,9 @@ fn apply_status_field(
 /// Index of a truck among the not-out trucks of its gate (by `order_index`),
 /// or -1 when unknown.
 fn gate_queue_index(trucks: &[ActiveTruck], truck_id: &str) -> i32 {
-    let Some(truck) = trucks.iter().find(|t| t.id == truck_id) else { return -1 };
+    let Some(truck) = trucks.iter().find(|t| t.id == truck_id) else {
+        return -1;
+    };
     let gate = truck.gate_no.clone().unwrap_or_default().to_lowercase();
     if gate.is_empty() {
         return -1;
@@ -132,7 +131,11 @@ fn gate_loading_mins(gates: &[GateConfig], gate_no: &Option<String>) -> u32 {
         .map(|gate| gate.loading_duration_mins)
         .filter(|mins| *mins > 0)
         .unwrap_or(DEFAULT_GATE_LOADING_MINS);
-    if configured < 1 { 1 } else { configured }
+    if configured < 1 {
+        1
+    } else {
+        configured
+    }
 }
 
 /// Expected wait until this truck enters a bay (port of `truck-queue.ts`).
@@ -168,14 +171,22 @@ fn format_queue_duration(mins: u32) -> String {
 
 /// "hh:mm" elapsed between a stored timestamp and now, or "—".
 fn format_since(value: Option<&str>) -> String {
-    let Some(value) = value else { return "—".to_string() };
-    let Some(start) = parse_iso(value) else { return "—".to_string() };
-    let minutes = (Utc::now().signed_duration_since(start)).num_minutes().max(0);
+    let Some(value) = value else {
+        return "—".to_string();
+    };
+    let Some(start) = parse_iso(value) else {
+        return "—".to_string();
+    };
+    let minutes = (Utc::now().signed_duration_since(start))
+        .num_minutes()
+        .max(0);
     format!("{:02}:{:02}", minutes / 60, minutes % 60)
 }
 
 fn format_duration_secs(secs: Option<i64>) -> String {
-    let Some(secs) = secs else { return "—".to_string() };
+    let Some(secs) = secs else {
+        return "—".to_string();
+    };
     if secs < 0 {
         return "—".to_string();
     }
@@ -195,8 +206,15 @@ fn normalize_import_key(value: &str) -> String {
 }
 
 const REG_KEYS: [&str; 9] = [
-    "registration_number", "registration", "reg_no", "reg_number",
-    "vehicle_no", "vehicle_number", "truck_no", "truck_number", "number",
+    "registration_number",
+    "registration",
+    "reg_no",
+    "reg_number",
+    "vehicle_no",
+    "vehicle_number",
+    "truck_no",
+    "truck_number",
+    "number",
 ];
 const GATE_KEYS: [&str; 4] = ["gate_no", "gate", "gate_number", "gateno"];
 
@@ -288,29 +306,59 @@ impl TrucksPage {
         let mut actions: Vec<PendingAction> = Vec::new();
 
         theme::heading(ui, "Truck token");
-        theme::muted(ui, "Queue trucks per gate; tokens broadcast to gate token screens in real time.");
+        theme::muted(
+            ui,
+            "Queue trucks per gate; tokens broadcast to gate token screens in real time.",
+        );
         ui.add_space(10.0);
 
         // ── Stats ───────────────────────────────────────────────────────────
         let total_active = self.trucks.iter().filter(|t| !t.is_out).count();
-        let waiting_count = self.trucks.iter().filter(|t| t.is_waiting && !t.is_out).count();
-        let loading_count = self.trucks.iter().filter(|t| t.is_loading && !t.is_out).count();
+        let waiting_count = self
+            .trucks
+            .iter()
+            .filter(|t| t.is_waiting && !t.is_out)
+            .count();
+        let loading_count = self
+            .trucks
+            .iter()
+            .filter(|t| t.is_loading && !t.is_out)
+            .count();
         let dispatched_today = self.summary.as_ref().map(|s| s.today).unwrap_or(0);
         let this_month = self.summary.as_ref().map(|s| s.this_month).unwrap_or(0);
 
-        let card_w = ((ui.available_width() - 40.0) / 5.0).min(190.0);
-        ui.horizontal(|ui| {
-            widgets::stat_card(ui, card_w, "Total", &total_active.to_string(), theme::GREEN);
-            ui.add_space(8.0);
-            widgets::stat_card(ui, card_w, "Waiting", &waiting_count.to_string(), theme::AMBER);
-            ui.add_space(8.0);
-            widgets::stat_card(ui, card_w, "Loading", &loading_count.to_string(), theme::PRIMARY);
-            ui.add_space(8.0);
-            widgets::stat_card(ui, card_w, "Dispatched today", &dispatched_today.to_string(), theme::GREEN);
-            ui.add_space(8.0);
-            widgets::stat_card(ui, card_w, "This month", &this_month.to_string(), theme::RED);
-        });
-        ui.add_space(10.0);
+        widgets::stat_grid(
+            ui,
+            &[
+                (
+                    "Total active",
+                    total_active.to_string(),
+                    theme::tokens(ui).green,
+                ),
+                (
+                    "Waiting",
+                    waiting_count.to_string(),
+                    theme::tokens(ui).amber,
+                ),
+                (
+                    "Loading",
+                    loading_count.to_string(),
+                    theme::tokens(ui).primary,
+                ),
+                (
+                    "Dispatched today",
+                    dispatched_today.to_string(),
+                    theme::tokens(ui).green,
+                ),
+                (
+                    "This month",
+                    this_month.to_string(),
+                    theme::tokens(ui).primary,
+                ),
+            ],
+            5,
+        );
+        ui.add_space(16.0);
 
         // ── Gate tabs ───────────────────────────────────────────────────────
         ui.horizontal_wrapped(|ui| {
@@ -328,18 +376,25 @@ impl TrucksPage {
             };
             draw_tab(ui, "all", "All Trucks");
             for gate in &self.gates {
-                draw_tab(ui, &gate.number, &format!("Gate {}", gate.number.to_uppercase()));
+                draw_tab(
+                    ui,
+                    &gate.number,
+                    &format!("Gate {}", gate.number.to_uppercase()),
+                );
             }
             draw_tab(ui, "dispatched", "Dispatched / Out");
         });
         ui.add_space(4.0);
 
         // ── Action bar ──────────────────────────────────────────────────────
-        ui.horizontal(|ui| {
-            ui.add_sized([220.0, 26.0], egui::TextEdit::singleline(&mut self.search).hint_text("🔍 Search trucks…"));
+        ui.horizontal_wrapped(|ui| {
+            ui.add_sized(
+                [220.0, 34.0],
+                egui::TextEdit::singleline(&mut self.search).hint_text(" Search trucks…"),
+            );
             theme::muted(ui, &format!("{} shown", self.filtered().len()));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("+ Add Truck").clicked() {
+                if theme::primary_button(ui, "+ Add Truck").clicked() {
                     self.f_reg_no.clear();
                     self.f_gate_no = self
                         .gates
@@ -358,10 +413,12 @@ impl TrucksPage {
         // ── Truck table ─────────────────────────────────────────────────────
         let rows = self.build_rows();
         if rows.is_empty() {
-            widgets::empty_state(ui, "No trucks yet. Add a truck manually or import a CSV/Excel list.");
+            widgets::empty_state(
+                ui,
+                "No trucks yet. Add a truck manually or import a CSV/Excel list.",
+            );
         } else {
-            egui::ScrollArea::both()
-                .max_height(520.0)
+            egui::ScrollArea::horizontal()
                 .auto_shrink(false)
                 .show(ui, |ui| {
                     egui::Grid::new("trucks-grid")
@@ -384,7 +441,7 @@ impl TrucksPage {
                                     egui::RichText::new(column_label)
                                         .size(11.5)
                                         .strong()
-                                        .color(theme::MUTED),
+                                        .color(theme::tokens(ui).muted),
                                 );
                             }
                             ui.end_row();
@@ -394,7 +451,7 @@ impl TrucksPage {
                                 ui.label(
                                     egui::RichText::new((row_index + 1).to_string())
                                         .size(12.0)
-                                        .color(theme::MUTED),
+                                        .color(theme::tokens(ui).muted),
                                 );
 
                                 ui.vertical(|ui| {
@@ -402,7 +459,7 @@ impl TrucksPage {
                                         egui::RichText::new(truck.registration_number.clone())
                                             .size(13.5)
                                             .strong()
-                                            .color(theme::TEXT),
+                                            .color(theme::tokens(ui).text),
                                     );
                                     let sub = if truck.is_out {
                                         egui::RichText::new(format!(
@@ -410,98 +467,159 @@ impl TrucksPage {
                                             format_duration_secs(truck.loading_duration)
                                         ))
                                         .size(10.5)
-                                        .color(theme::GREEN)
+                                        .color(theme::tokens(ui).green)
                                     } else if truck.is_loading {
                                         egui::RichText::new(format!(
                                             "Loading for {}",
                                             format_since(truck.loading_at.as_deref())
                                         ))
                                         .size(10.5)
-                                        .color(theme::PRIMARY)
+                                        .color(theme::tokens(ui).primary)
                                     } else {
                                         egui::RichText::new(format!(
                                             "Waiting {}",
                                             format_since(truck.waiting_at.as_deref())
                                         ))
                                         .size(10.5)
-                                        .color(theme::MUTED)
+                                        .color(theme::tokens(ui).muted)
                                     };
                                     ui.label(sub);
                                 });
 
                                 let (status_key, _status_label) = truck_status(truck);
                                 let color = match status_key {
-                                    "out" => theme::GREEN,
-                                    "loading" => theme::PRIMARY,
-                                    "waiting" => theme::AMBER,
-                                    _ => theme::MUTED,
+                                    "out" => theme::tokens(ui).green,
+                                    "loading" => theme::tokens(ui).primary,
+                                    "waiting" => theme::tokens(ui).amber,
+                                    _ => theme::tokens(ui).muted,
                                 };
                                 theme::badge(ui, row.status_label, color);
 
                                 if row.status_label == "Waiting" {
                                     ui.horizontal(|ui| {
-                                        if ui.add_enabled(
-                                            row.can_move_up,
-                                            egui::Button::new(egui::RichText::new("▲").size(11.0)),
-                                        ).clicked() {
-                                            actions.push(PendingAction::Move(truck.id.clone(), true));
+                                        if ui
+                                            .add_enabled(
+                                                row.can_move_up,
+                                                egui::Button::new(
+                                                    egui::RichText::new("▲").size(11.0),
+                                                ),
+                                            )
+                                            .clicked()
+                                        {
+                                            actions
+                                                .push(PendingAction::Move(truck.id.clone(), true));
                                         }
-                                        if ui.add_enabled(
-                                            row.can_move_down,
-                                            egui::Button::new(egui::RichText::new("▼").size(11.0)),
-                                        ).clicked() {
-                                            actions.push(PendingAction::Move(truck.id.clone(), false));
+                                        if ui
+                                            .add_enabled(
+                                                row.can_move_down,
+                                                egui::Button::new(
+                                                    egui::RichText::new("▼").size(11.0),
+                                                ),
+                                            )
+                                            .clicked()
+                                        {
+                                            actions
+                                                .push(PendingAction::Move(truck.id.clone(), false));
                                         }
                                     });
                                 } else {
                                     ui.label(
-                                        egui::RichText::new("—").size(12.0).color(theme::MUTED),
+                                        egui::RichText::new("—")
+                                            .size(12.0)
+                                            .color(theme::tokens(ui).muted),
                                     );
                                 }
 
                                 ui.label(
-                                    egui::RichText::new(truck.gate_no.clone().unwrap_or_else(|| "—".to_string()))
-                                        .size(12.0)
-                                        .strong()
-                                        .color(theme::TEXT),
+                                    egui::RichText::new(
+                                        truck.gate_no.clone().unwrap_or_else(|| "—".to_string()),
+                                    )
+                                    .size(12.0)
+                                    .strong()
+                                    .color(theme::tokens(ui).text),
                                 );
                                 ui.label(
                                     egui::RichText::new(&row.wait_label)
                                         .size(12.0)
-                                        .color(theme::MUTED),
+                                        .color(theme::tokens(ui).muted),
                                 );
 
                                 let mut waiting = truck.is_waiting;
-                                if ui.add_enabled(!truck.is_out, egui::Checkbox::new(&mut waiting, ""))
-                                    .changed()
+                                if widgets::status_checkbox(
+                                    ui,
+                                    !truck.is_out,
+                                    &mut waiting,
+                                    &format!("Waiting: {}", truck.registration_number),
+                                )
+                                .changed()
                                     && waiting != truck.is_waiting
                                 {
-                                    actions.push(PendingAction::Change(truck.id.clone(), TruckField::Waiting, waiting));
+                                    actions.push(PendingAction::Change(
+                                        truck.id.clone(),
+                                        TruckField::Waiting,
+                                        waiting,
+                                    ));
                                 }
                                 let mut loading = truck.is_loading;
-                                if ui.add_enabled(row.can_loading, egui::Checkbox::new(&mut loading, ""))
-                                    .changed()
+                                if widgets::status_checkbox(
+                                    ui,
+                                    row.can_loading,
+                                    &mut loading,
+                                    &format!("Loading in: {}", truck.registration_number),
+                                )
+                                .changed()
                                     && loading != truck.is_loading
                                 {
-                                    actions.push(PendingAction::Change(truck.id.clone(), TruckField::Loading, loading));
+                                    actions.push(PendingAction::Change(
+                                        truck.id.clone(),
+                                        TruckField::Loading,
+                                        loading,
+                                    ));
                                 }
                                 let mut out = truck.is_out;
-                                if ui.add_enabled(row.can_out, egui::Checkbox::new(&mut out, ""))
-                                    .changed()
+                                if widgets::status_checkbox(
+                                    ui,
+                                    row.can_out,
+                                    &mut out,
+                                    &format!("Loading out: {}", truck.registration_number),
+                                )
+                                .changed()
                                     && out != truck.is_out
                                 {
-                                    actions.push(PendingAction::Change(truck.id.clone(), TruckField::Out, out));
+                                    actions.push(PendingAction::Change(
+                                        truck.id.clone(),
+                                        TruckField::Out,
+                                        out,
+                                    ));
                                 }
 
                                 ui.horizontal(|ui| {
-                                    if ui.button("👁").clicked() {
+                                    if super::icons::button(
+                                        ui,
+                                        super::icons::Icon::Eye,
+                                        "View details",
+                                    )
+                                    .clicked()
+                                    {
                                         actions.push(PendingAction::OpenDetails(truck.id.clone()));
                                     }
                                     if !truck.is_out {
-                                        if ui.button("✏").clicked() {
+                                        if super::icons::button(
+                                            ui,
+                                            super::icons::Icon::Edit,
+                                            "Edit",
+                                        )
+                                        .clicked()
+                                        {
                                             actions.push(PendingAction::OpenEdit(truck.id.clone()));
                                         }
-                                        if ui.button("🗑").clicked() {
+                                        if super::icons::button(
+                                            ui,
+                                            super::icons::Icon::Delete,
+                                            "Delete",
+                                        )
+                                        .clicked()
+                                        {
                                             actions.push(PendingAction::Delete(truck.id.clone()));
                                         }
                                     }
@@ -515,7 +633,9 @@ impl TrucksPage {
         // ── Windows & applied actions ───────────────────────────────────────
         for action in actions {
             match action {
-                PendingAction::Change(id, field, value) => self.handle_change(core, toasts, &id, field, value),
+                PendingAction::Change(id, field, value) => {
+                    self.handle_change(core, toasts, &id, field, value)
+                }
                 PendingAction::Move(id, up) => self.handle_move(core, toasts, &id, up),
                 PendingAction::Delete(id) => self.handle_delete(core, toasts, &id),
                 PendingAction::OpenDetails(id) => self.details = Some(id),
@@ -575,7 +695,11 @@ impl TrucksPage {
         self.filtered()
             .into_iter()
             .map(|truck| {
-                let list_index = self.trucks.iter().position(|t| t.id == truck.id).unwrap_or(0);
+                let list_index = self
+                    .trucks
+                    .iter()
+                    .position(|t| t.id == truck.id)
+                    .unwrap_or(0);
                 let can_move_up = self.trucks[..list_index].iter().any(|t| t.is_waiting);
                 let can_move_down = self.trucks[list_index + 1..].iter().any(|t| t.is_waiting);
                 let queue_rank = gate_queue_index(&self.trucks, &truck.id);
@@ -589,13 +713,11 @@ impl TrucksPage {
                     can_move_down,
                     can_loading: !truck.is_out && truck.is_waiting && can_advance,
                     can_out: !truck.is_out && truck.is_loading && can_advance,
-                    wait_label: format_queue_duration(
-                        if !truck.is_out {
-                            estimated_wait_mins(&self.trucks, &truck.id, &self.gates)
-                        } else {
-                            0
-                        },
-                    ),
+                    wait_label: format_queue_duration(if !truck.is_out {
+                        estimated_wait_mins(&self.trucks, &truck.id, &self.gates)
+                    } else {
+                        0
+                    }),
                 }
             })
             .collect()
@@ -625,7 +747,8 @@ impl TrucksPage {
         field: TruckField,
         value: bool,
     ) {
-        let Some((truck_index, truck)) = self.trucks.iter().enumerate().find(|(_, t)| t.id == id) else {
+        let Some((truck_index, truck)) = self.trucks.iter().enumerate().find(|(_, t)| t.id == id)
+        else {
             return;
         };
         let truck = truck.clone();
@@ -645,7 +768,10 @@ impl TrucksPage {
         if value && field == TruckField::Out {
             let dispatched = preview.clone();
             if let Err(error) = crate::backend::trucks::save_dispatched_truck(core, dispatched) {
-                toasts.push(Toast::new(ToastKind::Error, format!("Dispatch record failed: {error}")));
+                toasts.push(Toast::new(
+                    ToastKind::Error,
+                    format!("Dispatch record failed: {error}"),
+                ));
             }
         }
         self.persist(core);
@@ -712,13 +838,18 @@ impl TrucksPage {
         if value && field == TruckField::Out {
             toasts.push(Toast::new(
                 ToastKind::Success,
-                format!("Truck \"{}\" dispatched and saved to database", preview.registration_number),
+                format!(
+                    "Truck \"{}\" dispatched and saved to database",
+                    preview.registration_number
+                ),
             ));
         }
     }
 
     fn handle_move(&mut self, core: &Arc<AppCore>, toasts: &mut Vec<Toast>, id: &str, up: bool) {
-        let Some(index) = self.trucks.iter().position(|t| t.id == id) else { return };
+        let Some(index) = self.trucks.iter().position(|t| t.id == id) else {
+            return;
+        };
         let mut range: Box<dyn std::iter::Iterator<Item = usize>> = if up {
             Box::new((0..index).rev())
         } else {
@@ -736,13 +867,21 @@ impl TrucksPage {
         if let Some(index) = self.trucks.iter().position(|t| t.id == id) {
             let removed = self.trucks.remove(index);
             self.persist(core);
-            toasts.push(Toast::new(ToastKind::Info, format!("Truck \"{}\" removed", removed.registration_number)));
+            toasts.push(Toast::new(
+                ToastKind::Info,
+                format!("Truck \"{}\" removed", removed.registration_number),
+            ));
         }
     }
 
     // ── Windows ─────────────────────────────────────────────────────────────
 
-    fn truck_form(ui: &mut egui::Ui, page_gates: &[GateConfig], reg: &mut String, gate: &mut String) {
+    fn truck_form(
+        ui: &mut egui::Ui,
+        page_gates: &[GateConfig],
+        reg: &mut String,
+        gate: &mut String,
+    ) {
         widgets::labeled_text(ui, "Truck number", reg, "MH-01-AB-1234");
         if page_gates.is_empty() {
             widgets::labeled_text(ui, "Gate", gate, "e.g., d1");
@@ -752,11 +891,19 @@ impl TrucksPage {
                 .find(|g| g.number == gate.to_lowercase())
                 .map(|g| g.number.clone())
                 .unwrap_or_default();
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Gate").size(13.0).color(theme::MUTED));
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new("Gate")
+                        .size(13.0)
+                        .color(theme::tokens(ui).muted),
+                );
                 egui::ComboBox::from_id_salt("truck-gate-select")
                     .width(180.0)
-                    .selected_text(if selected.is_empty() { "Select gate" } else { &selected })
+                    .selected_text(if selected.is_empty() {
+                        "Select gate"
+                    } else {
+                        &selected
+                    })
                     .show_ui(ui, |ui| {
                         for gate_config in page_gates {
                             let mut choice = gate.to_lowercase();
@@ -778,13 +925,14 @@ impl TrucksPage {
 
     fn draw_add_window(&mut self, ui: &mut egui::Ui, core: &Arc<AppCore>, toasts: &mut Vec<Toast>) {
         let mut open = true;
-        egui::Window::new("add-truck-window")
+        super::layout::dialog(ui, "Add truck", 500.0)
+            .id(egui::Id::unique("add-truck-window"))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .open(&mut open)
             .show(ui.ctx(), |ui| {
-                ui.set_width_range(300.0..=400.0);
+                ui.set_width(ui.available_width().min(400.0));
                 ui.label(egui::RichText::new("Add new truck").size(15.0).strong());
                 ui.add_space(4.0);
                 let gates = self.gates.clone();
@@ -794,10 +942,13 @@ impl TrucksPage {
                 self.f_reg_no = reg;
                 self.f_gate_no = gate;
                 ui.add_space(8.0);
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     if ui.button("Add Truck").clicked() {
                         if self.f_reg_no.trim().is_empty() || self.f_gate_no.trim().is_empty() {
-                            toasts.push(Toast::new(ToastKind::Error, "Fill the truck number and gate"));
+                            toasts.push(Toast::new(
+                                ToastKind::Error,
+                                "Fill the truck number and gate",
+                            ));
                         } else {
                             let truck = ActiveTruck {
                                 id: uuid::Uuid::new_v4().to_string(),
@@ -816,7 +967,10 @@ impl TrucksPage {
                             };
                             self.trucks.push(truck);
                             self.persist(core);
-                            toasts.push(Toast::new(ToastKind::Success, format!("Truck \"{}\" added", self.f_reg_no.trim())));
+                            toasts.push(Toast::new(
+                                ToastKind::Success,
+                                format!("Truck \"{}\" added", self.f_reg_no.trim()),
+                            ));
                             self.show_add = false;
                         }
                     }
@@ -830,15 +984,21 @@ impl TrucksPage {
         }
     }
 
-    fn draw_edit_window(&mut self, ui: &mut egui::Ui, core: &Arc<AppCore>, toasts: &mut Vec<Toast>) {
+    fn draw_edit_window(
+        &mut self,
+        ui: &mut egui::Ui,
+        core: &Arc<AppCore>,
+        toasts: &mut Vec<Toast>,
+    ) {
         let mut open = true;
-        egui::Window::new("edit-truck-window")
+        super::layout::dialog(ui, "Edit truck", 500.0)
+            .id(egui::Id::unique("edit-truck-window"))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .open(&mut open)
             .show(ui.ctx(), |ui| {
-                ui.set_width_range(300.0..=400.0);
+                ui.set_width(ui.available_width().min(400.0));
                 ui.label(egui::RichText::new("Edit truck").size(15.0).strong());
                 ui.add_space(4.0);
                 let gates = self.gates.clone();
@@ -848,11 +1008,14 @@ impl TrucksPage {
                 self.f_reg_no = reg;
                 self.f_gate_no = gate;
                 ui.add_space(8.0);
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     if ui.button("Save Changes").clicked() {
                         if let Some(id) = self.editing.clone() {
                             if self.f_reg_no.trim().is_empty() || self.f_gate_no.trim().is_empty() {
-                                toasts.push(Toast::new(ToastKind::Error, "Fill the truck number and gate"));
+                                toasts.push(Toast::new(
+                                    ToastKind::Error,
+                                    "Fill the truck number and gate",
+                                ));
                             } else {
                                 if let Some(truck) = self.trucks.iter_mut().find(|t| t.id == id) {
                                     truck.registration_number = self.f_reg_no.trim().to_string();
@@ -876,30 +1039,47 @@ impl TrucksPage {
 
     fn draw_details_window(&mut self, ui: &mut egui::Ui, toasts: &mut Vec<Toast>) {
         let mut open = true;
-        egui::Window::new("truck-details-window")
+        super::layout::dialog(ui, "Truck details", 500.0)
+            .id(egui::Id::unique("truck-details-window"))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .open(&mut open)
             .show(ui.ctx(), |ui| {
-                let Some(truck) = self.details.clone().and_then(|id| self.trucks.iter().find(|t| t.id == id).cloned()) else {
+                let Some(truck) = self
+                    .details
+                    .clone()
+                    .and_then(|id| self.trucks.iter().find(|t| t.id == id).cloned())
+                else {
                     return;
                 };
-                ui.set_width_range(340.0..=460.0);
-                ui.label(egui::RichText::new("Truck details & status log").size(15.0).strong());
+                ui.set_width(ui.available_width().min(460.0));
+                ui.label(
+                    egui::RichText::new("Truck details & status log")
+                        .size(15.0)
+                        .strong(),
+                );
                 ui.add_space(4.0);
-                ui.label(egui::RichText::new(&truck.registration_number).size(18.0).strong().color(theme::PRIMARY));
-                theme::muted(ui, &format!(
-                    "Gate: {}",
-                    truck.gate_no.clone().unwrap_or_else(|| "none".to_string()).to_uppercase()
-                ));
+                ui.label(
+                    egui::RichText::new(&truck.registration_number)
+                        .size(18.0)
+                        .strong()
+                        .color(theme::tokens(ui).primary),
+                );
+                theme::muted(
+                    ui,
+                    &format!(
+                        "Gate: {}",
+                        truck
+                            .gate_no
+                            .clone()
+                            .unwrap_or_else(|| "none".to_string())
+                            .to_uppercase()
+                    ),
+                );
                 ui.add_space(8.0);
                 let steps: [(&str, bool, Option<String>); 3] = [
-                    (
-                        "1 · Waiting",
-                        truck.is_waiting,
-                        truck.waiting_at.clone(),
-                    ),
+                    ("1 · Waiting", truck.is_waiting, truck.waiting_at.clone()),
                     (
                         "2 · Loading in",
                         truck.is_loading || truck.is_in,
@@ -912,15 +1092,28 @@ impl TrucksPage {
                     ),
                 ];
                 for (title, reached, at) in steps {
-                    ui.horizontal(|ui| {
-                        let color = if reached { theme::PRIMARY } else { theme::STROKE };
+                    ui.horizontal_wrapped(|ui| {
+                        let color = if reached {
+                            theme::tokens(ui).primary
+                        } else {
+                            theme::tokens(ui).stroke
+                        };
                         ui.label(egui::RichText::new(if reached { "●" } else { "○" }).color(color));
                         ui.vertical(|ui| {
-                            ui.label(egui::RichText::new(title).size(13.0).strong().color(theme::TEXT));
+                            ui.label(
+                                egui::RichText::new(title)
+                                    .size(13.0)
+                                    .strong()
+                                    .color(theme::tokens(ui).text),
+                            );
                             let time = at
                                 .as_deref()
                                 .and_then(parse_iso)
-                                .map(|dt| dt.with_timezone(&chrono::Local).format("%d %b %H:%M:%S").to_string())
+                                .map(|dt| {
+                                    dt.with_timezone(&chrono::Local)
+                                        .format("%d %b %H:%M:%S")
+                                        .to_string()
+                                })
                                 .unwrap_or_else(|| "No timestamp recorded".to_string());
                             theme::muted(ui, &time);
                         });
@@ -928,19 +1121,19 @@ impl TrucksPage {
                     ui.separator();
                 }
                 if truck.loading_at.is_some() {
-                    theme::muted(ui, &format!(
-                        "Total loading time: {}",
-                        if truck.is_out {
-                            format_duration_secs(truck.loading_duration)
-                        } else {
-                            format_since(truck.loading_at.as_deref())
-                        }
-                    ));
+                    theme::muted(
+                        ui,
+                        &format!(
+                            "Total loading time: {}",
+                            if truck.is_out {
+                                format_duration_secs(truck.loading_duration)
+                            } else {
+                                format_since(truck.loading_at.as_deref())
+                            }
+                        ),
+                    );
                 }
-                theme::muted(ui, &format!(
-                    "Token created: {}",
-                    truck.created_at
-                ));
+                theme::muted(ui, &format!("Token created: {}", truck.created_at));
                 ui.add_space(6.0);
                 if ui.button("Copy status").clicked() {
                     ui.ctx().copy_text(format!(
@@ -957,40 +1150,92 @@ impl TrucksPage {
         }
     }
 
-    fn draw_import_window(&mut self, ui: &mut egui::Ui, core: &Arc<AppCore>, toasts: &mut Vec<Toast>) {
+    fn draw_import_window(
+        &mut self,
+        ui: &mut egui::Ui,
+        core: &Arc<AppCore>,
+        toasts: &mut Vec<Toast>,
+    ) {
         let mut open = true;
-        egui::Window::new("truck-import-window")
+        super::layout::dialog(ui, "Import trucks", 500.0)
+            .id(egui::Id::unique("truck-import-window"))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .open(&mut open)
             .show(ui.ctx(), |ui| {
-                let Some(preview) = self.import_preview.clone() else { return };
-                ui.set_width_range(380.0..=480.0);
-                ui.label(egui::RichText::new(format!("Import {} trucks", preview.len())).size(15.0).strong());
-                theme::muted(ui, "Review the records then confirm. Every truck starts as Waiting.");
+                let Some(preview) = self.import_preview.clone() else {
+                    return;
+                };
+                ui.set_width(ui.available_width().min(480.0));
+                ui.label(
+                    egui::RichText::new(format!("Import {} trucks", preview.len()))
+                        .size(15.0)
+                        .strong(),
+                );
+                theme::muted(
+                    ui,
+                    "Review the records then confirm. Every truck starts as Waiting.",
+                );
                 ui.add_space(4.0);
-                egui::ScrollArea::vertical().max_height(240.0).show(ui, |ui| {
-                    egui::Grid::new("truck-import-grid")
-                        .num_columns(3)
-                        .striped(true)
-                        .show(ui, |ui| {
-                            ui.label(egui::RichText::new("#").strong().size(11.5).color(theme::MUTED));
-                            ui.label(egui::RichText::new("Truck number").strong().size(11.5).color(theme::MUTED));
-                            ui.label(egui::RichText::new("Gate").strong().size(11.5).color(theme::MUTED));
-                            ui.end_row();
-                            for (index, (reg, gate)) in preview.iter().take(150).enumerate() {
-                                ui.label(egui::RichText::new((index + 1).to_string()).size(11.5).color(theme::MUTED));
-                                ui.label(egui::RichText::new(reg.clone()).size(12.0).color(theme::TEXT));
-                                ui.label(egui::RichText::new(gate.clone()).size(12.0).color(theme::TEXT));
+                egui::ScrollArea::vertical()
+                    .max_height(240.0)
+                    .show(ui, |ui| {
+                        egui::Grid::new("truck-import-grid")
+                            .num_columns(3)
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.label(
+                                    egui::RichText::new("#")
+                                        .strong()
+                                        .size(11.5)
+                                        .color(theme::tokens(ui).muted),
+                                );
+                                ui.label(
+                                    egui::RichText::new("Truck number")
+                                        .strong()
+                                        .size(11.5)
+                                        .color(theme::tokens(ui).muted),
+                                );
+                                ui.label(
+                                    egui::RichText::new("Gate")
+                                        .strong()
+                                        .size(11.5)
+                                        .color(theme::tokens(ui).muted),
+                                );
                                 ui.end_row();
-                            }
-                        });
-                });
-                theme::muted(ui, "Expected columns: truck_number, gate (lower-case like d1, d2).");
+                                for (index, (reg, gate)) in preview.iter().take(150).enumerate() {
+                                    ui.label(
+                                        egui::RichText::new((index + 1).to_string())
+                                            .size(11.5)
+                                            .color(theme::tokens(ui).muted),
+                                    );
+                                    ui.label(
+                                        egui::RichText::new(reg.clone())
+                                            .size(12.0)
+                                            .color(theme::tokens(ui).text),
+                                    );
+                                    ui.label(
+                                        egui::RichText::new(gate.clone())
+                                            .size(12.0)
+                                            .color(theme::tokens(ui).text),
+                                    );
+                                    ui.end_row();
+                                }
+                            });
+                    });
+                theme::muted(
+                    ui,
+                    "Expected columns: truck_number, gate (lower-case like d1, d2).",
+                );
                 ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    if ui.button(egui::RichText::new("Confirm Import").color(theme::GREEN)).clicked() {
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .button(
+                            egui::RichText::new("Confirm Import").color(theme::tokens(ui).green),
+                        )
+                        .clicked()
+                    {
                         let waiting_at = now_iso();
                         for (reg, gate) in preview {
                             if reg.trim().is_empty() {
@@ -1014,7 +1259,10 @@ impl TrucksPage {
                         }
                         let count = self.trucks.len();
                         self.persist(core);
-                        toasts.push(Toast::new(ToastKind::Success, format!("{count} trucks imported")));
+                        toasts.push(Toast::new(
+                            ToastKind::Success,
+                            format!("{count} trucks imported"),
+                        ));
                         self.import_preview = None;
                     }
                     if ui.button("Cancel").clicked() {
@@ -1031,7 +1279,10 @@ impl TrucksPage {
 
     fn start_import(&mut self, toasts: &mut Vec<Toast>) {
         let Some(path) = rfd::FileDialog::new()
-            .add_filter("Truck lists", &["csv", "tsv", "txt", "xlsx", "xls", "xlsm", "xlsb"])
+            .add_filter(
+                "Truck lists",
+                &["csv", "tsv", "txt", "xlsx", "xls", "xlsm", "xlsb"],
+            )
             .pick_file()
         else {
             return;
@@ -1040,47 +1291,70 @@ impl TrucksPage {
             .file_name()
             .map(|name| name.to_string_lossy().to_string())
             .unwrap_or_default();
-        let extension = filename.rsplit('.').next().unwrap_or_default().to_ascii_lowercase();
+        let extension = filename
+            .rsplit('.')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
 
         let rows = if matches!(extension.as_str(), "csv" | "tsv" | "txt") {
             match std::fs::read_to_string(&path) {
-                Ok(text) => parse_delimited_trucks(&text, if extension == "tsv" { b'\t' } else { b',' }),
+                Ok(text) => {
+                    parse_delimited_trucks(&text, if extension == "tsv" { b'\t' } else { b',' })
+                }
                 Err(error) => {
-                    toasts.push(Toast::new(ToastKind::Error, format!("Could not read file: {error}")));
+                    toasts.push(Toast::new(
+                        ToastKind::Error,
+                        format!("Could not read file: {error}"),
+                    ));
                     return;
                 }
             }
         } else if matches!(extension.as_str(), "xlsx" | "xls" | "xlsm" | "xlsb") {
             match std::fs::read(&path) {
-                Ok(bytes) => match crate::backend::production::import_production_file(filename, bytes) {
-                    Ok(result) => {
-                        let mut rows = Vec::new();
-                        for row in result.tables.iter().flat_map(|t| t.rows.iter()) {
-                            let reg = lookup_field(row, &REG_KEYS);
-                            let gate = lookup_field(row, &GATE_KEYS);
-                            if !reg.is_empty() {
-                                rows.push((reg, gate));
+                Ok(bytes) => {
+                    match crate::backend::production::import_production_file(filename, bytes) {
+                        Ok(result) => {
+                            let mut rows = Vec::new();
+                            for row in result.tables.iter().flat_map(|t| t.rows.iter()) {
+                                let reg = lookup_field(row, &REG_KEYS);
+                                let gate = lookup_field(row, &GATE_KEYS);
+                                if !reg.is_empty() {
+                                    rows.push((reg, gate));
+                                }
                             }
+                            rows
                         }
-                        rows
+                        Err(error) => {
+                            toasts.push(Toast::new(
+                                ToastKind::Error,
+                                format!("Import failed: {error}"),
+                            ));
+                            return;
+                        }
                     }
-                    Err(error) => {
-                        toasts.push(Toast::new(ToastKind::Error, format!("Import failed: {error}")));
-                        return;
-                    }
-                },
+                }
                 Err(error) => {
-                    toasts.push(Toast::new(ToastKind::Error, format!("Could not read file: {error}")));
+                    toasts.push(Toast::new(
+                        ToastKind::Error,
+                        format!("Could not read file: {error}"),
+                    ));
                     return;
                 }
             }
         } else {
-            toasts.push(Toast::new(ToastKind::Error, "Unsupported file type. Upload CSV, TSV, XLS, or XLSX."));
+            toasts.push(Toast::new(
+                ToastKind::Error,
+                "Unsupported file type. Upload CSV, TSV, XLS, or XLSX.",
+            ));
             return;
         };
 
         if rows.is_empty() {
-            toasts.push(Toast::new(ToastKind::Error, "No valid truck records. Need truck_number and gate columns."));
+            toasts.push(Toast::new(
+                ToastKind::Error,
+                "No valid truck records. Need truck_number and gate columns.",
+            ));
             return;
         }
         self.import_preview = Some(rows);

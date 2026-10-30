@@ -43,12 +43,18 @@ impl MarqueePage {
         }
 
         theme::heading(ui, "Marquee");
-        theme::muted(ui,
-            "Scrolling text overlay rendered on top of playlist content on every screen.");
+        theme::muted(
+            ui,
+            "Scrolling text overlay rendered on top of playlist content on every screen.",
+        );
         ui.add_space(10.0);
 
         theme::card(ui, |ui| {
-            ui.label(egui::RichText::new("Marquee text").size(13.0).color(theme::MUTED));
+            ui.label(
+                egui::RichText::new("Marquee text")
+                    .size(13.0)
+                    .color(theme::tokens(ui).muted),
+            );
             ui.add(
                 egui::TextEdit::multiline(&mut self.text)
                     .hint_text("e.g. 断货信息 / offers / safety reminders — keep it short")
@@ -56,21 +62,21 @@ impl MarqueePage {
                     .desired_width(f32::INFINITY),
             );
             ui.add_space(8.0);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.checkbox(&mut self.enabled, "Enabled on screens");
             });
             ui.add_space(4.0);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label(
                     egui::RichText::new("Scroll speed")
                         .size(13.0)
-                        .color(theme::MUTED),
+                        .color(theme::tokens(ui).muted),
                 );
                 ui.label(
                     egui::RichText::new(format!("{} px/s", self.speed))
                         .size(13.0)
                         .strong()
-                        .color(theme::TEXT),
+                        .color(theme::tokens(ui).text),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     theme::muted(ui, "(15 = slow · 120 = fast)");
@@ -79,7 +85,7 @@ impl MarqueePage {
             ui.add(egui::Slider::new(&mut self.speed, 15..=120));
             ui.add_space(2.0);
             ui.add_space(4.0);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if ui.button("Save Settings").clicked() {
                     let text = self.text.trim().to_string();
                     match crate::backend::app_config::update_marquee_settings(
@@ -106,7 +112,7 @@ impl MarqueePage {
                     theme::badge(
                         ui,
                         &label,
-                        if settings.enabled { theme::GREEN } else { theme::MUTED },
+                        if settings.enabled { theme::tokens(ui).green } else { theme::tokens(ui).muted },
                     );
                 }
             });
@@ -123,12 +129,12 @@ impl MarqueePage {
         let height = 40.0;
         let width = ui.available_width();
         let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
-        let painter = ui.painter();
-        painter.rect_filled(rect, 6.0, theme::INPUT_BG);
+        let painter = ui.painter_at(rect);
+        painter.rect_filled(rect, 6.0, super::signage::SignageStyle::BG);
         painter.rect_stroke(
             rect,
             6.0,
-            egui::Stroke::new(1.0, theme::STROKE),
+            egui::Stroke::new(1.0, super::signage::SignageStyle::BORDER),
             egui::StrokeKind::Outside,
         );
 
@@ -138,7 +144,7 @@ impl MarqueePage {
                 egui::Align2::CENTER_CENTER,
                 "Marquee disabled",
                 egui::FontId::proportional(12.5),
-                theme::MUTED,
+                super::signage::SignageStyle::MUTED,
             );
             return;
         }
@@ -151,7 +157,7 @@ impl MarqueePage {
         let galley = painter.layout_no_wrap(
             text.clone(),
             egui::FontId::proportional(16.0),
-            theme::TEXT,
+            super::signage::SignageStyle::AMBER,
         );
         let text_width = galley.size().x;
         let total = width + text_width + 40.0;
@@ -162,7 +168,7 @@ impl MarqueePage {
             painter.galley(
                 egui::pos2(x, rect.center().y - galley.size().y / 2.0),
                 galley,
-                theme::TEXT,
+                super::signage::SignageStyle::AMBER,
             );
         }
     }

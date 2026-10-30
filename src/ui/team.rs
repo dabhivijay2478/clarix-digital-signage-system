@@ -57,7 +57,13 @@ fn role_str(role: AdminRole) -> &'static str {
 }
 
 impl TeamPage {
-    pub fn show(&mut self, ui: &mut egui::Ui, core: &Arc<AppCore>, toasts: &mut Vec<Toast>, session: Option<&AuthSession>) {
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        core: &Arc<AppCore>,
+        toasts: &mut Vec<Toast>,
+        session: Option<&AuthSession>,
+    ) {
         let Some(session) = session else {
             widgets::empty_state(ui, "Please sign in to manage the team.");
             return;
@@ -71,20 +77,35 @@ impl TeamPage {
         }
 
         theme::heading(ui, "Team");
-        theme::muted(ui, "Only developer accounts can manage members and invites.");
+        theme::muted(
+            ui,
+            "Only developer accounts can manage members and invites.",
+        );
         ui.add_space(10.0);
 
         if !is_developer {
-            widgets::empty_state(ui, "Your account cannot manage team access. Ask a developer user for invites.");
+            widgets::empty_state(
+                ui,
+                "Your account cannot manage team access. Ask a developer user for invites.",
+            );
             return;
         }
 
         // ── Invite creation ─────────────────────────────────────────────────
         widgets::section_header(ui, "Create invite");
         theme::card(ui, |ui| {
-            widgets::labeled_text(ui, "Email", &mut self.invite_email, "teammate@mgenterprise.com");
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Role").size(13.0).color(theme::MUTED));
+            widgets::labeled_text(
+                ui,
+                "Email",
+                &mut self.invite_email,
+                "teammate@mgenterprise.com",
+            );
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new(" Role")
+                        .size(13.0)
+                        .color(theme::tokens(ui).muted),
+                );
                 egui::ComboBox::from_id_salt("invite-role")
                     .width(170.0)
                     .selected_text(
@@ -114,13 +135,19 @@ impl TeamPage {
                             Ok(invite) => {
                                 toasts.push(Toast::new(
                                     ToastKind::Success,
-                                    format!("Invite created for {}. Accept code: {}", invite.email, invite.code),
+                                    format!(
+                                        "Invite created for {}. Accept code: {}",
+                                        invite.email, invite.code
+                                    ),
                                 ));
                                 self.invite_email.clear();
                                 self.invite_is_dev = false;
                                 self.last_refresh = Instant::now() - Duration::from_secs(3600);
                             }
-                            Err(error) => toasts.push(Toast::new(ToastKind::Error, format!("Invite failed: {error}"))),
+                            Err(error) => toasts.push(Toast::new(
+                                ToastKind::Error,
+                                format!("Invite failed: {error}"),
+                            )),
                         }
                     }
                 }
@@ -132,48 +159,75 @@ impl TeamPage {
         widgets::section_header(ui, "Members");
         for member in &self.members {
             theme::card(ui, |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(&member.name).size(14.0).strong().color(theme::TEXT));
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(
+                                egui::RichText::new(&member.name)
+                                    .size(14.0)
+                                    .strong()
+                                    .color(theme::tokens(ui).text),
+                            );
                             if member.is_developer {
-                                theme::badge(ui, "DEVELOPER", theme::PRIMARY);
+                                theme::badge(ui, "DEVELOPER", theme::tokens(ui).primary);
                             }
-                            theme::badge(ui, member.role.as_str(), theme::AMBER);
+                            theme::badge(ui, member.role.as_str(), theme::tokens(ui).amber);
                         });
                         theme::muted(ui, &member.email);
-                        theme::muted(ui, &format!(
-                            "Joined {}",
-                            member.created_at.with_timezone(&chrono::Local).format("%d %b %Y")
-                        ));
+                        theme::muted(
+                            ui,
+                            &format!(
+                                "Joined {}",
+                                member
+                                    .created_at
+                                    .with_timezone(&chrono::Local)
+                                    .format("%d %b %Y")
+                            ),
+                        );
                     });
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let is_self = false; // deletion confirmation handled below
                         let _ = is_self;
-                        if ui.button("🔑 Reset password").clicked() {
+                        if ui.button(" Reset password").clicked() {
                             self.resetting = Some(member.id.clone());
                             self.new_password.clear();
                         }
-                        if ui.button("✏ Role").clicked() {
+                        if ui.button(" Role").clicked() {
                             self.editing = Some(member.id.clone());
                             self.edit_role = member.role.clone();
                             self.edit_is_dev = member.is_developer;
                         }
                         if self.confirm.as_deref() != Some(member.id.as_str())
-                            && ui.button("🗑").clicked()
+                            && super::icons::button(ui, super::icons::Icon::Delete, "Delete")
+                                .clicked()
                         {
                             self.confirm = Some(member.id.clone());
                         }
                         if self.confirm.as_deref() == Some(member.id.as_str())
-                            && ui.button(egui::RichText::new("Really delete?").color(theme::RED)).clicked()
+                            && ui
+                                .button(
+                                    egui::RichText::new("Really delete?")
+                                        .color(theme::tokens(ui).red),
+                                )
+                                .clicked()
                         {
-                            match crate::backend::auth::delete_team_member(core, &token, member.id.clone()) {
+                            match crate::backend::auth::delete_team_member(
+                                core,
+                                &token,
+                                member.id.clone(),
+                            ) {
                                 Ok(()) => {
-                                    toasts.push(Toast::new(ToastKind::Success, format!("Removed {}", member.name)));
+                                    toasts.push(Toast::new(
+                                        ToastKind::Success,
+                                        format!("Removed {}", member.name),
+                                    ));
                                     self.confirm = None;
                                     self.last_refresh = Instant::now() - Duration::from_secs(3600);
                                 }
-                                Err(error) => toasts.push(Toast::new(ToastKind::Error, format!("Delete failed: {error}"))),
+                                Err(error) => toasts.push(Toast::new(
+                                    ToastKind::Error,
+                                    format!("Delete failed: {error}"),
+                                )),
                             }
                         }
                     });
@@ -184,7 +238,13 @@ impl TeamPage {
 
         // ── Invites ─────────────────────────────────────────────────────────
         widgets::section_header(ui, "Pending invites");
-        if self.invites.iter().filter(|i| i.status == "pending").count() == 0 {
+        if self
+            .invites
+            .iter()
+            .filter(|i| i.status == "pending")
+            .count()
+            == 0
+        {
             theme::muted(ui, "No pending invites.");
         }
         for invite in &self.invites {
@@ -192,34 +252,67 @@ impl TeamPage {
                 continue;
             }
             theme::card(ui, |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(&invite.email).size(13.5).strong().color(theme::TEXT));
-                            theme::badge(ui, &format!("Code {}", invite.code), theme::PRIMARY);
-                            theme::badge(ui, role_str(invite.role.clone()), theme::AMBER);
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(
+                                egui::RichText::new(&invite.email)
+                                    .size(13.5)
+                                    .strong()
+                                    .color(theme::tokens(ui).text),
+                            );
+                            theme::badge(
+                                ui,
+                                &format!("Code {}", invite.code),
+                                theme::tokens(ui).primary,
+                            );
+                            theme::badge(
+                                ui,
+                                role_str(invite.role.clone()),
+                                theme::tokens(ui).amber,
+                            );
                             if invite.is_developer {
-                                theme::badge(ui, "DEVELOPER", theme::PRIMARY);
+                                theme::badge(ui, "DEVELOPER", theme::tokens(ui).primary);
                             }
                         });
-                        theme::muted(ui, &format!(
-                            "Expires {}",
-                            invite.expires_at.with_timezone(&chrono::Local).format("%d %b %H:%M")
-                        ));
+                        theme::muted(
+                            ui,
+                            &format!(
+                                "Expires {}",
+                                invite
+                                    .expires_at
+                                    .with_timezone(&chrono::Local)
+                                    .format("%d %b %H:%M")
+                            ),
+                        );
                     });
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("🗑").clicked() {
-                            match crate::backend::auth::delete_team_invite(core, &token, invite.id.clone()) {
+                        if super::icons::button(ui, super::icons::Icon::Delete, "Delete").clicked()
+                        {
+                            match crate::backend::auth::delete_team_invite(
+                                core,
+                                &token,
+                                invite.id.clone(),
+                            ) {
                                 Ok(()) => {
-                                    toasts.push(Toast::new(ToastKind::Success, format!("Deleted invite for {}", invite.email)));
+                                    toasts.push(Toast::new(
+                                        ToastKind::Success,
+                                        format!("Deleted invite for {}", invite.email),
+                                    ));
                                     self.last_refresh = Instant::now() - Duration::from_secs(3600);
                                 }
-                                Err(error) => toasts.push(Toast::new(ToastKind::Error, format!("Delete failed: {error}"))),
+                                Err(error) => toasts.push(Toast::new(
+                                    ToastKind::Error,
+                                    format!("Delete failed: {error}"),
+                                )),
                             }
                         }
-                        if ui.button("📋 Code").clicked() {
+                        if ui.button(" Code").clicked() {
                             ui.ctx().copy_text(invite.code.clone());
-                            toasts.push(Toast::new(ToastKind::Info, format!("Invite code {} copied", invite.code)));
+                            toasts.push(Toast::new(
+                                ToastKind::Info,
+                                format!("Invite code {} copied", invite.code),
+                            ));
                         }
                     });
                 });
@@ -230,14 +323,19 @@ impl TeamPage {
         // ── Edit role window ────────────────────────────────────────────────
         if let Some(member_id) = self.editing.clone() {
             let mut open = true;
-            egui::Window::new("edit-role-window")
+            super::layout::dialog(ui, "Edit member role", 500.0)
+                .id(egui::Id::unique("edit-role-window"))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .open(&mut open)
                 .show(ui.ctx(), |ui| {
-                    ui.set_width_range(320.0..=420.0);
-                    ui.label(egui::RichText::new("Change member role").size(15.0).strong());
+                    ui.set_width(ui.available_width().min(420.0));
+                    ui.label(
+                        egui::RichText::new("Change member role")
+                            .size(15.0)
+                            .strong(),
+                    );
                     ui.add_space(4.0);
                     egui::ComboBox::from_id_salt("member-role-select")
                         .width(200.0)
@@ -255,7 +353,7 @@ impl TeamPage {
                         });
                     ui.checkbox(&mut self.edit_is_dev, "Developer access");
                     ui.add_space(8.0);
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         if ui.button("Save").clicked() {
                             match crate::backend::auth::update_team_member(
                                 core,
@@ -264,8 +362,13 @@ impl TeamPage {
                                 role_str(self.edit_role.clone()).to_string(),
                                 self.edit_is_dev,
                             ) {
-                                Ok(_) => toasts.push(Toast::new(ToastKind::Success, "Member updated")),
-                                Err(error) => toasts.push(Toast::new(ToastKind::Error, format!("Update failed: {error}"))),
+                                Ok(_) => {
+                                    toasts.push(Toast::new(ToastKind::Success, "Member updated"))
+                                }
+                                Err(error) => toasts.push(Toast::new(
+                                    ToastKind::Error,
+                                    format!("Update failed: {error}"),
+                                )),
                             }
                             self.editing = None;
                             self.last_refresh = Instant::now() - Duration::from_secs(3600);
@@ -283,17 +386,18 @@ impl TeamPage {
         // ── Reset password window ───────────────────────────────────────────
         if let Some(member_id) = self.resetting.clone() {
             let mut open = true;
-            egui::Window::new("reset-password-window")
+            super::layout::dialog(ui, "Reset password", 500.0)
+                .id(egui::Id::unique("reset-password-window"))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .open(&mut open)
                 .show(ui.ctx(), |ui| {
-                    ui.set_width_range(320.0..=420.0);
-                    ui.label(egui::RichText::new("Reset password").size(15.0).strong());
+                    ui.set_width(ui.available_width().min(420.0));
+                    ui.label(egui::RichText::new(" Reset password").size(15.0).strong());
                     widgets::labeled_password(ui, "New password", &mut self.new_password);
                     ui.add_space(8.0);
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         if ui.button("Reset").clicked() {
                             if self.new_password.trim().is_empty() {
                                 toasts.push(Toast::new(ToastKind::Error, "Enter a new password"));
@@ -305,10 +409,16 @@ impl TeamPage {
                                     self.new_password.clone(),
                                 ) {
                                     Ok(()) => {
-                                        toasts.push(Toast::new(ToastKind::Success, "Password reset; old sessions were revoked"));
+                                        toasts.push(Toast::new(
+                                            ToastKind::Success,
+                                            "Password reset; old sessions were revoked",
+                                        ));
                                         self.resetting = None;
                                     }
-                                    Err(error) => toasts.push(Toast::new(ToastKind::Error, format!("Reset failed: {error}"))),
+                                    Err(error) => toasts.push(Toast::new(
+                                        ToastKind::Error,
+                                        format!("Reset failed: {error}"),
+                                    )),
                                 }
                             }
                         }

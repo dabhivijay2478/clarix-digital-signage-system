@@ -61,7 +61,11 @@ pub struct Toast {
 
 impl Toast {
     pub fn new(kind: ToastKind, text: impl Into<String>) -> Self {
-        Self { kind, text: text.into(), created: Instant::now() }
+        Self {
+            kind,
+            text: text.into(),
+            created: Instant::now(),
+        }
     }
 }
 
@@ -72,6 +76,8 @@ pub struct ClarixApp {
     pub toasts: Vec<Toast>,
     pub identity_cache: Option<DeviceIdentity>,
     last_identity_fetch: Instant,
+    appearance: theme::AppearancePreference,
+    navigation_open: bool,
 
     pub login: ui::login::LoginPage,
     pub dashboard: ui::dashboard::DashboardPage,
@@ -95,7 +101,9 @@ impl ClarixApp {
         let mut saved_page = String::new();
         let storage = cc.storage.as_ref();
         if let Some(storage) = storage {
-            saved_token = storage.get_string("clarix_session_token").unwrap_or_default();
+            saved_token = storage
+                .get_string("clarix_session_token")
+                .unwrap_or_default();
             saved_page = storage.get_string("clarix_page").unwrap_or_default();
         }
 
@@ -110,6 +118,8 @@ impl ClarixApp {
             }
         }
 
+        let appearance = theme::AppearancePreference::load(cc.storage);
+        appearance.apply(&cc.egui_ctx);
         let page = page_from_name(&saved_page).unwrap_or(Page::Dashboard);
 
         Self {
@@ -118,6 +128,8 @@ impl ClarixApp {
             page,
             toasts: Vec::new(),
             identity_cache: None,
+            appearance,
+            navigation_open: false,
             last_identity_fetch: Instant::now() - std::time::Duration::from_secs(60),
             login: ui::login::LoginPage::default(),
             dashboard: ui::dashboard::DashboardPage::default(),
@@ -184,16 +196,16 @@ impl eframe::App for ClarixApp {
         if !signed_in {
             // Login takes the whole window.
             egui::CentralPanel::default()
-                .frame(egui::Frame::new().fill(theme::BG))
+                .frame(egui::Frame::new().fill(theme::tokens(ui).bg))
                 .show(ui, |ui| {
-                    if let Some(session) = self.login.show(ui, &self.core) {
+                    if let Some(session) = self.login.show(ui, &self.core, &mut self.appearance) {
                         self.session = Some(session);
                         self.page = Page::Dashboard;
                     }
                 });
         } else if self.page == Page::Player {
             egui::CentralPanel::default()
-                .frame(egui::Frame::new().fill(theme::BG))
+                .frame(egui::Frame::new().fill(theme::tokens(ui).bg))
                 .show(ui, |ui| {
                     self.player.show(ui, &self.core);
                     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
@@ -231,6 +243,7 @@ impl eframe::App for ClarixApp {
     }
 
     fn save(&mut self, storage: &mut dyn Storage) {
+        self.appearance.save(storage);
         if let Some(session) = &self.session {
             storage.set_string("clarix_session_token", session.token.clone());
         }
@@ -251,248 +264,245 @@ impl ClarixApp {
     }
 
     fn draw_admin_layout(&mut self, ui: &mut Ui) {
-        egui::Panel::left("sidebar")
-            .default_size(218.0)
-            .resizable(false)
-            .frame(egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::same(12)))
-            .show(ui, |ui| {
-                draw_sidebar(ui, self);
-            });
-
+        use ui::layout::{navigation, Navigation};
+        let mode = navigation(ui.ctx().content_rect().width());
+        let t = theme::tokens(ui);
+        if mode != Navigation::Drawer {
+            self.navigation_open = false;
+            let rail = mode == Navigation::Rail;
+            egui::Panel::left("sidebar")
+                .exact_size(if rail { 64.0 } else { 224.0 })
+                .resizable(false)
+                .frame(
+                    egui::Frame::new()
+                        .fill(t.panel)
+                        .inner_margin(egui::Margin::same(if rail { 8 } else { 14 })),
+                )
+                .show(ui, |ui| draw_sidebar(ui, self, rail));
+        }
         egui::Panel::top("topbar")
-            .frame(egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(14, 9)))
+            .frame(
+                egui::Frame::new()
+                    .fill(t.panel)
+                    .inner_margin(egui::Margin::symmetric(18, 12)),
+            )
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new(self.page.title())
-                            .size(18.0)
-                            .strong()
-                            .color(theme::TEXT),
-                    );
+                    if mode == Navigation::Drawer
+                        && ui::icons::button(ui, ui::icons::Icon::Menu, "Open navigation").clicked()
+                    {
+                        self.navigation_open = !self.navigation_open;
+                    }
+                    ui.label(egui::RichText::new(self.page.title()).size(18.0).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button(egui::RichText::new("Sign out").size(13.0)).clicked() {
-                            self.sign_out();
+                        let account = self
+                            .user()
+                            .map(|u| (u.name.clone(), u.role.as_str().to_string()));
+                        if let Some((name, role)) = account {
+                            ui.menu_button(format!("{}  Account", initials_of(&name)), |ui| {
+                                ui.add(
+                                    egui::Label::new(egui::RichText::new(&name).strong()).wrap(),
+                                );
+                                theme::muted(ui, &role);
+                                ui.separator();
+                                theme::appearance_control(ui, &mut self.appearance);
+                                ui.separator();
+                                if ui.button("Sign out").clicked() {
+                                    self.sign_out();
+                                    ui.close();
+                                }
+                            });
                         }
                         let port = self.core.server_port.lock().map(|p| *p).unwrap_or(0);
-                        theme::badge(ui, &format!("controller · port {port}"), theme::GREEN);
-                        if let Some(user) = self.user() {
-                            let (rect, _) = ui
-                                .allocate_exact_size(egui::vec2(26.0, 26.0), egui::Sense::hover());
-                            ui.painter().circle_filled(
-                                rect.center(),
-                                13.0,
-                                theme::with_alpha(theme::PRIMARY, 0.22),
-                            );
-                            ui.painter().text(
-                                rect.center(),
-                                egui::Align2::CENTER_CENTER,
-                                initials_of(&user.name),
-                                egui::FontId::proportional(11.0),
-                                theme::PRIMARY,
-                            );
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "{} · {}",
-                                    user.name,
-                                    user.role.as_str()
-                                ))
-                                .size(12.5)
-                                .color(theme::MUTED),
-                            );
+                        let identity = self.identity_cache.as_ref();
+                        let label = identity.map(|d| d.role.as_str()).unwrap_or("Device");
+                        if port > 0 {
+                            theme::badge(ui, label, t.green);
+                        } else {
+                            theme::badge(ui, label, t.muted);
                         }
                     });
                 });
             });
-
+        if self.navigation_open {
+            egui::Panel::left("navigation-drawer")
+                .exact_size(224.0)
+                .resizable(false)
+                .frame(
+                    egui::Frame::new()
+                        .fill(t.panel)
+                        .inner_margin(egui::Margin::same(14)),
+                )
+                .show(ui, |ui| draw_sidebar(ui, self, false));
+        }
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(theme::BG).inner_margin(egui::Margin::same(14)))
+            .frame(
+                egui::Frame::new()
+                    .fill(t.bg)
+                    .inner_margin(egui::Margin::same(20)),
+            )
             .show(ui, |ui| {
                 let core = self.core.clone();
-                egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-                    let toasts = &mut self.toasts;
-                    match self.page {
-                        Page::Dashboard => self.dashboard.show(ui, &core, toasts),
-                        Page::Screens => self.screens.show(ui, &core, toasts),
-                        Page::Content => self.content.show(ui, &core, toasts),
-                        Page::Playlists => self.playlists.show(ui, &core, toasts),
-                        Page::Schedule => self.schedule.show(ui, &core, toasts),
-                        Page::Trucks => self.trucks.show(ui, &core, toasts),
-                        Page::Marquee => self.marquee.show(ui, &core, toasts),
-                        Page::Production => self.production.show(ui, &core, toasts),
-                        Page::Analytics => self.analytics.show(ui, &core, toasts),
-                        Page::Database => self.database.show(ui, &core, toasts),
-                        Page::Settings => self.settings.show(ui, &core, toasts),
-                        Page::Team => {
-                            let session = self.session.clone();
-                            self.team.show(ui, &core, toasts, session.as_ref());
+                egui::ScrollArea::vertical()
+                    .id_salt(("page", self.page.title()))
+                    .auto_shrink(false)
+                    .show(ui, |ui| {
+                        let toasts = &mut self.toasts;
+                        match self.page {
+                            Page::Dashboard => self.dashboard.show(ui, &core, toasts),
+                            Page::Screens => self.screens.show(ui, &core, toasts),
+                            Page::Content => self.content.show(ui, &core, toasts),
+                            Page::Playlists => self.playlists.show(ui, &core, toasts),
+                            Page::Schedule => self.schedule.show(ui, &core, toasts),
+                            Page::Trucks => self.trucks.show(ui, &core, toasts),
+                            Page::Marquee => self.marquee.show(ui, &core, toasts),
+                            Page::Production => self.production.show(ui, &core, toasts),
+                            Page::Analytics => self.analytics.show(ui, &core, toasts),
+                            Page::Database => self.database.show(ui, &core, toasts),
+                            Page::Settings => {
+                                self.settings.show(ui, &core, toasts, &mut self.appearance);
+                            }
+                            Page::Team => {
+                                let session = self.session.clone();
+                                self.team.show(ui, &core, toasts, session.as_ref());
+                            }
+                            Page::Player => self.player.show(ui, &core),
                         }
-                        Page::Player => self.player.show(ui, &core),
-                    }
-                });
+                    });
             });
+        if self.navigation_open && ui.ctx().input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.navigation_open = false;
+        }
     }
-}
-
-fn nav_item(ui: &mut egui::Ui, selected: bool, label: &str) -> bool {
-    let width = ui.available_width();
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 30.0), egui::Sense::click());
-    let painter = ui.painter_at(rect);
-    if selected {
-        painter.rect_filled(rect, 8.0, theme::with_alpha(theme::PRIMARY, 0.16));
-        let bar = egui::Rect::from_center_size(
-            egui::pos2(rect.left() + 5.0, rect.center().y),
-            egui::vec2(3.0, 16.0),
-        );
-        painter.rect_filled(bar, 2.0, theme::PRIMARY);
-        painter.rect_stroke(
-            rect,
-            8.0,
-            egui::Stroke::new(1.0, theme::with_alpha(theme::PRIMARY, 0.28)),
-            egui::StrokeKind::Inside,
-        );
-    } else if resp.hovered() {
-        painter.rect_filled(rect, 8.0, theme::with_alpha(theme::CARD_HOVER, 0.8));
-    }
-    painter.text(
-        egui::pos2(rect.left() + 14.0, rect.center().y),
-        egui::Align2::LEFT_CENTER,
-        label,
-        egui::FontId::proportional(14.0),
-        if selected { theme::TEXT } else { theme::MUTED },
-    );
-    resp.clicked()
 }
 
 fn initials_of(name: &str) -> String {
     name.split_whitespace()
-        .flat_map(|word| word.chars().next())
+        .filter_map(|word| word.chars().next())
         .take(2)
         .collect::<String>()
         .to_uppercase()
 }
 
-fn draw_sidebar(ui: &mut Ui, app: &mut ClarixApp) {
-    // Brand.
+fn page_icon(page: Page) -> ui::icons::Icon {
+    use ui::icons::Icon;
+    match page {
+        Page::Dashboard => Icon::Dashboard,
+        Page::Screens => Icon::Screen,
+        Page::Content => Icon::Content,
+        Page::Playlists | Page::Player => Icon::Play,
+        Page::Schedule => Icon::Calendar,
+        Page::Trucks => Icon::Truck,
+        Page::Marquee => Icon::Message,
+        Page::Production | Page::Analytics => Icon::Chart,
+        Page::Database => Icon::Database,
+        Page::Settings => Icon::Settings,
+        Page::Team => Icon::Team,
+    }
+}
+
+fn draw_sidebar(ui: &mut Ui, app: &mut ClarixApp, rail: bool) {
+    let t = theme::tokens(ui);
     ui.horizontal(|ui| {
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(32.0, 32.0), egui::Sense::hover());
-        ui.painter().rect_filled(rect, 9.0, theme::PRIMARY);
+        let (r, _) = ui.allocate_exact_size(egui::vec2(32.0, 32.0), egui::Sense::hover());
+        ui.painter()
+            .rect_filled(r, theme::PlatformStyle::current().radius, t.primary);
         ui.painter().text(
-            rect.center(),
+            r.center(),
             egui::Align2::CENTER_CENTER,
             "C",
-            egui::FontId::proportional(18.0),
-            theme::TEXT,
+            egui::FontId::proportional(20.0),
+            t.on_primary,
         );
-        ui.add_space(2.0);
-        ui.label(egui::RichText::new("Clarix").size(17.0).strong().color(theme::TEXT));
-    });
-    ui.add_space(2.0);
-    theme::muted(ui, "MG Enterprise Signage");
-    ui.add_space(6.0);
-    ui.separator();
-
-    let mut sections: Vec<(String, Vec<(Page, String)>)> = Vec::new();
-    sections.push((
-        "Manage".to_string(),
-        vec![
-            (Page::Dashboard, "🏠  Dashboard".to_string()),
-            (Page::Screens, "🖥  Screens".to_string()),
-            (Page::Content, "🗂  Content".to_string()),
-            (Page::Playlists, "▶  Playlists".to_string()),
-            (Page::Schedule, "🕑  Schedule".to_string()),
-        ],
-    ));
-    sections.push((
-        "Operations".to_string(),
-        vec![
-            (Page::Trucks, "🚚  Trucks".to_string()),
-            (Page::Marquee, "📜  Marquee".to_string()),
-            (Page::Production, "📊  Production".to_string()),
-        ],
-    ));
-    sections.push((
-        "Insights".to_string(),
-        vec![
-            (Page::Analytics, "📈  Analytics".to_string()),
-            (Page::Database, "🗄  Database".to_string()),
-        ],
-    ));
-    let mut system = vec![
-        (Page::Settings, "⚙  Settings".to_string()),
-        (Page::Player, "📺  Player".to_string()),
-    ];
-    if app.is_super_admin() {
-        system.push((Page::Team, "👥  Team".to_string()));
-    }
-    sections.push(("System".to_string(), system));
-
-    for (title, items) in &sections {
-        ui.add_space(6.0);
-        ui.label(egui::RichText::new(title.to_uppercase()).size(10.0).strong().color(theme::MUTED));
-        for (entry, label) in items {
-            if nav_item(ui, app.page == *entry, label) {
-                app.page = *entry;
-            }
+        if !rail {
+            ui.label(egui::RichText::new("Clarix").size(21.0).strong());
         }
+    });
+    if !rail {
+        theme::muted(ui, "MG Enterprise Signage");
     }
-
-    // User card pinned to the bottom of the sidebar.
-    let remaining = ui.available_height();
-    let block = 108.0;
-    if remaining > block + 8.0 {
-        ui.add_space(remaining - block);
-    }
-
-    let mut sign_out_clicked = false;
-    egui::Frame::new()
-        .fill(theme::with_alpha(theme::CARD_HOVER, 0.55))
-        .stroke(egui::Stroke::new(1.0, theme::STROKE))
-        .inner_margin(egui::Margin::same(10))
-        .corner_radius(10.0)
+    ui.add_space(14.0);
+    let mut target = None;
+    egui::ScrollArea::vertical()
+        .id_salt("navigation-scroll")
+        .auto_shrink(false)
         .show(ui, |ui| {
-            ui.set_min_width(ui.available_width());
-            if let Some(user) = app.user() {
-                ui.horizontal(|ui| {
-                    let (rect, _) =
-                        ui.allocate_exact_size(egui::vec2(34.0, 34.0), egui::Sense::hover());
-                    ui.painter().circle_filled(
-                        rect.center(),
-                        17.0,
-                        theme::with_alpha(theme::PRIMARY, 0.22),
+            for (section, pages) in [
+                (
+                    "WORKSPACE",
+                    &[
+                        Page::Dashboard,
+                        Page::Screens,
+                        Page::Content,
+                        Page::Playlists,
+                        Page::Schedule,
+                    ][..],
+                ),
+                (
+                    "OPERATIONS",
+                    &[Page::Trucks, Page::Marquee, Page::Production][..],
+                ),
+                ("INSIGHTS", &[Page::Analytics, Page::Database][..]),
+                ("SYSTEM", &[Page::Settings, Page::Player, Page::Team][..]),
+            ] {
+                if !rail {
+                    ui.add_space(8.0);
+                    ui.label(
+                        egui::RichText::new(section)
+                            .size(10.0)
+                            .strong()
+                            .color(t.muted),
                     );
-                    ui.painter().text(
-                        rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        initials_of(&user.name),
-                        egui::FontId::proportional(13.0),
-                        theme::PRIMARY,
+                } else {
+                    ui.add_space(6.0);
+                }
+                for &page in pages {
+                    if page == Page::Team && !app.is_super_admin() {
+                        continue;
+                    }
+                    let selected = app.page == page;
+                    let label = "";
+                    let response = ui.add_sized(
+                        [ui.available_width(), 38.0],
+                        egui::Button::selectable(selected, label),
                     );
-                    ui.add_space(4.0);
-                    ui.vertical(|ui| {
-                        ui.label(
-                            egui::RichText::new(user.name.to_string())
-                                .size(12.5)
-                                .strong()
-                                .color(theme::TEXT),
-                        );
-                        ui.label(
-                            egui::RichText::new(user.role.as_str().to_string())
-                                .size(10.5)
-                                .color(theme::MUTED),
-                        );
+                    response.widget_info(|| {
+                        egui::WidgetInfo::selected(
+                            egui::Role::Button,
+                            ui.is_enabled(),
+                            selected,
+                            page.title(),
+                        )
                     });
-                });
+                    let center = if rail {
+                        response.rect.center()
+                    } else {
+                        egui::pos2(response.rect.left() + 19.0, response.rect.center().y)
+                    };
+                    ui::icons::paint(
+                        ui.painter(),
+                        egui::Rect::from_center_size(center, egui::vec2(18.0, 18.0)),
+                        page_icon(page),
+                        if selected { t.primary } else { t.muted },
+                    );
+                    if !rail {
+                        ui.painter().text(
+                            egui::pos2(response.rect.left() + 38.0, response.rect.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            page.title(),
+                            egui::FontId::proportional(14.0),
+                            if selected { t.text } else { t.muted },
+                        );
+                    }
+                    if response.on_hover_text(page.title()).clicked() {
+                        target = Some(page);
+                    }
+                }
             }
-            ui.add_space(4.0);
-            sign_out_clicked = ui
-                .add_sized(
-                    [ui.available_width(), 24.0],
-                    egui::Button::new(egui::RichText::new("Sign out").size(12.0)),
-                )
-                .clicked();
         });
-    if sign_out_clicked {
-        app.sign_out();
+    if let Some(page) = target {
+        app.page = page;
+        app.navigation_open = false;
     }
 }
 
@@ -500,35 +510,36 @@ fn draw_toasts(ui: &mut Ui, toasts: &mut Vec<Toast>) {
     if toasts.is_empty() {
         return;
     }
-    let screen = ui.ctx().content_rect();
-    let mut offset = 24.0;
-    for toast in toasts.iter() {
-        let color = match toast.kind {
-            ToastKind::Success => theme::GREEN,
-            ToastKind::Error => theme::RED,
-            ToastKind::Info => theme::PRIMARY,
-        };
-        let galley = ui.painter().layout_no_wrap(
-            toast.text.clone(),
-            egui::FontId::proportional(14.0),
-            theme::TEXT,
-        );
-        let width = (galley.size().x + 40.0).max(280.0);
-        let height = galley.size().y + 16.0;
-        let rect = egui::Align2::CENTER_TOP.anchor_size(
-            egui::pos2(screen.center().x, screen.top() + offset),
-            egui::vec2(width, height),
-        );
-        let painter = ui.painter();
-        painter.rect_filled(rect, 8.0, theme::CARD);
-        painter.rect_stroke(rect, 8.0, egui::Stroke::new(1.0, color), egui::StrokeKind::Outside);
-        painter.text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
-            &toast.text,
-            egui::FontId::proportional(14.0),
-            theme::TEXT,
-        );
-        offset += height + 8.0;
-    }
+    egui::Area::new(egui::Id::unique("notices"))
+        .anchor(egui::Align2::RIGHT_TOP, [-20.0, 76.0])
+        .order(egui::Order::Tooltip)
+        .show(ui.ctx(), |ui| {
+            ui.set_width(360.0_f32.min(ui.ctx().content_rect().width() - 40.0));
+            for toast in toasts.iter().rev().take(3) {
+                let t = theme::tokens(ui);
+                let (label, color) = match toast.kind {
+                    ToastKind::Success => ("Success", t.green),
+                    ToastKind::Error => ("Error", t.red),
+                    ToastKind::Info => ("Info", t.primary),
+                };
+                egui::Frame::new()
+                    .fill(t.card)
+                    .stroke(egui::Stroke::new(1.0, t.stroke))
+                    .inner_margin(egui::Margin::same(14))
+                    .corner_radius(8.0)
+                    .show(ui, |ui| {
+                        ui.label(egui::RichText::new(label).strong().color(color));
+                        ui.add(egui::Label::new(&toast.text).wrap());
+                    });
+            }
+        });
+}
+
+#[cfg(any(test, debug_assertions))]
+#[path = "ui_review.rs"]
+mod ui_review;
+
+#[cfg(debug_assertions)]
+pub(crate) fn run_ui_review() {
+    ui_review::run();
 }

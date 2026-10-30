@@ -58,75 +58,14 @@ fn clean_controller_url(value: &str) -> String {
     url
 }
 
-/// Paint the fixed background of a device-mode card (icon chip, title,
-/// description, optional ACTIVE badge) and return its rect so the caller can
-/// place interactive rows inside it. Hand-painted at an exact rect so two
-/// cards share the panel width deterministically.
-fn draw_device_mode_card(
-    ui: &mut egui::Ui,
-    width: f32,
-    glyph: &str,
-    title: &str,
-    desc: &str,
-    active: bool,
-) -> egui::Rect {
-    let height = 128.0;
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
-
-    ui.painter().rect_filled(
-        egui::Rect::from_min_size(rect.min + egui::vec2(0.0, 3.0), rect.size()),
-        10.0,
-        egui::Color32::from_black_alpha(34),
-    );
-    let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 10.0, theme::CARD);
-    painter.rect_stroke(rect, 10.0, egui::Stroke::new(1.0, theme::STROKE), egui::StrokeKind::Inside);
-
-    let chip = egui::Rect::from_center_size(
-        egui::pos2(rect.left() + 27.0, rect.top() + 27.0),
-        egui::vec2(30.0, 30.0),
-    );
-    painter.rect_filled(chip, 8.0, theme::with_alpha(theme::PRIMARY, 0.14));
-    painter.text(
-        chip.center(),
-        egui::Align2::CENTER_CENTER,
-        glyph,
-        egui::FontId::proportional(15.5),
-        theme::TEXT,
-    );
-
-    let title_x = chip.right() + 10.0;
-    painter.text(
-        egui::pos2(title_x, chip.center().y - 7.0),
-        egui::Align2::LEFT_CENTER,
-        title,
-        egui::FontId::proportional(14.5),
-        theme::TEXT,
-    );
-    painter.text(
-        egui::pos2(title_x, chip.center().y + 10.0),
-        egui::Align2::LEFT_CENTER,
-        desc,
-        egui::FontId::proportional(11.0),
-        theme::MUTED,
-    );
-
-    if active {
-        let mut badge_child = ui.new_child(
-            egui::UiBuilder::new()
-                .max_rect(egui::Rect::from_min_max(
-                    egui::pos2(rect.right() - 92.0, rect.top() + 12.0),
-                    egui::pos2(rect.right() - 10.0, rect.top() + 42.0),
-                ))
-                .layout(egui::Layout::right_to_left(egui::Align::Center)),
-        );
-        theme::badge(&mut badge_child, "ACTIVE", theme::GREEN);
-    }
-    rect
-}
-
 impl SettingsPage {
-    pub fn show(&mut self, ui: &mut egui::Ui, core: &Arc<AppCore>, toasts: &mut Vec<Toast>) {
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        core: &Arc<AppCore>,
+        toasts: &mut Vec<Toast>,
+        appearance: &mut theme::AppearancePreference,
+    ) {
         if widgets::should_refresh(self.last_refresh, Duration::from_secs(5)) || !self.loaded_once {
             self.last_refresh = Instant::now();
             self.loaded_once = true;
@@ -134,125 +73,102 @@ impl SettingsPage {
         }
 
         theme::heading(ui, "Settings");
-        theme::muted(ui, "Device mode, crowd of players pairing, storage, and network diagnostics.");
+        theme::muted(
+            ui,
+            "Appearance, device mode, player pairing, storage, and network diagnostics.",
+        );
         ui.add_space(10.0);
 
+        widgets::section_header(ui, "Appearance");
+        theme::card(ui, |ui| {
+            theme::appearance_control(ui, appearance);
+            theme::muted(ui,"System follows your desktop preference. Live signage keeps its high-contrast dark appearance.");
+        });
+        ui.add_space(8.0);
         let role = crate::backend::network::get_device_identity(core)
             .map(|identity| identity.role)
             .unwrap_or(DeviceRole::Controller);
 
         // ── Device mode ─────────────────────────────────────────────────────
         widgets::section_header(ui, "Device operation mode");
-        let avail = ui.available_width();
-        let card_w = (avail / 2.0 - 9.0).clamp(300.0, 640.0);
-        ui.horizontal(|ui| {
-            // Controller card (background painted; actionable rows below).
-            let c1 = draw_device_mode_card(
-                ui,
-                card_w,
-                "🛡",
-                "Controller",
-                "Hosts the database, media assets,\nschedule and pairing service.",
-                role == DeviceRole::Controller,
-            );
-            ui.add_space(6.0);
-            // Player card.
-            let c2 = draw_device_mode_card(
-                ui,
-                card_w,
-                "📺",
-                "Player",
-                "Connects to a controller and plays\nsynced playlists offline.",
-                role == DeviceRole::Player,
-            );
-
-            // Controller card: switch button when inactive.
-            if role != DeviceRole::Controller {
-                let mut btn = ui.new_child(
-                    egui::UiBuilder::new()
-                        .max_rect(egui::Rect::from_min_max(
-                            egui::pos2(c1.left() + 12.0, c1.bottom() - 38.0),
-                            egui::pos2(c1.right() - 12.0, c1.bottom() - 12.0),
-                        ))
-                        .layout(egui::Layout::top_down(egui::Align::Min)),
-                );
-                if btn
-                    .add_sized(
-                        [btn.available_width(), 26.0],
-                        egui::Button::new("Use as Controller"),
-                    )
-                    .clicked()
-                {
-                    match crate::backend::network::set_device_mode(core, "Controller".to_string(), None) {
-                        Ok(_) => toasts.push(Toast::new(ToastKind::Success, "Device is now a controller. The LAN server and discovery restart automatically.")),
-                        Err(error) => toasts.push(Toast::new(ToastKind::Error, format!("Mode change failed: {error}"))),
+        // Leave room for egui rounding adjacent allocations at fractional DPI.
+        let (columns, width) = super::layout::grid(
+            (ui.available_width() - 2.0).max(1.0),
+            330.0,
+            2,
+            ui.spacing().item_spacing.x,
+        );
+        ui.horizontal_wrapped(|ui| {
+            for mode in [DeviceRole::Controller,DeviceRole::Player] {
+                let (rect,_) = ui.allocate_exact_size(egui::vec2(width,248.0),egui::Sense::hover());
+                let t=theme::tokens(ui);
+                ui.painter_at(rect).rect_filled(rect,theme::PlatformStyle::current().radius+2,t.card);
+                ui.painter_at(rect).rect_stroke(rect,theme::PlatformStyle::current().radius+2,egui::Stroke::new(1.0,t.stroke),egui::StrokeKind::Inside);
+                let mut child=ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink(16.0)).layout(egui::Layout::top_down(egui::Align::Min)));
+                let ui=&mut child;
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(egui::RichText::new(mode.as_str()).size(18.0).strong());
+                    if mode==role {theme::badge(ui,"Active",t.green);}
+                });
+                if mode==DeviceRole::Controller {
+                    theme::muted(ui,"Hosts the database, media library, scheduling, and LAN pairing service.");
+                    ui.add_space(20.0);
+                    if role!=mode && ui.button("Use as Controller").clicked() {
+                        match crate::backend::network::set_device_mode(core,"Controller".into(),None) {
+                            Ok(_)=>toasts.push(Toast::new(ToastKind::Success,"Device is now a controller. The LAN server and discovery restart automatically.")),
+                            Err(e)=>toasts.push(Toast::new(ToastKind::Error,format!("Mode change failed: {e}"))),
+                        }
+                        self.last_refresh=Instant::now()-Duration::from_secs(3600);
                     }
-                    self.last_refresh = Instant::now() - Duration::from_secs(3600);
+                } else {
+                    theme::muted(ui,"Connects to a controller and plays synced playlists offline.");
+                    widgets::labeled_text(ui,"Controller URL",&mut self.controller_url,"http://controller-ip:7420");
+                    if theme::primary_button(ui,if role==mode {"Save player connection"} else {"Use as Player"}).clicked() {
+                        let url=clean_controller_url(&self.controller_url);
+                        match crate::backend::network::set_device_mode(core,"Player".into(),Some(url)) {
+                            Ok(_)=>toasts.push(Toast::new(ToastKind::Success,"Device mode saved as Player.")),
+                            Err(e)=>toasts.push(Toast::new(ToastKind::Error,format!("Mode change failed: {e}"))),
+                        }
+                        self.last_refresh=Instant::now()-Duration::from_secs(3600);
+                    }
                 }
-            }
-
-            // Player card: controller URL field + save button.
-            let mut field = ui.new_child(
-                egui::UiBuilder::new()
-                    .max_rect(egui::Rect::from_min_max(
-                        egui::pos2(c2.left() + 12.0, c2.top() + 62.0),
-                        egui::pos2(c2.right() - 12.0, c2.top() + 90.0),
-                    ))
-                    .layout(egui::Layout::left_to_right(egui::Align::Center)),
-            );
-            field.label(egui::RichText::new("Controller").size(12.0).color(theme::MUTED));
-            field.add_space(8.0);
-            field.add_sized(
-                [field.available_width(), 26.0],
-                egui::TextEdit::singleline(&mut self.controller_url)
-                    .hint_text("http://controller-ip:7420"),
-            );
-            let mut btn = ui.new_child(
-                egui::UiBuilder::new()
-                    .max_rect(egui::Rect::from_min_max(
-                        egui::pos2(c2.left() + 12.0, c2.bottom() - 38.0),
-                        egui::pos2(c2.right() - 12.0, c2.bottom() - 12.0),
-                    ))
-                    .layout(egui::Layout::top_down(egui::Align::Min)),
-            );
-            if btn
-                .add_sized(
-                    [btn.available_width(), 26.0],
-                    egui::Button::new(
-                        if role == DeviceRole::Player { "Re-save Player mode" } else { "Use as Player" },
-                    ),
-                )
-                .clicked()
-            {
-                let cleaned = clean_controller_url(&self.controller_url.clone());
-                match crate::backend::network::set_device_mode(core, "Player".to_string(), Some(cleaned)) {
-                    Ok(_) => toasts.push(Toast::new(ToastKind::Success, "Device mode saved as Player.")),
-                    Err(error) => toasts.push(Toast::new(ToastKind::Error, format!("Mode change failed: {error}"))),
-                }
-                self.last_refresh = Instant::now() - Duration::from_secs(3600);
             }
         });
-        ui.add_space(8.0);
+        let _ = columns;
+        ui.add_space(16.0);
 
         // ── Pairing (device role dependent) ─────────────────────────────────
         if role == DeviceRole::Player {
             widgets::section_header(ui, "Device pairing");
             theme::card(ui, |ui| {
-                ui.label(egui::RichText::new("Send a pairing request to the controller, then approve it there to assign this player to a screen.").size(13.0).color(theme::TEXT));
+                ui.label(egui::RichText::new("Send a pairing request to the controller, then approve it there to assign this player to a screen.").size(13.0).color(theme::tokens(ui).text));
                 ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    if ui.button("🔐 Request pairing").clicked() {
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button(" Request pairing").clicked() {
                         match core.block_on(crate::backend::network::request_player_pairing(core)) {
                             Ok(request) => {
                                 self.pending_pairing_code = Some(request.code.clone());
-                                toasts.push(Toast::new(ToastKind::Success, format!("Pairing request {} sent to the controller.", request.code)));
+                                toasts.push(Toast::new(
+                                    ToastKind::Success,
+                                    format!(
+                                        "Pairing request {} sent to the controller.",
+                                        request.code
+                                    ),
+                                ));
                                 self.last_refresh = Instant::now() - Duration::from_secs(3600);
                             }
-                            Err(error) => toasts.push(Toast::new(ToastKind::Error, format!("Pairing failed: {error}"))),
+                            Err(error) => toasts.push(Toast::new(
+                                ToastKind::Error,
+                                format!("Pairing failed: {error}"),
+                            )),
                         }
                     }
                     if let Some(code) = &self.pending_pairing_code {
-                        theme::badge(ui, &format!("Pairing code: {code}"), theme::PRIMARY);
+                        theme::badge(
+                            ui,
+                            &format!("Pairing code: {code}"),
+                            theme::tokens(ui).primary,
+                        );
                     }
                 });
                 let discovered = self.discovered.clone();
@@ -262,9 +178,18 @@ impl SettingsPage {
                     ui.horizontal_wrapped(|ui| {
                         for peer in discovered {
                             let url = format!("http://{}:{}", peer.ip, peer.port);
-                            if ui.button(format!("📡 {} · {}:{}", peer.name, peer.ip, peer.port)).clicked() {
+                            if ui
+                                .button(format!(" {} · {}:{}", peer.name, peer.ip, peer.port))
+                                .clicked()
+                            {
                                 self.controller_url = url.clone();
-                                toasts.push(Toast::new(ToastKind::Info, format!("Selected {}. Click \"Use as Player\" to save.", peer.name)));
+                                toasts.push(Toast::new(
+                                    ToastKind::Info,
+                                    format!(
+                                        "Selected {}. Click \"Use as Player\" to save.",
+                                        peer.name
+                                    ),
+                                ));
                             }
                         }
                     });
@@ -272,18 +197,36 @@ impl SettingsPage {
             });
             ui.add_space(8.0);
         } else {
-            let pending: Vec<&PairingRequest> =
-                self.pairing_requests.iter().filter(|r| r.status == "pending").collect();
+            let pending: Vec<&PairingRequest> = self
+                .pairing_requests
+                .iter()
+                .filter(|r| r.status == "pending")
+                .collect();
             widgets::section_header(ui, &format!("Pending player pairings ({})", pending.len()));
             for request in pending {
                 theme::card(ui, |ui| {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.vertical(|ui| {
-                            ui.label(egui::RichText::new(&request.device_name).size(14.0).strong().color(theme::TEXT));
-                            theme::muted(ui, &format!("{} · {} · {}", request.code, request.player_kind, request.device_id));
+                            ui.label(
+                                egui::RichText::new(&request.device_name)
+                                    .size(14.0)
+                                    .strong()
+                                    .color(theme::tokens(ui).text),
+                            );
+                            theme::muted(
+                                ui,
+                                &format!(
+                                    "{} · {} · {}",
+                                    request.code, request.player_kind, request.device_id
+                                ),
+                            );
                         });
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let current = self.pairing_screen_choice.get(&request.id).cloned().unwrap_or_default();
+                            let current = self
+                                .pairing_screen_choice
+                                .get(&request.id)
+                                .cloned()
+                                .unwrap_or_default();
                             let selected_name = self
                                 .screens
                                 .iter()
@@ -300,8 +243,16 @@ impl SettingsPage {
                                             .get(&request.id)
                                             .cloned()
                                             .unwrap_or_default();
-                                        if ui.selectable_value(&mut choice, screen.id.clone(), &screen.name).changed() {
-                                            self.pairing_screen_choice.insert(request.id.clone(), choice);
+                                        if ui
+                                            .selectable_value(
+                                                &mut choice,
+                                                screen.id.clone(),
+                                                &screen.name,
+                                            )
+                                            .changed()
+                                        {
+                                            self.pairing_screen_choice
+                                                .insert(request.id.clone(), choice);
                                         }
                                     }
                                 });
@@ -314,13 +265,26 @@ impl SettingsPage {
                                             screen_id.clone(),
                                         ) {
                                             Ok(()) => {
-                                                toasts.push(Toast::new(ToastKind::Success, format!("{} is now paired.", request.device_name)));
-                                                self.last_refresh = Instant::now() - Duration::from_secs(3600);
+                                                toasts.push(Toast::new(
+                                                    ToastKind::Success,
+                                                    format!(
+                                                        "{} is now paired.",
+                                                        request.device_name
+                                                    ),
+                                                ));
+                                                self.last_refresh =
+                                                    Instant::now() - Duration::from_secs(3600);
                                             }
-                                            Err(error) => toasts.push(Toast::new(ToastKind::Error, format!("Approval failed: {error}"))),
+                                            Err(error) => toasts.push(Toast::new(
+                                                ToastKind::Error,
+                                                format!("Approval failed: {error}"),
+                                            )),
                                         }
                                     }
-                                    None => toasts.push(Toast::new(ToastKind::Error, "Choose the screen this player should control.")),
+                                    None => toasts.push(Toast::new(
+                                        ToastKind::Error,
+                                        "Choose the screen this player should control.",
+                                    )),
                                 }
                             }
                         });
@@ -334,17 +298,24 @@ impl SettingsPage {
         // ── Content library ─────────────────────────────────────────────────
         widgets::section_header(ui, "Content library");
         theme::card(ui, |ui| {
-            let path = self.storage.as_ref().map(|s| s.path.clone()).unwrap_or_default();
-            theme::muted(ui, &format!("📁 {}", path));
+            let path = self
+                .storage
+                .as_ref()
+                .map(|s| s.path.clone())
+                .unwrap_or_default();
+            widgets::detail_line(ui, "Library", &path);
             ui.add_space(4.0);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if let Some(storage) = &self.storage {
-                    theme::muted(ui, &format!(
-                        "Used {} · free {} · total {}",
-                        theme::format_bytes(storage.used_bytes),
-                        theme::format_bytes(storage.free_bytes),
-                        theme::format_bytes(storage.total_bytes)
-                    ));
+                    theme::muted(
+                        ui,
+                        &format!(
+                            "Used {} · free {} · total {}",
+                            theme::format_bytes(storage.used_bytes),
+                            theme::format_bytes(storage.free_bytes),
+                            theme::format_bytes(storage.total_bytes)
+                        ),
+                    );
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("Browse…").clicked() {
@@ -353,9 +324,15 @@ impl SettingsPage {
                             match crate::backend::content::set_content_directory(core, dir) {
                                 Ok(storage) => {
                                     self.storage = Some(storage);
-                                    toasts.push(Toast::new(ToastKind::Success, "Content library directory updated"));
+                                    toasts.push(Toast::new(
+                                        ToastKind::Success,
+                                        "Content library directory updated",
+                                    ));
                                 }
-                                Err(error) => toasts.push(Toast::new(ToastKind::Error, format!("Failed to set directory: {error}"))),
+                                Err(error) => toasts.push(Toast::new(
+                                    ToastKind::Error,
+                                    format!("Failed to set directory: {error}"),
+                                )),
                             }
                         }
                     }
@@ -376,15 +353,26 @@ impl SettingsPage {
         // ── Network diagnostics ─────────────────────────────────────────────
         widgets::section_header(ui, "Network diagnostics");
         theme::card(ui, |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if ui.button("Run checks").clicked() {
                     match core.block_on(crate::backend::network::get_network_diagnostics(core)) {
                         Ok(diag) => self.diagnostics = Some(diag),
-                        Err(error) => toasts.push(Toast::new(ToastKind::Error, format!("Diagnostics failed: {error}"))),
+                        Err(error) => toasts.push(Toast::new(
+                            ToastKind::Error,
+                            format!("Diagnostics failed: {error}"),
+                        )),
                     }
                 }
                 if let Some(diag) = &self.diagnostics {
-                    theme::muted(ui, &format!("Role {} · local IP {:?} · port {:?}", diag.role.as_str(), diag.local_ip, diag.service_port));
+                    theme::muted(
+                        ui,
+                        &format!(
+                            "Role {} · local IP {:?} · port {:?}",
+                            diag.role.as_str(),
+                            diag.local_ip,
+                            diag.service_port
+                        ),
+                    );
                     if let Some(sync) = &diag.last_successful_sync {
                         theme::muted(ui, &format!("Last successful sync: {sync}"));
                     }
@@ -394,21 +382,34 @@ impl SettingsPage {
             if let Some(diag) = &self.diagnostics {
                 for check in &diag.checks {
                     let color = match check.status.as_str() {
-                        "pass" => theme::GREEN,
-                        "warning" => theme::AMBER,
-                        _ => theme::RED,
+                        "pass" => theme::tokens(ui).green,
+                        "warning" => theme::tokens(ui).amber,
+                        _ => theme::tokens(ui).red,
                     };
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         theme::status_dot(ui, color, &format!("{} — {}", check.name, check.status));
                     });
                     theme::muted(ui, &check.detail);
                 }
                 for hint in &diag.hints {
-                    ui.label(egui::RichText::new(format!("⚠ {hint}")).size(12.5).color(theme::AMBER));
+                    ui.label(
+                        egui::RichText::new(format!(" {hint}"))
+                            .size(12.5)
+                            .color(theme::tokens(ui).amber),
+                    );
                 }
-                theme::muted(ui, &format!("Discovery: {} · Pairing: {}", diag.discovery_status, diag.pairing_status));
+                theme::muted(
+                    ui,
+                    &format!(
+                        "Discovery: {} · Pairing: {}",
+                        diag.discovery_status, diag.pairing_status
+                    ),
+                );
             } else {
-                theme::muted(ui, "Run checks to see discovery, TCP and controller-health results.");
+                theme::muted(
+                    ui,
+                    "Run checks to see discovery, TCP and controller-health results.",
+                );
             }
         });
         ui.add_space(8.0);
@@ -417,11 +418,28 @@ impl SettingsPage {
         widgets::section_header(ui, "About");
         theme::card(ui, |ui| {
             let identity = crate::backend::network::get_device_identity(core);
-            ui.label(egui::RichText::new("Clarix").size(14.0).strong().color(theme::TEXT));
-            theme::muted(ui, &format!("Version {} (egui native)", env!("CARGO_PKG_VERSION")));
-            theme::muted(ui, &format!("Device ID: {}", identity.as_ref().map(|i| i.device_id.clone()).unwrap_or_default()));
-            theme::muted(ui, &format!("Data dir: {}", core.config_dir.display()));
-            theme::muted(ui, "Migrated from Tauri: LAN pairing, sync, scheduling and truck alerts unchanged.");
+            ui.label(
+                egui::RichText::new("Clarix")
+                    .size(14.0)
+                    .strong()
+                    .color(theme::tokens(ui).text),
+            );
+            theme::muted(ui, &format!("Version {}", env!("CARGO_PKG_VERSION")));
+            theme::muted(
+                ui,
+                &format!(
+                    "Device ID: {}",
+                    identity
+                        .as_ref()
+                        .map(|i| i.device_id.clone())
+                        .unwrap_or_default()
+                ),
+            );
+            widgets::detail_line(ui, "Data directory", &core.config_dir.display().to_string());
+            theme::muted(
+                ui,
+                "Manage signage, content, and operations across your local network.",
+            );
         });
     }
 
@@ -434,10 +452,7 @@ impl SettingsPage {
         }
         if let Ok(identity) = crate::backend::network::get_device_identity(core) {
             if self.controller_url.is_empty() {
-                self.controller_url = identity
-                    .controller_url
-                    .clone()
-                    .unwrap_or_default();
+                self.controller_url = identity.controller_url.clone().unwrap_or_default();
             }
             if identity.role == DeviceRole::Controller {
                 if let Ok(requests) = crate::backend::network::get_pairing_requests(core) {

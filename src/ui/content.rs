@@ -47,10 +47,15 @@ impl ContentPage {
             self.refresh(core);
         }
         self.handle_deletes(core, toasts);
+        widgets::page_header(
+            ui,
+            "Content library",
+            "Your media, web links, and production content in one place.",
+        );
 
         // Toolbar.
-        ui.horizontal(|ui| {
-            if ui.button(egui::RichText::new("+ Upload files").strong()).clicked() {
+        ui.horizontal_wrapped(|ui| {
+            if theme::primary_button(ui, "+ Upload files").clicked() {
                 if let Some(loaded) = pick_media_files() {
                     for (path, name, content_type) in loaded {
                         self.queue_import(core, toasts, &path, name, content_type);
@@ -79,7 +84,10 @@ impl ContentPage {
                     ) {
                         Ok(storage) => {
                             self.storage = Some(storage);
-                            toasts.push(Toast::new(ToastKind::Success, "Content library folder updated."));
+                            toasts.push(Toast::new(
+                                ToastKind::Success,
+                                "Content library folder updated.",
+                            ));
                             self.refresh(core);
                         }
                         Err(error) => toasts.push(Toast::new(ToastKind::Error, error)),
@@ -90,11 +98,19 @@ impl ContentPage {
 
         if let Some(storage) = &self.storage {
             ui.add_space(2.0);
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(format!("Library: {}", storage.path))
+                        .size(12.0)
+                        .color(theme::tokens(ui).muted),
+                )
+                .truncate(),
+            )
+            .on_hover_text(&storage.path);
             theme::muted(
                 ui,
                 &format!(
-                    "Library: {} · used {} · free {} of {}",
-                    storage.path,
+                    "{} used  /  {} free of {}",
                     theme::format_bytes(storage.used_bytes),
                     theme::format_bytes(storage.free_bytes),
                     theme::format_bytes(storage.total_bytes)
@@ -104,12 +120,11 @@ impl ContentPage {
         ui.add_space(6.0);
 
         // Upload progress note removed for brevity; item grid:
-        egui::ScrollArea::vertical().show(ui, |ui| {
+        ui.scope(|ui| {
             // Responsive card grid: 4 columns on wide panels, fewer as the
             // window narrows (cards clamp within a comfortable range).
             let avail = ui.available_width();
-            let cols = ((((avail + 10.0) / 300.0).floor() as usize).clamp(1, 4)).max(1);
-            let card_w = ((avail - 10.0 * (cols as f32 - 1.0)) / cols as f32).clamp(200.0, 420.0);
+            let (cols, card_w) = super::layout::grid(avail, 260.0, 4, ui.spacing().item_spacing.x);
             let items = self.items.clone();
             for chunk in items.chunks(cols) {
                 ui.horizontal(|ui| {
@@ -120,7 +135,10 @@ impl ContentPage {
                 ui.add_space(6.0);
             }
             if items.is_empty() {
-                widgets::empty_state(ui, "No content yet — upload images, videos or add web URLs.");
+                widgets::empty_state(
+                    ui,
+                    "No content yet — upload images, videos or add web URLs.",
+                );
             }
         });
 
@@ -177,25 +195,30 @@ impl ContentPage {
         let pad = 8.0;
         let thumb_h = 116.0;
         let title_h = 40.0;
-        let card_h = pad + thumb_h + 6.0 + title_h + 2.0 + 18.0 + 4.0 + 28.0 + pad;
+        let card_h = pad + thumb_h + 6.0 + title_h + 2.0 + 18.0 + 12.0 + 34.0 + pad;
         let (card, resp) = ui.allocate_exact_size(egui::vec2(width, card_h), egui::Sense::hover());
 
         // Drop shadow, then the card body.
         ui.painter().rect_filled(
             egui::Rect::from_min_size(card.min + egui::vec2(0.0, 3.0), card.size()),
             10.0,
-            egui::Color32::from_black_alpha(34),
+            theme::tokens(ui).shadow,
         );
         let painter = ui.painter_at(card);
-        painter.rect_filled(card, 10.0, theme::CARD);
-        painter.rect_stroke(card, 10.0, egui::Stroke::new(1.0, theme::STROKE), egui::StrokeKind::Inside);
+        painter.rect_filled(card, 10.0, theme::tokens(ui).card);
+        painter.rect_stroke(
+            card,
+            10.0,
+            egui::Stroke::new(1.0, theme::tokens(ui).stroke),
+            egui::StrokeKind::Inside,
+        );
 
         // Thumbnail area.
         let thumb = egui::Rect::from_min_size(
             card.min + egui::vec2(pad, pad),
             egui::vec2(width - pad * 2.0, thumb_h),
         );
-        painter.rect_filled(thumb, 6.0, theme::INPUT_BG);
+        painter.rect_filled(thumb, 6.0, theme::tokens(ui).input_bg);
         let texture = self.texture_for(ui.ctx(), item, &thumb.size());
         match &texture {
             Some(handle) => {
@@ -209,12 +232,11 @@ impl ContentPage {
                 );
             }
             None => {
-                painter.text(
-                    thumb.center(),
-                    egui::Align2::CENTER_CENTER,
-                    type_glyph(&item.content_type),
-                    egui::FontId::proportional(30.0),
-                    theme::MUTED,
+                super::icons::paint(
+                    &painter,
+                    egui::Rect::from_center_size(thumb.center(), egui::vec2(32.0, 32.0)),
+                    type_icon(&item.content_type),
+                    theme::tokens(ui).muted,
                 );
             }
         }
@@ -230,12 +252,15 @@ impl ContentPage {
                 .max_rect(title_rect)
                 .layout(egui::Layout::top_down(egui::Align::Min)),
         );
-        title_child.label(
-            egui::RichText::new(fit_label(&item.name, 70))
-                .size(13.0)
-                .strong()
-                .color(theme::TEXT),
-        );
+        title_child.set_clip_rect(title_rect.intersect(ui.clip_rect()));
+        title_child
+            .label(
+                egui::RichText::new(fit_label(&item.name, 70))
+                    .size(13.0)
+                    .strong()
+                    .color(theme::tokens(ui).text),
+            )
+            .on_hover_text(&item.name);
 
         // Meta line under the title.
         let meta = format!(
@@ -252,12 +277,12 @@ impl ContentPage {
             egui::Align2::LEFT_CENTER,
             meta,
             egui::FontId::proportional(11.5),
-            theme::MUTED,
+            theme::tokens(ui).muted,
         );
 
         // Action buttons pinned to the bottom of the card.
         let actions_rect = egui::Rect::from_min_max(
-            egui::pos2(card.left() + pad - 6.0, card.bottom() - pad - 28.0),
+            egui::pos2(card.left() + pad - 6.0, card.bottom() - pad - 34.0),
             egui::pos2(card.right() - pad, card.bottom() - pad),
         );
         let mut actions = ui.new_child(
@@ -266,14 +291,14 @@ impl ContentPage {
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
         );
         if actions
-            .add(egui::Button::new("🗑").small())
+            .add(egui::Button::new("Delete"))
             .on_hover_text("Delete")
             .clicked()
         {
             self.delete_queue.push(item.id.clone());
         }
         if actions
-            .add(egui::Button::new("⏱").small())
+            .add(egui::Button::new("Duration"))
             .on_hover_text("Adjust duration")
             .clicked()
         {
@@ -292,7 +317,7 @@ impl ContentPage {
             painter.rect_stroke(
                 card,
                 10.0,
-                egui::Stroke::new(1.0, theme::with_alpha(theme::PRIMARY, 0.4)),
+                egui::Stroke::new(1.0, theme::with_alpha(theme::tokens(ui).primary, 0.4)),
                 egui::StrokeKind::Inside,
             );
         }
@@ -342,31 +367,35 @@ impl ContentPage {
             .map(|p| p.starts_with("::"))
             .unwrap_or(false);
         let editing_id = if is_duration_edit {
-            draft.file_path.clone().unwrap_or_default().trim_start_matches("::").to_string()
+            draft
+                .file_path
+                .clone()
+                .unwrap_or_default()
+                .trim_start_matches("::")
+                .to_string()
         } else {
             String::new()
         };
 
-        egui::Window::new(egui::RichText::new(if is_duration_edit {
-            "Content properties"
-        } else {
-            "Add web content"
-        }).strong())
+        super::layout::dialog(
+            ui,
+            egui::RichText::new(if is_duration_edit {
+                "Content properties"
+            } else {
+                "Add web content"
+            })
+            .strong(),
+            500.0,
+        )
         .open(&mut open)
         .resizable(false)
         .show(ui.ctx(), |ui| {
             if is_duration_edit {
                 let name_draft = draft.name.clone();
-                ui.label(
-                    egui::RichText::new(name_draft)
-                        .size(15.0)
-                        .strong(),
-                );
+                ui.label(egui::RichText::new(name_draft).size(15.0).strong());
                 ui.add_space(4.0);
                 let mut duration = draft.duration_secs as i32;
-                ui.add(
-                    egui::Slider::new(&mut duration, 1..=3600).suffix(" seconds"),
-                );
+                ui.add(egui::Slider::new(&mut duration, 1..=3600).suffix(" seconds"));
                 if duration as u32 != draft.duration_secs {
                     draft.duration_secs = duration as u32;
                     if let Err(error) = crate::backend::content::update_content_duration(
@@ -393,14 +422,15 @@ impl ContentPage {
                     .show(ui);
                 ui.add_space(4.0);
                 let mut duration = draft.duration_secs as i32;
-                ui.add(
-                    egui::Slider::new(&mut duration, 1..=600).suffix(" seconds"),
-                );
+                ui.add(egui::Slider::new(&mut duration, 1..=600).suffix(" seconds"));
                 draft.duration_secs = duration as u32;
             }
             ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                if ui.button(if is_duration_edit { "Done" } else { "Add" }).clicked() {
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .button(if is_duration_edit { "Done" } else { "Add" })
+                    .clicked()
+                {
                     if is_duration_edit {
                         draft.open = false;
                     } else {
@@ -507,14 +537,13 @@ pub fn type_label(content_type: &ContentType) -> &'static str {
     }
 }
 
-fn type_glyph(content_type: &ContentType) -> &'static str {
+fn type_icon(content_type: &ContentType) -> super::icons::Icon {
+    use super::icons::Icon;
     match content_type {
-        ContentType::Video => "▶",
-        ContentType::WebApp => "🌐",
-        ContentType::Document => "📄",
-        ContentType::Spreadsheet => "📊",
-        ContentType::Presentation => "📽",
-        _ => "🖼",
+        ContentType::Video => Icon::Play,
+        ContentType::Spreadsheet => Icon::Chart,
+        ContentType::WebApp => Icon::Screen,
+        _ => Icon::Content,
     }
 }
 
@@ -544,11 +573,9 @@ fn load_image_texture(ctx: &egui::Context, path: &str) -> Option<egui::TextureHa
         [rgba.width() as usize, rgba.height() as usize],
         rgba.as_raw(),
     );
-    Some(
-        ctx.load_texture(
-            format!("thumb-{path}"),
-            color,
-            egui::TextureOptions::default(),
-        ),
-    )
+    Some(ctx.load_texture(
+        format!("thumb-{path}"),
+        color,
+        egui::TextureOptions::default(),
+    ))
 }

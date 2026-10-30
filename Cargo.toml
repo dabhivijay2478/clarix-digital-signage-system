@@ -21,6 +21,8 @@ eframe = { version = "0.37", default-features = false, features = [
     "clipboard",
     "links",
     "system_fonts",
+    "x11",
+    "wayland",
 ] }
 egui = "0.37"
 rfd = "0.17"

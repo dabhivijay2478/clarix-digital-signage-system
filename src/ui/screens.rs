@@ -86,8 +86,13 @@ impl ScreensPage {
         }
 
         self.handle_deletes(core, toasts);
+        widgets::page_header(
+            ui,
+            "Screens",
+            "Manage displays, gate assignments, and player connections.",
+        );
 
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             let tab = |ui: &mut egui::Ui, text: &str, selected: bool| {
                 ui.selectable_label(selected, egui::RichText::new(text).size(14.0))
             };
@@ -165,34 +170,41 @@ impl ScreensPage {
         }
 
         for screen in screens {
-            let status_color = if screen.is_online { theme::GREEN } else { theme::RED };
-            let status_text = if screen.is_online { "online" } else { "offline" };
+            let status_color = if screen.is_online {
+                theme::tokens(ui).green
+            } else {
+                theme::tokens(ui).red
+            };
+            let status_text = if screen.is_online {
+                "online"
+            } else {
+                "offline"
+            };
             theme::card(ui, |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     // Leading device chip tinted by connection status.
                     let (chip, _) =
                         ui.allocate_exact_size(egui::vec2(40.0, 40.0), egui::Sense::hover());
                     ui.painter()
                         .rect_filled(chip, 10.0, theme::with_alpha(status_color, 0.16));
-                    ui.painter().text(
-                        chip.center(),
-                        egui::Align2::CENTER_CENTER,
-                        "🖥",
-                        egui::FontId::proportional(18.0),
+                    super::icons::paint(
+                        ui.painter(),
+                        chip.shrink(10.0),
+                        super::icons::Icon::Screen,
                         status_color,
                     );
                     ui.add_space(4.0);
                     ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             ui.label(
                                 egui::RichText::new(screen.name.clone())
                                     .size(16.0)
                                     .strong()
-                                    .color(theme::TEXT),
+                                    .color(theme::tokens(ui).text),
                             );
                             theme::badge(ui, status_text, status_color);
                             if screen.is_fullscreen {
-                                theme::badge(ui, "fullscreen", theme::PRIMARY);
+                                theme::badge(ui, "fullscreen", theme::tokens(ui).primary);
                             }
                         });
                         theme::muted(
@@ -211,7 +223,8 @@ impl ScreensPage {
                             &format!(
                                 "purpose: {} · gate: {} · hours: {}",
                                 screen.purpose,
-                                screen.gate
+                                screen
+                                    .gate
                                     .as_ref()
                                     .map(|g| g.to_uppercase())
                                     .unwrap_or_else(|| "—".to_string()),
@@ -240,8 +253,11 @@ impl ScreensPage {
                             }
                         });
 
-                        if ui.button("🔄 Sync").clicked() {
-                            match crate::backend::screens::force_sync_screen(core, screen.id.clone()) {
+                        if ui.button(" Sync").clicked() {
+                            match crate::backend::screens::force_sync_screen(
+                                core,
+                                screen.id.clone(),
+                            ) {
                                 Ok(revision) => toasts.push(Toast::new(
                                     ToastKind::Success,
                                     format!("Revision {revision} queued for the player."),
@@ -258,12 +274,7 @@ impl ScreensPage {
 
     // ── Gate setup tab ─────────────────────────────────────────────────────
 
-    fn show_gates_tab(
-        &mut self,
-        ui: &mut egui::Ui,
-        core: &Arc<AppCore>,
-        toasts: &mut Vec<Toast>,
-    ) {
+    fn show_gates_tab(&mut self, ui: &mut egui::Ui, core: &Arc<AppCore>, toasts: &mut Vec<Toast>) {
         widgets::section_header(ui, "Truck gates");
         theme::muted(
             ui,
@@ -271,7 +282,7 @@ impl ScreensPage {
         );
         ui.add_space(8.0);
 
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("New gate:");
             egui::TextEdit::singleline(&mut self.new_gate_number)
                 .hint_text("e.g. D4")
@@ -342,7 +353,7 @@ impl ScreensPage {
                 .map(|p| p.name.clone())
                 .unwrap_or_else(|| "—".to_string());
             theme::card(ui, |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label(
                         egui::RichText::new(gate.number.to_uppercase())
                             .strong()
@@ -355,8 +366,8 @@ impl ScreensPage {
                     });
                 });
 
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("Screens:").color(theme::MUTED));
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(egui::RichText::new("Screens:").color(theme::tokens(ui).muted));
                     if assigned.is_empty() {
                         theme::muted(ui, "none assigned");
                     }
@@ -370,22 +381,38 @@ impl ScreensPage {
                             .button(egui::RichText::new(format!("{label} ×")).size(12.0))
                             .clicked()
                         {
-                            self.unassign_gate_screen(core, &gate.number, screen_id.clone(), toasts);
+                            self.unassign_gate_screen(
+                                core,
+                                &gate.number,
+                                screen_id.clone(),
+                                toasts,
+                            );
                         }
                     }
                 });
 
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("Assign:").color(theme::MUTED));
-                    gew_combo(ui, format!("assign-{}", gate.id), 210.0, "Pick screen…", |ui| {
-                        for (screen_id, name) in &screen_options {
-                            if ui.selectable_label(false, name.clone()).clicked() {
-                                self.assign_gate_screen(core, &gate.number, screen_id.clone(), toasts);
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(egui::RichText::new("Assign:").color(theme::tokens(ui).muted));
+                    gew_combo(
+                        ui,
+                        format!("assign-{}", gate.id),
+                        210.0,
+                        "Pick screen…",
+                        |ui| {
+                            for (screen_id, name) in &screen_options {
+                                if ui.selectable_label(false, name.clone()).clicked() {
+                                    self.assign_gate_screen(
+                                        core,
+                                        &gate.number,
+                                        screen_id.clone(),
+                                        toasts,
+                                    );
+                                }
                             }
-                        }
-                    });
+                        },
+                    );
 
-                    ui.label(egui::RichText::new("Loading:").color(theme::MUTED));
+                    ui.label(egui::RichText::new("Loading:").color(theme::tokens(ui).muted));
                     let mut mins = gate.loading_duration_mins as i32;
                     if ui
                         .add(
@@ -399,7 +426,7 @@ impl ScreensPage {
                         self.persist_gates(core, toasts);
                     }
 
-                    ui.label(egui::RichText::new("Display:").color(theme::MUTED));
+                    ui.label(egui::RichText::new("Display:").color(theme::tokens(ui).muted));
                     gew_combo(ui, format!("purpose-{}", gate.id), 170.0, &purpose, |ui| {
                         for option in ["playlist", "truck_gate", "production_dashboard"] {
                             if ui.selectable_label(false, option).clicked() {
@@ -410,24 +437,38 @@ impl ScreensPage {
                     });
 
                     if purpose == "production_dashboard" {
-                        gew_combo(ui, format!("dash-{}", gate.id), 190.0, &current_dashboard, |ui| {
-                            for dashboard in &dashboards {
-                                if ui.selectable_label(false, dashboard.name.clone()).clicked() {
-                                    self.gates.gates[index].production_dashboard_id =
-                                        Some(dashboard.id.clone());
-                                    self.persist_gates(core, toasts);
+                        gew_combo(
+                            ui,
+                            format!("dash-{}", gate.id),
+                            190.0,
+                            &current_dashboard,
+                            |ui| {
+                                for dashboard in &dashboards {
+                                    if ui.selectable_label(false, dashboard.name.clone()).clicked()
+                                    {
+                                        self.gates.gates[index].production_dashboard_id =
+                                            Some(dashboard.id.clone());
+                                        self.persist_gates(core, toasts);
+                                    }
                                 }
-                            }
-                        });
+                            },
+                        );
                     } else {
-                        gew_combo(ui, format!("pl-{}", gate.id), 190.0, &current_playlist, |ui| {
-                            for playlist in &playlists {
-                                if ui.selectable_label(false, playlist.name.clone()).clicked() {
-                                    self.gates.gates[index].playlist_id = Some(playlist.id.clone());
-                                    self.persist_gates(core, toasts);
+                        gew_combo(
+                            ui,
+                            format!("pl-{}", gate.id),
+                            190.0,
+                            &current_playlist,
+                            |ui| {
+                                for playlist in &playlists {
+                                    if ui.selectable_label(false, playlist.name.clone()).clicked() {
+                                        self.gates.gates[index].playlist_id =
+                                            Some(playlist.id.clone());
+                                        self.persist_gates(core, toasts);
+                                    }
                                 }
-                            }
-                        });
+                            },
+                        );
                     }
                 });
             });
@@ -512,7 +553,10 @@ impl ScreensPage {
                     gates.push(gate.number.clone());
                 }
             }
-            updates.push((screen.id.clone(), crate::state::serialize_screen_gates(&gates)));
+            updates.push((
+                screen.id.clone(),
+                crate::state::serialize_screen_gates(&gates),
+            ));
         }
         for (screen_id, gate_csv) in updates {
             if let Some(screen) = self.screens.iter_mut().find(|s| s.id == screen_id) {
@@ -529,7 +573,10 @@ impl ScreensPage {
 
     fn persist_gates(&mut self, core: &Arc<AppCore>, toasts: &mut Vec<Toast>) {
         if let Err(error) = crate::state::save_gate_store(&core.config_dir, &self.gates) {
-            toasts.push(Toast::new(ToastKind::Error, format!("Saving gates failed: {error}")));
+            toasts.push(Toast::new(
+                ToastKind::Error,
+                format!("Saving gates failed: {error}"),
+            ));
         }
     }
 
@@ -565,11 +612,11 @@ impl ScreensPage {
         let dashboards = self.dashboards.clone();
         let content = self.content.clone();
         let purpose = draft.purpose.clone();
-        egui::Window::new(egui::RichText::new(title).strong())
+        super::layout::dialog(ui, egui::RichText::new(title).strong(), 500.0)
             .open(&mut open)
             .resizable(false)
             .show(ui.ctx(), |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Purpose:");
                     gew_combo(ui, "display-purpose".to_string(), 210.0, &purpose, |ui| {
                         for option in ["playlist", "truck_gate", "production_dashboard"] {
@@ -587,7 +634,7 @@ impl ScreensPage {
                         .show(ui);
                 }
                 if draft.purpose == "production_dashboard" {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.label("Dashboard:");
                         let current = dashboards
                             .iter()
@@ -599,17 +646,14 @@ impl ScreensPage {
                                 draft.production_dashboard_id = None;
                             }
                             for dashboard in &dashboards {
-                                if ui
-                                    .selectable_label(false, dashboard.name.clone())
-                                    .clicked()
-                                {
+                                if ui.selectable_label(false, dashboard.name.clone()).clicked() {
                                     draft.production_dashboard_id = Some(dashboard.id.clone());
                                 }
                             }
                         });
                     });
                 }
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Default content (playlist fallback):");
                     let content = content.clone();
                     let current = content
@@ -629,7 +673,7 @@ impl ScreensPage {
                     });
                 });
                 ui.add_space(10.0);
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     if ui.button("Save").clicked() {
                         let gate_csv = if draft.purpose == "truck_gate" {
                             let gates: Vec<String> = draft
@@ -652,7 +696,8 @@ impl ScreensPage {
                             draft.default_content_id.clone(),
                         ) {
                             Ok(()) => {
-                                toasts.push(Toast::new(ToastKind::Success, "Display options saved."));
+                                toasts
+                                    .push(Toast::new(ToastKind::Success, "Display options saved."));
                                 draft.open = false;
                                 self.refresh(core);
                             }
@@ -683,7 +728,7 @@ impl ScreensPage {
         };
         let mut open = draft.open;
         let title = format!("Operating hours — {}", draft.screen_name.clone());
-        egui::Window::new(egui::RichText::new(title).strong())
+        super::layout::dialog(ui, egui::RichText::new(title).strong(), 500.0)
             .open(&mut open)
             .default_width(560.0)
             .show(ui.ctx(), |ui| {
@@ -693,7 +738,7 @@ impl ScreensPage {
                 );
                 ui.add_space(6.0);
                 for (row, name) in draft.days.iter_mut().zip(FULL_WEEKDAYS) {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.checkbox(&mut row.enabled, name);
                         egui::TextEdit::singleline(&mut row.start)
                             .hint_text("00:00")
@@ -707,7 +752,7 @@ impl ScreensPage {
                     });
                 }
                 ui.add_space(10.0);
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     if ui.button("Save").clicked() {
                         let mut hours = OperatingHours {
                             blank_when_not_in_use: draft.blank_when_not_in_use,
@@ -731,7 +776,8 @@ impl ScreensPage {
                             hours.to_json(),
                         ) {
                             Ok(()) => {
-                                toasts.push(Toast::new(ToastKind::Success, "Operating hours saved."));
+                                toasts
+                                    .push(Toast::new(ToastKind::Success, "Operating hours saved."));
                                 draft.open = false;
                                 self.refresh(core);
                             }
@@ -774,31 +820,31 @@ impl ScreensPage {
             .map(|p| p.name.clone())
             .unwrap_or_else(|| "None".to_string());
 
-        egui::Window::new(egui::RichText::new(title).strong())
+        super::layout::dialog(ui, egui::RichText::new(title).strong(), 500.0)
             .open(&mut open)
             .resizable(false)
             .show(ui.ctx(), |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Name: ");
                     egui::TextEdit::singleline(&mut draft.name)
                         .hint_text("Reception LED")
                         .desired_width(260.0)
                         .show(ui);
                 });
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Location: ");
                     egui::TextEdit::singleline(&mut draft.location)
                         .desired_width(260.0)
                         .show(ui);
                 });
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("IP (optional): ");
                     egui::TextEdit::singleline(&mut draft.ip)
                         .hint_text("192.168.1.10")
                         .desired_width(260.0)
                         .show(ui);
                 });
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Orientation: ");
                     let current = orientation_label(&draft.orientation);
                     gew_combo(ui, "screen-orientation".to_string(), 160.0, current, |ui| {
@@ -822,30 +868,32 @@ impl ScreensPage {
                         .desired_width(70.0)
                         .show(ui);
                 });
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Playlist: ");
-                    gew_combo(ui, "screen-playlist".to_string(), 240.0, &current_playlist, |ui| {
-                        if ui.selectable_label(false, "None").clicked() {
-                            draft.playlist_id = None;
-                        }
-                        for playlist in &playlists {
-                            if ui.selectable_label(false, playlist.name.clone()).clicked() {
-                                draft.playlist_id = Some(playlist.id.clone());
+                    gew_combo(
+                        ui,
+                        "screen-playlist".to_string(),
+                        240.0,
+                        &current_playlist,
+                        |ui| {
+                            if ui.selectable_label(false, "None").clicked() {
+                                draft.playlist_id = None;
                             }
-                        }
-                    });
+                            for playlist in &playlists {
+                                if ui.selectable_label(false, playlist.name.clone()).clicked() {
+                                    draft.playlist_id = Some(playlist.id.clone());
+                                }
+                            }
+                        },
+                    );
                 });
                 ui.add_space(10.0);
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     if ui.button("Save").clicked() {
                         let width: i32 = draft.width.trim().parse().unwrap_or(1920);
                         let height: i32 = draft.height.trim().parse().unwrap_or(1080);
                         let orientation = orientation_label(&draft.orientation);
-                        let ip = draft
-                            .ip
-                            .clone()
-                            .trim()
-                            .to_string();
+                        let ip = draft.ip.clone().trim().to_string();
                         let ip = if ip.is_empty() { None } else { Some(ip) };
                         let result = if let Some(id) = draft.id.clone() {
                             crate::backend::screens::edit_screen(

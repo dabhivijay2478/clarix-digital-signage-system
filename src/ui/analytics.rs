@@ -7,14 +7,21 @@ use crate::state::AppCore;
 use crate::theme;
 use crate::ui::widgets;
 
-const EVENT_COLORS: [(&str, egui::Color32); 4] = [
-    ("Impression", theme::AMBER),
-    ("Play", theme::PRIMARY),
-    ("Complete", theme::GREEN),
-    ("Skip", theme::RED),
-];
+fn event_colors(ui: &egui::Ui) -> [(&'static str, egui::Color32); 4] {
+    [
+        ("Impression", theme::tokens(ui).amber),
+        ("Play", theme::tokens(ui).primary),
+        ("Complete", theme::tokens(ui).green),
+        ("Skip", theme::tokens(ui).red),
+    ]
+}
 
-const DAY_OPTIONS: [(u32, &str); 4] = [(1, "Last 24 h"), (7, "Last 7 days"), (14, "Last 14 days"), (30, "Last 30 days")];
+const DAY_OPTIONS: [(u32, &str); 4] = [
+    (1, "Last 24 h"),
+    (7, "Last 7 days"),
+    (14, "Last 14 days"),
+    (30, "Last 30 days"),
+];
 
 pub struct AnalyticsPage {
     screens: Vec<Screen>,
@@ -49,23 +56,28 @@ impl AnalyticsPage {
         }
 
         theme::heading(ui, "Analytics");
-        theme::muted(ui, "Play / impression / completion events recorded by native and synced players.");
+        theme::muted(
+            ui,
+            "Play / impression / completion events recorded by native and synced players.",
+        );
         ui.add_space(10.0);
 
         // ── Filters ────────────────────────────────────────────────────────
         theme::card(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Screen").size(13.0).color(theme::MUTED));
-                let names: Vec<(String, Option<String>)> = std::iter::once((
-                    "All screens".to_string(),
-                    None,
-                ))
-                .chain(
-                    self.screens
-                        .iter()
-                        .map(|screen| (screen.name.clone(), Some(screen.id.clone()))),
-                )
-                .collect();
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new("Screen")
+                        .size(13.0)
+                        .color(theme::tokens(ui).muted),
+                );
+                let names: Vec<(String, Option<String>)> =
+                    std::iter::once(("All screens".to_string(), None))
+                        .chain(
+                            self.screens
+                                .iter()
+                                .map(|screen| (screen.name.clone(), Some(screen.id.clone()))),
+                        )
+                        .collect();
                 let selected_label = names
                     .iter()
                     .find(|(_, id)| id.as_deref() == self.filter_screen.as_deref())
@@ -76,15 +88,15 @@ impl AnalyticsPage {
                     .selected_text(&selected_label)
                     .show_ui(ui, |ui| {
                         for (label, id) in &names {
-                            ui.selectable_value(
-                                &mut self.filter_screen,
-                                id.clone(),
-                                label.clone(),
-                            );
+                            ui.selectable_value(&mut self.filter_screen, id.clone(), label.clone());
                         }
                     });
 
-                ui.label(egui::RichText::new("Range").size(13.0).color(theme::MUTED));
+                ui.label(
+                    egui::RichText::new("Range")
+                        .size(13.0)
+                        .color(theme::tokens(ui).muted),
+                );
                 egui::ComboBox::from_id_salt("analytics-days-filter")
                     .width(140.0)
                     .selected_text(
@@ -115,34 +127,38 @@ impl AnalyticsPage {
             avg_dwell_secs: 0.0,
             uptime_pct: 0.0,
         });
-        let card_w = ((ui.available_width() - 40.0) / 5.0).min(190.0);
-        ui.horizontal(|ui| {
-            widgets::stat_card(ui, card_w, "Impressions", &summary.impressions.to_string(), theme::AMBER);
-            ui.add_space(8.0);
-            widgets::stat_card(ui, card_w, "Plays", &summary.plays.to_string(), theme::PRIMARY);
-            ui.add_space(8.0);
-            widgets::stat_card(ui, card_w, "Completions", &summary.completions.to_string(), theme::GREEN);
-            ui.add_space(8.0);
-            widgets::stat_card(ui, card_w, "Skips", &summary.skips.to_string(), theme::RED);
-            ui.add_space(8.0);
-            widgets::stat_card(
-                ui,
-                card_w,
-                "Avg dwell",
-                &format!("{:.0} s", summary.avg_dwell_secs),
-                theme::PRIMARY,
-            );
-        });
-
-        ui.add_space(10.0);
-        widgets::stat_card(
+        widgets::stat_grid(
             ui,
-            card_w * 2.0,
-            "Uptime (video feed artificial)",
-            &format!("{:.1} %", summary.uptime_pct),
-            theme::MUTED,
+            &[
+                (
+                    "Impressions",
+                    summary.impressions.to_string(),
+                    theme::tokens(ui).amber,
+                ),
+                (
+                    "Plays",
+                    summary.plays.to_string(),
+                    theme::tokens(ui).primary,
+                ),
+                (
+                    "Completions",
+                    summary.completions.to_string(),
+                    theme::tokens(ui).green,
+                ),
+                ("Skips", summary.skips.to_string(), theme::tokens(ui).red),
+                (
+                    "Avg dwell",
+                    format!("{:.0} s", summary.avg_dwell_secs),
+                    theme::tokens(ui).primary,
+                ),
+                (
+                    "Uptime (video feed artificial)",
+                    format!("{:.1} %", summary.uptime_pct),
+                    theme::tokens(ui).muted,
+                ),
+            ],
+            3,
         );
-
         ui.add_space(12.0);
         widgets::section_header(ui, "Activity timeline");
         self.draw_timeline(ui);
@@ -164,8 +180,8 @@ impl AnalyticsPage {
         }
 
         // Legend
-        ui.horizontal(|ui| {
-            for (label, color) in EVENT_COLORS {
+        ui.horizontal_wrapped(|ui| {
+            for (label, color) in event_colors(ui) {
                 theme::status_dot(ui, color, label);
                 ui.add_space(10.0);
             }
@@ -183,35 +199,40 @@ impl AnalyticsPage {
 
         theme::card(ui, |ui| {
             let wanted = egui::vec2(ui.available_width(), chart_height + 26.0);
-            let (rect, response) =
-                ui.allocate_exact_size(wanted, egui::Sense::hover());
+            let (rect, response) = ui.allocate_exact_size(wanted, egui::Sense::hover());
             let painter = ui.painter();
 
             // Horizontal grid lines.
             for fraction in [0.25, 0.5, 0.75, 1.0] {
                 let y = rect.bottom() - 20.0 - (chart_height - 16.0) * fraction;
                 painter.line_segment(
-                    [egui::pos2(rect.left() + 34.0, y), egui::pos2(rect.right(), y)],
-                    egui::Stroke::new(1.0, theme::STROKE.gamma_multiply(0.4)),
+                    [
+                        egui::pos2(rect.left() + 34.0, y),
+                        egui::pos2(rect.right(), y),
+                    ],
+                    egui::Stroke::new(1.0, theme::tokens(ui).stroke.gamma_multiply(0.4)),
                 );
                 painter.text(
                     egui::pos2(rect.left() + 4.0, y),
                     egui::Align2::LEFT_CENTER,
                     &format!("{}", (max_count as f32 * fraction).round() as i64),
                     egui::FontId::monospace(10.0),
-                    theme::MUTED,
+                    theme::tokens(ui).muted,
                 );
             }
             // Baseline.
             let base_y = rect.bottom() - 20.0;
             painter.line_segment(
-                [egui::pos2(rect.left() + 34.0, base_y), egui::pos2(rect.right(), base_y)],
-                egui::Stroke::new(1.0, theme::STROKE),
+                [
+                    egui::pos2(rect.left() + 34.0, base_y),
+                    egui::pos2(rect.right(), base_y),
+                ],
+                egui::Stroke::new(1.0, theme::tokens(ui).stroke),
             );
 
             let band_width = (rect.width() - 40.0) / dates.len() as f32;
             let group_width = band_width * 0.82;
-            let bar_width = (group_width / EVENT_COLORS.len() as f32).max(2.0);
+            let bar_width = (group_width / event_colors(ui).len() as f32).max(2.0);
 
             let mut hovered_label: Option<String> = None;
 
@@ -219,7 +240,7 @@ impl AnalyticsPage {
                 let band_left = rect.left() + 34.0 + date_index as f32 * band_width;
                 let group_left = band_left + (band_width - group_width) / 2.0;
 
-                for (event_index, (event_label, color)) in EVENT_COLORS.iter().enumerate() {
+                for (event_index, (event_label, color)) in event_colors(ui).iter().enumerate() {
                     let count = self
                         .timeline
                         .iter()
@@ -229,7 +250,8 @@ impl AnalyticsPage {
                     if count <= 0 {
                         continue;
                     }
-                    let bar_height = ((chart_height - 16.0) * (count as f32 / max_count as f32)).max(2.0);
+                    let bar_height =
+                        ((chart_height - 16.0) * (count as f32 / max_count as f32)).max(2.0);
                     let x = group_left + event_index as f32 * bar_width;
                     let bar_rect = egui::Rect::from_min_size(
                         egui::pos2(x, base_y - bar_height),
@@ -237,9 +259,7 @@ impl AnalyticsPage {
                     );
                     painter.rect_filled(bar_rect, 2.0, *color);
                     if response.hovered() && response.rect.contains(bar_rect.center()) {
-                        hovered_label = Some(format!(
-                            "{date}\n{event_label}: {count}"
-                        ));
+                        hovered_label = Some(format!("{date}\n{event_label}: {count}"));
                     }
                 }
 
@@ -250,7 +270,7 @@ impl AnalyticsPage {
                     egui::Align2::CENTER_CENTER,
                     &short,
                     egui::FontId::proportional(10.0),
-                    theme::MUTED,
+                    theme::tokens(ui).muted,
                 );
             }
 
@@ -269,7 +289,11 @@ impl AnalyticsPage {
             Ok(summary) => self.summary = Some(summary),
             Err(_) => self.summary = None,
         }
-        match crate::backend::analytics::get_analytics_timeline(core, self.filter_screen.clone(), self.days) {
+        match crate::backend::analytics::get_analytics_timeline(
+            core,
+            self.filter_screen.clone(),
+            self.days,
+        ) {
             Ok(points) => self.timeline = points,
             Err(_) => self.timeline = Vec::new(),
         }

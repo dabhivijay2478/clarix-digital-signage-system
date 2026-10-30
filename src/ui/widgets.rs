@@ -8,39 +8,50 @@ pub fn section_header(ui: &mut egui::Ui, text: &str) {
     ui.add_space(8.0);
     ui.horizontal(|ui| {
         let (bar, _) = ui.allocate_exact_size(egui::vec2(4.0, 18.0), egui::Sense::hover());
-        ui.painter().rect_filled(bar, 2.0, theme::PRIMARY);
+        ui.painter()
+            .rect_filled(bar, 2.0, theme::tokens(ui).primary);
         ui.label(
             egui::RichText::new(text)
                 .size(15.0)
                 .strong()
-                .color(theme::TEXT),
+                .color(theme::tokens(ui).text),
         );
     });
     ui.add_space(2.0);
 }
 
-/// A labeled text field row drawn with fixed label width for alignment.
+/// Stacked field labels keep forms readable in narrow dialogs.
 pub fn labeled_text(
     ui: &mut egui::Ui,
     label: &str,
     text: &mut String,
     hint: &str,
 ) -> egui::Response {
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(label).size(13.0).color(theme::MUTED));
-        ui.add_sized([240.0, 26.0], egui::TextEdit::singleline(text).hint_text(hint))
+    ui.vertical(|ui| {
+        ui.label(
+            egui::RichText::new(label)
+                .size(12.0)
+                .color(theme::tokens(ui).muted),
+        );
+        ui.add_sized(
+            [ui.available_width().min(440.0), 34.0],
+            egui::TextEdit::singleline(text).hint_text(hint),
+        )
     })
     .inner
 }
 
-pub fn labeled_password(
-    ui: &mut egui::Ui,
-    label: &str,
-    text: &mut String,
-) -> egui::Response {
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(label).size(13.0).color(theme::MUTED));
-        ui.add_sized([240.0, 26.0], egui::TextEdit::singleline(text).password(true))
+pub fn labeled_password(ui: &mut egui::Ui, label: &str, text: &mut String) -> egui::Response {
+    ui.vertical(|ui| {
+        ui.label(
+            egui::RichText::new(label)
+                .size(12.0)
+                .color(theme::tokens(ui).muted),
+        );
+        ui.add_sized(
+            [ui.available_width().min(440.0), 34.0],
+            egui::TextEdit::singleline(text).password(true),
+        )
     })
     .inner
 }
@@ -52,25 +63,30 @@ pub fn labeled_select<T: Copy + PartialEq>(
     selected: &mut T,
 ) -> egui::Response {
     let id_salt = format!("labeled-select-{label}");
-    let response = ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(label).size(13.0).color(theme::MUTED));
-        egui::ComboBox::from_id_salt(id_salt)
-            .width(220.0)
-            .selected_text(
-                options
-                    .iter()
-                    .find(|(_, value, _)| *value == *selected)
-                    .map(|(text, _, _)| *text)
-                    .unwrap_or(""),
-            )
-            .show_ui(ui, |ui| {
-                for (text, value, _) in options {
-                    ui.selectable_value(selected, *value, *text);
-                }
-            })
-            .response
-    })
-    .inner;
+    let response = ui
+        .horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(label)
+                    .size(13.0)
+                    .color(theme::tokens(ui).muted),
+            );
+            egui::ComboBox::from_id_salt(id_salt)
+                .width(220.0)
+                .selected_text(
+                    options
+                        .iter()
+                        .find(|(_, value, _)| *value == *selected)
+                        .map(|(text, _, _)| *text)
+                        .unwrap_or(""),
+                )
+                .show_ui(ui, |ui| {
+                    for (text, value, _) in options {
+                        ui.selectable_value(selected, *value, *text);
+                    }
+                })
+                .response
+        })
+        .inner;
 
     // Keep any configured display for reference lookups out of the label set:
     options.iter().for_each(|(_, _, _)| {});
@@ -83,9 +99,16 @@ pub fn toggle(ui: &mut egui::Ui, label: &str, value: &mut bool) -> egui::Respons
 
 pub fn slider_u32(ui: &mut egui::Ui, label: &str, value: &mut u32, range: std::ops::Range<u32>) {
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(label).size(13.0).color(theme::MUTED));
+        ui.label(
+            egui::RichText::new(label)
+                .size(13.0)
+                .color(theme::tokens(ui).muted),
+        );
         let mut proxy = *value as i32;
-        ui.add(egui::Slider::new(&mut proxy, range.start as i32..=range.end as i32));
+        ui.add(egui::Slider::new(
+            &mut proxy,
+            range.start as i32..=range.end as i32,
+        ));
         if proxy != *value as i32 {
             *value = proxy as u32;
         }
@@ -104,102 +127,98 @@ pub fn empty_state(ui: &mut egui::Ui, text: &str) {
         ui.label(
             egui::RichText::new("· · ·")
                 .size(22.0)
-                .color(theme::with_alpha(theme::MUTED, 0.55)),
+                .color(theme::with_alpha(theme::tokens(ui).muted, 0.55)),
         );
         ui.add_space(8.0);
         ui.label(
             egui::RichText::new(text)
                 .size(14.5)
-                .color(theme::MUTED),
+                .color(theme::tokens(ui).muted),
         );
     });
 }
 
-/// Icon for a stat card derived from its label (shared by the cluster of pages
-/// that render KPI rows).
-fn stat_icon(label: &str) -> &'static str {
-    let l = label.to_lowercase();
-    if l.contains("screen") {
-        "🖥"
-    } else if l.contains("content") {
-        "🗂"
-    } else if l.contains("playlist") {
-        "🎬"
-    } else if l.contains("schedule") || l.contains("slot") {
-        "🗓"
-    } else if l.contains("truck") {
-        "🚚"
-    } else if l.contains("storage") || l.contains("disk") {
-        "💾"
-    } else if l.contains("impression") {
-        "👁"
-    } else if l.contains("complet") {
-        "✅"
-    } else if l.contains("skip") {
-        "⏭"
-    } else if l.contains("waiting") {
-        "⏳"
-    } else if l.contains("loading") {
-        "⏬"
-    } else if l.contains("play") {
-        "▶"
-    } else if l.contains("dispatch") || l.contains("today") || l.contains("month") {
-        "📦"
-    } else if l.contains("total") {
-        "📋"
-    } else {
-        "📈"
-    }
+/// Clip and wrap painter text to a real allocated rectangle.
+pub fn paint_text(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    text: &str,
+    size: f32,
+    color: egui::Color32,
+) {
+    let galley = painter.layout(
+        text.to_string(),
+        egui::FontId::proportional(size),
+        color,
+        rect.width().max(1.0),
+    );
+    painter
+        .with_clip_rect(rect.intersect(painter.clip_rect()))
+        .galley(rect.min, galley, color);
 }
 
-/// KPI card: tinted icon chip, muted label, accent value.
-///
-/// Painted manually at an exact rect so the width is deterministic inside
-/// responsive grids (avoids egui Frame/child-layout inheritance quirks).
-/// `width` is the exact outer width the card will occupy.
 pub fn stat_card(ui: &mut egui::Ui, width: f32, label: &str, value: &str, accent: egui::Color32) {
-    let icon = stat_icon(label);
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 86.0), egui::Sense::hover());
-
-    // Soft drop shadow, then the card body.
-    ui.painter().rect_filled(
-        egui::Rect::from_min_size(rect.min + egui::vec2(0.0, 3.0), rect.size()),
-        10.0,
-        egui::Color32::from_black_alpha(34),
+    use super::icons::{self, Icon};
+    let t = theme::tokens(ui);
+    let (r, response) = ui.allocate_exact_size(egui::vec2(width, 112.0), egui::Sense::hover());
+    let p = ui.painter_at(r);
+    p.rect_filled(r, theme::PlatformStyle::current().radius + 2, t.card);
+    p.rect_stroke(
+        r,
+        theme::PlatformStyle::current().radius + 2,
+        egui::Stroke::new(1.0, t.stroke),
+        egui::StrokeKind::Inside,
     );
-    let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 10.0, theme::CARD);
-    painter.rect_stroke(rect, 10.0, egui::Stroke::new(1.0, theme::STROKE), egui::StrokeKind::Inside);
-
-    // Tinted icon chip with the label beside it.
-    let chip = egui::Rect::from_center_size(
-        egui::pos2(rect.left() + 12.0 + 15.0, rect.top() + 12.0 + 15.0),
-        egui::vec2(30.0, 30.0),
-    );
-    painter.rect_filled(chip, 8.0, theme::with_alpha(accent, 0.16));
-    painter.text(
-        chip.center(),
-        egui::Align2::CENTER_CENTER,
-        icon,
-        egui::FontId::proportional(15.0),
-        accent,
-    );
-    painter.text(
-        egui::pos2(chip.right() + 10.0, chip.center().y),
-        egui::Align2::LEFT_CENTER,
+    let chip = egui::Rect::from_min_size(r.min + egui::vec2(14.0, 14.0), egui::vec2(28.0, 28.0));
+    p.rect_filled(chip, 6.0, theme::with_alpha(accent, 0.12));
+    let lower = label.to_lowercase();
+    let icon = if lower.contains("screen") {
+        Icon::Screen
+    } else if lower.contains("truck") || lower.contains("dispatch") {
+        Icon::Truck
+    } else if lower.contains("content") || lower.contains("storage") {
+        Icon::Content
+    } else if lower.contains("play") {
+        Icon::Play
+    } else if lower.contains("slot") {
+        Icon::Calendar
+    } else {
+        Icon::Chart
+    };
+    icons::paint(&p, chip.shrink(5.0), icon, accent);
+    paint_text(
+        &p,
+        egui::Rect::from_min_max(
+            egui::pos2(chip.right() + 10.0, r.top() + 14.0),
+            egui::pos2(r.right() - 14.0, r.top() + 51.0),
+        ),
         label,
-        egui::FontId::proportional(11.5),
-        theme::MUTED,
+        12.0,
+        t.muted,
     );
-
-    // Big value pinned under the chip row.
-    painter.text(
-        egui::pos2(rect.left() + 12.0, rect.top() + 64.0),
-        egui::Align2::LEFT_CENTER,
+    paint_text(
+        &p,
+        egui::Rect::from_min_max(
+            egui::pos2(r.left() + 14.0, r.top() + 62.0),
+            r.max - egui::vec2(12.0, 10.0),
+        ),
         value,
-        egui::FontId::proportional(22.0),
-        accent,
+        24.0,
+        t.text,
     );
+    response.on_hover_text(format!("{label}: {value}"));
+}
+
+pub fn stat_grid(ui: &mut egui::Ui, items: &[(&str, String, egui::Color32)], max_columns: usize) {
+    let gap = ui.spacing().item_spacing.x;
+    let (columns, width) = super::layout::grid(ui.available_width(), 210.0, max_columns, gap);
+    for row in items.chunks(columns) {
+        ui.horizontal(|ui| {
+            for (label, value, accent) in row {
+                stat_card(ui, width, label, value, *accent);
+            }
+        });
+    }
 }
 
 /// Period pattern: runs every frame while visible; callers keep their own
@@ -210,8 +229,50 @@ pub fn should_refresh(last: std::time::Instant, period: std::time::Duration) -> 
 
 pub fn format_secs(secs: u64) -> String {
     if secs >= 3600 {
-        format!("{:02}:{:02}:{:02}", secs / 3600, (secs % 3600) / 60, secs % 60)
+        format!(
+            "{:02}:{:02}:{:02}",
+            secs / 3600,
+            (secs % 3600) / 60,
+            secs % 60
+        )
     } else {
         format!("{:02}:{:02}", secs / 60, secs % 60)
     }
+}
+
+pub fn page_header(ui: &mut egui::Ui, title: &str, subtitle: &str) {
+    theme::heading(ui, title);
+    theme::muted(ui, subtitle);
+    ui.add_space(16.0);
+}
+
+pub fn status_checkbox(
+    ui: &mut egui::Ui,
+    enabled: bool,
+    value: &mut bool,
+    label: &str,
+) -> egui::Response {
+    let response = ui.add_enabled(enabled, egui::Checkbox::new(value, ""));
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(
+            egui::Role::CheckBox,
+            enabled && ui.is_enabled(),
+            *value,
+            label,
+        )
+    });
+    response.on_hover_text(label)
+}
+
+/// Keep long paths and identifiers on one line while exposing their full value.
+pub fn detail_line(ui: &mut egui::Ui, label: &str, value: &str) -> egui::Response {
+    ui.add(
+        egui::Label::new(
+            egui::RichText::new(format!("{label}: {value}"))
+                .size(12.0)
+                .color(theme::tokens(ui).muted),
+        )
+        .truncate(),
+    )
+    .on_hover_text(value)
 }

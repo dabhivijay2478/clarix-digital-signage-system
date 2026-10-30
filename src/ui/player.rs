@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use chrono::Local;
 use tokio::sync::broadcast;
 
+use super::signage::{self, PageLayout, SignageStyle as S};
 use crate::display_rules::{OperatingHours, PlaylistItemSchedule};
 use crate::models::{
     ActiveTruck, ContentItem, ContentType, MarqueeSettings, Playlist, ScheduleSlot, Screen,
@@ -105,11 +106,22 @@ impl PlayerPage {
         }
 
         let rect = ui.available_rect_before_wrap();
-        let card = egui::Align2::CENTER_CENTER.anchor_size(rect.center(), egui::vec2(560.0, 440.0));
-        ui.allocate_rect(card, egui::Sense::hover());
+        let card = egui::Align2::CENTER_CENTER.align_size_within_rect(
+            egui::vec2(
+                600.0_f32.min(rect.width() - 32.0),
+                520.0_f32.min(rect.height() - 32.0),
+            ),
+            rect,
+        );
+        let mut child = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(card)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        let ui = &mut child;
         egui::Frame::new()
-            .fill(theme::CARD)
-            .stroke(egui::Stroke::new(1.0, theme::STROKE))
+            .fill(theme::tokens(ui).card)
+            .stroke(egui::Stroke::new(1.0, theme::tokens(ui).stroke))
             .inner_margin(egui::Margin::same(20))
             .corner_radius(10.0)
             .show(ui, |ui| {
@@ -118,7 +130,7 @@ impl PlayerPage {
                         egui::RichText::new("Player preview")
                             .size(20.0)
                             .strong()
-                            .color(theme::TEXT),
+                            .color(theme::tokens(ui).text),
                     );
                     theme::muted(
                         ui,
@@ -142,12 +154,12 @@ impl PlayerPage {
                                 .map(|p| p.name.clone())
                                 .unwrap_or_else(|| "—".to_string());
                             theme::card(ui, |ui| {
-                                ui.horizontal(|ui| {
+                                ui.horizontal_wrapped(|ui| {
                                     ui.vertical(|ui| {
                                         ui.label(
                                             egui::RichText::new(screen.name.clone())
                                                 .strong()
-                                                .color(theme::TEXT),
+                                                .color(theme::tokens(ui).text),
                                         );
                                         theme::muted(
                                             ui,
@@ -167,7 +179,7 @@ impl PlayerPage {
                                         egui::Layout::right_to_left(egui::Align::Center),
                                         |ui| {
                                             if ui
-                                                .button(egui::RichText::new("▶ Bind").strong())
+                                                .button(egui::RichText::new("Bind screen").strong())
                                                 .clicked()
                                             {
                                                 self.bind_screen(core, screen.id.clone());
@@ -198,8 +210,7 @@ impl PlayerPage {
     }
 
     fn refresh_data(&mut self, core: &Arc<AppCore>) {
-        self.playlists =
-            crate::backend::playlists::get_playlists(&core.pool).unwrap_or_default();
+        self.playlists = crate::backend::playlists::get_playlists(&core.pool).unwrap_or_default();
         self.content = crate::backend::content::get_content_items(&core.pool).unwrap_or_default();
         self.marquee = crate::backend::app_config::get_marquee_settings(core).ok();
         self.screens = crate::backend::screens::get_screens(&core.pool).unwrap_or_default();
@@ -244,14 +255,16 @@ impl PlayerPage {
                 .assignments
                 .iter()
                 .find(|(_, ids)| ids.contains(&screen.id))
-                .map(|(number, _)| (number.clone(), {
-                    gate_store
-                        .gates
-                        .iter()
-                        .find(|gate| &gate.number == number)
-                        .cloned()
-                        .unwrap_or_default()
-                }))
+                .map(|(number, _)| {
+                    (number.clone(), {
+                        gate_store
+                            .gates
+                            .iter()
+                            .find(|gate| &gate.number == number)
+                            .cloned()
+                            .unwrap_or_default()
+                    })
+                })
             {
                 let _ = first;
                 let purpose = if gate.purpose.is_empty() {
@@ -292,7 +305,12 @@ impl PlayerPage {
         }
         if self.alert.is_some()
             && self.alert_since.elapsed()
-                > Duration::from_secs(self.alert.as_ref().map(|alert| alert.duration_secs.max(3) as u64).unwrap_or(3))
+                > Duration::from_secs(
+                    self.alert
+                        .as_ref()
+                        .map(|alert| alert.duration_secs.max(3) as u64)
+                        .unwrap_or(3),
+                )
         {
             self.alert = None;
         }
@@ -336,7 +354,12 @@ impl PlayerPage {
                     .map(|c| c.duration_secs.max(1) as u64)
                     .unwrap_or(10);
                 if self.item_started.elapsed() >= Duration::from_secs(duration_secs) {
-                    self.record_analytics(core, content.as_ref(), "Complete", Some(duration_secs as f64));
+                    self.record_analytics(
+                        core,
+                        content.as_ref(),
+                        "Complete",
+                        Some(duration_secs as f64),
+                    );
                     self.fade_alpha = 0.0;
                     self.item_index = (index + 1) % playable.len();
                     self.item_started = Instant::now();
@@ -452,6 +475,19 @@ impl PlayerPage {
             .map(|(_, purpose)| purpose)
             .unwrap_or_else(|| "playlist".to_string());
         let playlist = self.resolve_playlist(core);
+        let scale = S::scale(rect);
+        let ticker_height = if marquee
+            .as_ref()
+            .is_some_and(|m| m.enabled && !m.text.is_empty())
+        {
+            64.0 * scale
+        } else {
+            0.0
+        };
+        let board_rect = egui::Rect::from_min_max(
+            rect.min + egui::vec2(0.0, 44.0 * scale),
+            rect.max - egui::vec2(0.0, ticker_height),
+        );
 
         // Production dashboards render natively when configured.
         if purpose == "production_dashboard" {
@@ -459,11 +495,11 @@ impl PlayerPage {
                 .as_ref()
                 .and_then(|screen| screen.production_dashboard_id.clone())
                 .or_else(|| self.dashboards.first().map(|d| d.id.clone()));
-            render_dashboard_native(ui, core, rect, dashboard_id, &mut self.dashboards);
+            render_dashboard_native(ui, core, board_rect, dashboard_id, &mut self.dashboards);
         } else if let Some(playlist) = playlist {
             self.draw_media(ui, core, &playlist, rect);
         } else if purpose == "truck_gate" {
-            self.draw_truck_tokens(ui, core, rect);
+            self.draw_truck_tokens(ui, core, board_rect);
         } else {
             painters::idle_message(ui, rect);
         }
@@ -482,16 +518,16 @@ impl PlayerPage {
         ui.painter().text(
             rect.left_top() + egui::vec2(18.0, 18.0),
             egui::Align2::LEFT_TOP,
-            "✕",
+            "Esc: exit",
             egui::FontId::proportional(16.0),
-            egui::Color32::from_rgba_unmultiplied(180, 186, 200, 110),
+            S::MUTED,
         );
         ui.painter().text(
-            rect.right_bottom() - egui::vec2(16.0, 14.0),
-            egui::Align2::RIGHT_BOTTOM,
+            rect.right_top() + egui::vec2(-20.0, 14.0),
+            egui::Align2::RIGHT_TOP,
             Local::now().format("%H:%M").to_string(),
             egui::FontId::proportional(22.0),
-            egui::Color32::from_rgba_unmultiplied(220, 226, 240, 140),
+            S::MUTED,
         );
     }
 
@@ -535,7 +571,8 @@ impl PlayerPage {
             return;
         }
         if !self.textures.contains_key(&key) {
-            self.textures.insert(key.clone(), image_texture(ui.ctx(), &key));
+            self.textures
+                .insert(key.clone(), image_texture(ui.ctx(), &key));
         }
         if self.textures.len() > 32 {
             self.textures.clear();
@@ -566,7 +603,7 @@ impl PlayerPage {
             self.video_key = Some(key.clone());
         }
         let texture_key = format!("video:{key}");
-        if let Some(frame ) = self.video.as_ref().and_then(|decoder| decoder.try_take()) {
+        if let Some(frame) = self.video.as_ref().and_then(|decoder| decoder.try_take()) {
             let color = egui::ColorImage::from_rgb(
                 [frame.width as usize, frame.height as usize],
                 &frame.rgb,
@@ -586,12 +623,11 @@ impl PlayerPage {
                 alpha_tint(self.fade_alpha),
             );
         } else {
-            ui.painter().text(
-                rect.center(),
-                egui::Align2::CENTER_CENTER,
-                "▶",
-                egui::FontId::proportional(64.0),
-                egui::Color32::from_gray(120),
+            super::icons::paint(
+                ui.painter(),
+                egui::Rect::from_center_size(rect.center(), egui::vec2(48.0, 48.0)),
+                super::icons::Icon::Play,
+                S::MUTED,
             );
         }
         let _ = self.video_key.clone();
@@ -608,19 +644,31 @@ impl PlayerPage {
             painters::idle_message(ui, rect);
             return;
         }
+        let scale = S::scale(rect);
+        let bounds = egui::Rect::from_min_max(
+            rect.min + egui::vec2(20.0, 20.0) * scale,
+            rect.max - egui::vec2(20.0, 44.0) * scale,
+        );
+        let layout = PageLayout::new(
+            bounds,
+            gates.len(),
+            egui::vec2(540.0, 480.0) * scale,
+            3,
+            ui.input(|i| i.time),
+            20.0 * scale,
+        );
         let store = crate::state::load_gate_store(&core.config_dir);
-        let trucks = self.active_trucks.clone();
-        let content = Vec::new();
-        let columns = gates.len();
-        let width = rect.width() / columns as f32;
-
-        for (index, gate) in gates.iter().enumerate() {
-            let gate_rect = egui::Rect::from_min_size(
-                rect.left_top() + egui::vec2(width * index as f32, 0.0),
-                egui::vec2(width, rect.height()),
+        for (offset, index) in layout.range.clone().enumerate() {
+            painters::truck_gate_column(
+                ui,
+                layout.cell(offset),
+                &gates[index],
+                &self.active_trucks,
+                &store,
+                &[],
             );
-            painters::truck_gate_column(ui, gate_rect, gate, &trucks, &store, &content);
         }
+        signage::page_indicator(ui.painter(), rect, &layout, scale);
     }
 }
 
@@ -652,9 +700,7 @@ impl VideoDecoder {
         let ffmpeg = std::path::PathBuf::from(ffmpeg_sidecar::paths::ffmpeg_path());
         let (source_w, source_h) = probe_video_dims(&path).unwrap_or((1920, 1080));
         let out_w = 960u32;
-        let out_h = (((source_h as f64) * 960.0 / (source_w.max(1) as f64)) as u32)
-            .max(2)
-            & !1;
+        let out_h = (((source_h as f64) * 960.0 / (source_w.max(1) as f64)) as u32).max(2) & !1;
 
         let result = std::process::Command::new(&ffmpeg)
             .args([
@@ -731,7 +777,11 @@ impl VideoDecoder {
             reader_stop.store(true, Ordering::Relaxed);
         });
 
-        Some(Self { stop, child: child_handle, sink })
+        Some(Self {
+            stop,
+            child: child_handle,
+            sink,
+        })
     }
 
     fn try_take(&self) -> Option<DecodedVideoFrame> {
@@ -791,11 +841,7 @@ fn alpha_tint(alpha: f32) -> egui::Color32 {
 }
 
 fn fit_cover(source: egui::Vec2, max: egui::Vec2) -> egui::Vec2 {
-    if source.x <= 0.0
-        || source.y <= 0.0
-        || max.x <= 0.0
-        || max.y <= 0.0
-    {
+    if source.x <= 0.0 || source.y <= 0.0 || max.x <= 0.0 || max.y <= 0.0 {
         return max;
     }
     let scale = (max.x / source.x).max(max.y / source.y);
@@ -810,7 +856,11 @@ fn image_texture(ctx: &egui::Context, path: &str) -> Option<egui::TextureHandle>
         [rgba.width() as usize, rgba.height() as usize],
         rgba.as_raw(),
     );
-    Some(ctx.load_texture(format!("player-{path}"), color, egui::TextureOptions::default()))
+    Some(ctx.load_texture(
+        format!("player-{path}"),
+        color,
+        egui::TextureOptions::default(),
+    ))
 }
 
 // ── Production dashboard native renderer (read-only) ───────────────────────
@@ -820,92 +870,88 @@ fn render_dashboard_native(
     core: &Arc<AppCore>,
     rect: egui::Rect,
     dashboard_id: Option<String>,
-    dashboards: &mut Vec<crate::models::ProductionDashboard>,
+    _dashboards: &mut Vec<crate::models::ProductionDashboard>,
 ) {
-    ui.painter().rect_filled(rect, 0.0, egui::Color32::from_rgb(12, 14, 20));
+    ui.painter_at(rect).rect_filled(rect, 0.0, S::BG);
     let Some(id) = dashboard_id else {
-        ui.painter().text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
-            "No production dashboard bound to this screen",
-            egui::FontId::proportional(22.0),
-            egui::Color32::from_gray(110),
-        );
+        painters::idle_message(ui, rect);
         return;
     };
     let Ok(bundle) = crate::backend::production::get_production_dashboard(core, id) else {
-        ui.painter().text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
+        signage::text(
+            ui.painter(),
+            rect.shrink(32.0),
             "Dashboard data unavailable",
-            egui::FontId::proportional(20.0),
-            egui::Color32::from_gray(110),
+            28.0 * S::scale(rect),
+            S::MUTED,
         );
         return;
     };
-    let _ = dashboards;
-
-    let title = bundle.dashboard.name.clone();
-    ui.painter().text(
-        rect.left_top() + egui::vec2(24.0, 30.0),
-        egui::Align2::LEFT_TOP,
-        title,
-        egui::FontId::proportional(26.0),
-        ui.visuals().text_color(),
+    let scale = S::scale(rect);
+    let title = egui::Rect::from_min_max(
+        rect.min + egui::vec2(24.0, 20.0) * scale,
+        egui::pos2(rect.right() - 24.0 * scale, rect.top() + 78.0 * scale),
     );
-
-    let columns = 12.0;
-    let cell_w = rect.width() / columns;
-    let layout = bundle.dashboard.layout.as_object().cloned().unwrap_or_default();
-    let grid_columns = layout
-        .get("columns")
-        .and_then(|value| value.as_f64())
-        .unwrap_or(12.0)
-        .max(4.0);
-    let _ = columns;
-
-    let widgets = bundle.dashboard.widgets.clone();
-    let rows = bundle
+    signage::text(
+        ui.painter(),
+        title,
+        &bundle.dashboard.name,
+        32.0 * scale,
+        S::TEXT,
+    );
+    let Some(table) = bundle
         .dataset
         .selected_table_id
         .as_ref()
-        .and_then(|table_id| {
-            bundle
-                .dataset
-                .tables
-                .iter()
-                .find(|table| &table.id == table_id)
-                .cloned()
-        });
-    let Some(table) = rows else {
+        .and_then(|id| bundle.dataset.tables.iter().find(|t| &t.id == id))
+    else {
+        signage::text(
+            ui.painter(),
+            rect.shrink(80.0 * scale),
+            "Select a data table to display this dashboard",
+            26.0 * scale,
+            S::MUTED,
+        );
         return;
     };
-
-    // Simple stacked layout: each widget takes a 6-grid-column half unless
-    // there is a single widget, then full width.
-    let mut offset_x = 0.0;
-    let mut offset_y = 70.0;
-    let area_width = rect.width() - 48.0;
-    for widget in &widgets {
-        let span = if widgets.len() == 1 {
-            area_width
-        } else {
-            (cell_w * grid_columns as f32 * 0.5 - 12.0).max(240.0)
-        };
-        if offset_x + span > area_width + 1.0 {
-            offset_x = 0.0;
-            offset_y += 260.0;
-        }
-        let widget_rect = egui::Rect::from_min_size(
-            rect.min + egui::vec2(24.0 + offset_x, offset_y),
-            egui::vec2(span, 230.0),
+    let bounds = egui::Rect::from_min_max(
+        rect.min + egui::vec2(24.0, 96.0) * scale,
+        rect.max - egui::vec2(24.0, 44.0) * scale,
+    );
+    let max_columns = (bundle
+        .dashboard
+        .layout
+        .get("columns")
+        .and_then(|n| n.as_u64())
+        .unwrap_or(12) as usize)
+        .div_ceil(6)
+        .clamp(1, 4);
+    let layout = PageLayout::new(
+        bounds,
+        bundle.dashboard.widgets.len(),
+        egui::vec2(600.0, 340.0) * scale,
+        max_columns,
+        ui.input(|i| i.time),
+        20.0 * scale,
+    );
+    for (offset, index) in layout.range.clone().enumerate() {
+        artists::production_widget(
+            ui,
+            layout.cell(offset),
+            &bundle.dashboard.widgets[index],
+            table,
         );
-        artists::production_widget(ui, widget_rect, widget, &table);
-        offset_x += span + 12.0;
-        if offset_y + 260.0 > rect.height() - 70.0 {
-            break;
-        }
     }
+    if bundle.dashboard.widgets.is_empty() {
+        signage::text(
+            ui.painter(),
+            bounds,
+            "No dashboard widgets configured",
+            26.0 * scale,
+            S::MUTED,
+        );
+    }
+    signage::page_indicator(ui.painter(), rect, &layout, scale);
 }
 
 // ── Painter-based material widgets ─────────────────────────────────────────
@@ -914,109 +960,110 @@ mod painters {
     use super::*;
 
     pub fn idle_message(ui: &mut egui::Ui, rect: egui::Rect) {
-        ui.painter().text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
-            "No active content — assign a playlist or default content to this screen.",
-            egui::FontId::proportional(20.0),
-            egui::Color32::from_gray(120),
+        let p = ui.painter_at(rect);
+        p.rect_filled(rect, 0.0, S::BG);
+        signage::text(
+            &p,
+            rect.shrink(rect.width() * 0.1),
+            "No active content. Assign a playlist or default content to this screen.",
+            30.0 * S::scale(rect),
+            S::MUTED,
         );
     }
 
     pub fn missing(ui: &mut egui::Ui, rect: egui::Rect, content: &ContentItem) {
-        ui.painter().rect_filled(
-            rect.shrink2(egui::vec2(40.0, 40.0)),
-            10.0,
-            egui::Color32::from_gray(24),
-        );
-        ui.painter().text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
-            format!("{}\n(content file missing)", content.name),
-            egui::FontId::proportional(18.0),
-            egui::Color32::from_gray(110),
+        let p = ui.painter_at(rect);
+        p.rect_filled(rect, 0.0, S::BG);
+        signage::text(
+            &p,
+            rect.shrink(rect.width() * 0.1),
+            &format!("{}\nContent file missing", content.name),
+            30.0 * S::scale(rect),
+            S::MUTED,
         );
     }
 
     pub fn static_content(ui: &mut egui::Ui, rect: egui::Rect, content: &ContentItem) {
-        ui.painter()
-            .rect_filled(rect, 0.0, egui::Color32::from_rgb(12, 14, 20));
+        let p = ui.painter_at(rect);
+        p.rect_filled(rect, 0.0, S::BG);
         let message = match content.content_type {
             ContentType::WebApp => "Embedded web pages are not supported in the native player.",
-            ContentType::Document => "Documents render on the web player; native preview coming soon.",
-            ContentType::Spreadsheet => "Spreadsheet previews are not native yet.",
-            ContentType::Presentation => "Presentation previews are not native yet.",
+            ContentType::Document => "Document playback is not available in the native player.",
+            ContentType::Spreadsheet => {
+                "Spreadsheet previews are not available in the native player."
+            }
+            ContentType::Presentation => {
+                "Presentation previews are not available in the native player."
+            }
             _ => "This content type cannot be embedded in the native player.",
         };
-        ui.painter().text(
-            rect.center() - egui::vec2(0.0, 24.0),
-            egui::Align2::CENTER_CENTER,
-            content.name.clone(),
-            egui::FontId::proportional(26.0),
-            egui::Color32::from_gray(200),
-        );
-        ui.painter().text(
-            rect.center() + egui::vec2(0.0, 24.0),
-            egui::Align2::CENTER_CENTER,
-            message,
-            egui::FontId::proportional(15.0),
-            egui::Color32::from_gray(120),
-        );
-        if let Some(url) = &content.url {
-            if !url.is_empty() {
-                ui.painter().text(
-                    rect.center() + egui::vec2(0.0, 64.0),
-                    egui::Align2::CENTER_CENTER,
-                    url.clone(),
-                    egui::FontId::monospace(12.0),
-                    egui::Color32::from_gray(90),
-                );
-            }
-        }
+        let inner = rect.shrink(rect.width() * 0.1);
+        let title =
+            egui::Rect::from_min_max(inner.min, egui::pos2(inner.right(), inner.center().y));
+        signage::text(&p, title, &content.name, 36.0 * S::scale(rect), S::TEXT);
+        let detail =
+            egui::Rect::from_min_max(egui::pos2(inner.left(), inner.center().y), inner.max);
+        signage::text(&p, detail, message, 26.0 * S::scale(rect), S::MUTED);
     }
 
     pub fn truck_alert(ui: &mut egui::Ui, rect: egui::Rect, alert: &TruckScreenAlert) {
-        let card = egui::Align2::CENTER_TOP
-            .anchor_size(rect.center_top(), egui::vec2(460.0, 110.0))
-            .translate(egui::vec2(0.0, 36.0));
-        let painter = ui.painter();
-        painter.rect_filled(card, 12.0, egui::Color32::from_rgb(30, 22, 10));
-        painter.rect_stroke(
+        let scale = S::scale(rect);
+        let size = egui::vec2(
+            (720.0 * scale).min(rect.width() - 32.0),
+            (150.0 * scale).min(rect.height() * 0.25),
+        );
+        let card = egui::Align2::CENTER_TOP.align_size_within_rect(size, rect.shrink(24.0 * scale));
+        let p = ui.painter_at(card);
+        p.rect_filled(card, 10.0, S::SURFACE);
+        p.rect_stroke(
             card,
-            12.0,
-            egui::Stroke::new(2.0, crate::theme::AMBER),
-            egui::StrokeKind::Outside,
+            10.0,
+            egui::Stroke::new(2.0, S::AMBER),
+            egui::StrokeKind::Inside,
         );
-        painter.text(
-            card.min + egui::vec2(20.0, 26.0),
-            egui::Align2::LEFT_TOP,
-            format!("🚚 {} — {}", alert.truck_number, alert.status_label),
-            egui::FontId::proportional(22.0),
-            egui::Color32::from_rgb(255, 214, 143),
+        let inner = card.shrink(18.0 * scale);
+        let title = egui::Rect::from_min_max(
+            inner.min,
+            egui::pos2(inner.right(), inner.top() + inner.height() * 0.6),
         );
-        painter.text(
-            card.min + egui::vec2(20.0, 64.0),
-            egui::Align2::LEFT_TOP,
-            alert
-                .gate
-                .as_ref()
-                .map(|gate| format!("Gate {}", gate.to_uppercase()))
-                .unwrap_or_else(|| "Yard".to_string()),
-            egui::FontId::proportional(14.0),
-            egui::Color32::from_gray(150),
+        signage::text(
+            &p,
+            title,
+            &format!("{}  /  {}", alert.truck_number, alert.status_label),
+            30.0 * scale,
+            S::AMBER,
+        );
+        let gate = alert
+            .gate
+            .as_ref()
+            .map(|g| format!("Gate {}", g.to_uppercase()))
+            .unwrap_or_else(|| "Yard".into());
+        signage::text(
+            &p,
+            egui::Rect::from_min_max(egui::pos2(inner.left(), title.bottom()), inner.max),
+            &gate,
+            24.0 * scale,
+            S::TEXT,
         );
     }
 
     pub fn marquee(ui: &mut egui::Ui, rect: egui::Rect, marquee: &MarqueeSettings, time: f64) {
-        let height = 48.0;
-        let bar =
-            egui::Rect::from_min_max(rect.left_bottom() - egui::vec2(0.0, height), rect.right_bottom());
-        let painter = ui.painter();
-        painter.rect_filled(bar, 0.0, egui::Color32::from_rgba_unmultiplied(10, 12, 18, 220));
+        let scale = S::scale(rect);
+        let height = 64.0 * scale;
+        let bar = egui::Rect::from_min_max(
+            rect.left_bottom() - egui::vec2(0.0, height),
+            rect.right_bottom(),
+        );
+        let painter = ui.painter_at(bar);
+        painter.rect_filled(
+            bar,
+            0.0,
+            egui::Color32::from_rgba_unmultiplied(10, 12, 18, 220),
+        );
         let galley = painter.layout_no_wrap(
             marquee.text.clone(),
-            egui::FontId::proportional(24.0),
-            egui::Color32::from_rgb(255, 219, 139),
+            egui::FontId::proportional(28.0 * S::scale(rect)),
+            S::AMBER,
         );
         let width = galley.size().x;
         let speed = marquee.speed.max(15) as f32;
@@ -1027,8 +1074,8 @@ mod painters {
             position,
             egui::Align2::LEFT_CENTER,
             marquee.text.clone(),
-            egui::FontId::proportional(24.0),
-            egui::Color32::from_rgb(255, 219, 139),
+            egui::FontId::proportional(28.0 * S::scale(rect)),
+            S::AMBER,
         );
     }
 
@@ -1040,91 +1087,86 @@ mod painters {
         store: &crate::state::GateStoreData,
         _content: &[ContentItem],
     ) {
-        let painter = ui.painter();
-        painter.rect_filled(rect, 0.0, egui::Color32::from_rgb(10, 12, 17));
-        painter.rect_stroke(
+        let p = ui.painter_at(rect);
+        p.rect_filled(rect, 12.0, S::SURFACE);
+        p.rect_stroke(
             rect,
-            0.0,
-            egui::Stroke::new(1.0, egui::Color32::from_gray(45)),
+            12.0,
+            egui::Stroke::new(1.0, S::BORDER),
             egui::StrokeKind::Inside,
         );
-
-        let queue: Vec<&ActiveTruck> = trucks
-            .iter()
-            .filter(|truck| !truck.is_out && truck.gate_no.as_deref().map(|g| g.eq_ignore_ascii_case(gate)).unwrap_or(false))
-            .collect();
-
-        painter.text(
-            rect.min + egui::vec2(24.0, 30.0),
-            egui::Align2::LEFT_TOP,
-            format!("GATE {}", gate.to_uppercase()),
-            egui::FontId::proportional(20.0),
-            egui::Color32::from_rgb(120, 160, 255),
+        let scale = (rect.width() / 800.0)
+            .min(rect.height() / 700.0)
+            .clamp(0.4, 3.0);
+        let pad = 24.0 * scale;
+        let inner = rect.shrink(pad);
+        let row = |top: f32, bottom: f32| {
+            egui::Rect::from_min_max(
+                egui::pos2(inner.left(), inner.top() + top * inner.height()),
+                egui::pos2(inner.right(), inner.top() + bottom * inner.height()),
+            )
+        };
+        signage::text(
+            &p,
+            row(0.0, 0.12),
+            &format!("GATE {}", gate.to_uppercase()),
+            28.0 * scale,
+            S::BLUE,
         );
-
-        let loading_mins = store
+        let queue: Vec<_> = trucks
+            .iter()
+            .filter(|t| {
+                !t.is_out
+                    && t.gate_no
+                        .as_deref()
+                        .map(|g| g.eq_ignore_ascii_case(gate))
+                        .unwrap_or(false)
+            })
+            .collect();
+        let loading = store
             .gates
             .iter()
-            .find(|gatecfg| gatecfg.number.eq_ignore_ascii_case(gate))
-            .map(|gatecfg| gatecfg.loading_duration_mins)
+            .find(|g| g.number.eq_ignore_ascii_case(gate))
+            .map(|g| g.loading_duration_mins)
             .unwrap_or(30);
-
-        match queue.first() {
-            Some(current) => {
-                let (status, label) = painters::truck_status_info(current);
-                let label_color = match status {
-                    "loading" => egui::Color32::from_rgb(120, 220, 160),
-                    "waiting" => egui::Color32::from_rgb(255, 197, 110),
-                    "out" => egui::Color32::from_gray(150),
-                    _ => egui::Color32::from_gray(190),
-                };
-                painter.text(
-                    rect.center() - egui::vec2(0.0, 30.0),
-                    egui::Align2::CENTER_CENTER,
-                    current.registration_number.clone(),
-                    egui::FontId::proportional(64.0),
-                    egui::Color32::WHITE,
-                );
-                painter.text(
-                    rect.center() + egui::vec2(0.0, 44.0),
-                    egui::Align2::CENTER_CENTER,
-                    label,
-                    egui::FontId::proportional(20.0),
-                    label_color,
-                );
-                let next = queue.get(1).map(|next| format!("Next: {}", next.registration_number))
-                    .unwrap_or_else(|| format!("Queue empty · {loading_mins} min loading"));
-                painter.text(
-                    rect.center() + egui::vec2(0.0, 92.0),
-                    egui::Align2::CENTER_CENTER,
-                    next,
-                    egui::FontId::proportional(17.0),
-                    egui::Color32::from_gray(140),
-                );
-                painter.text(
-                    egui::pos2(rect.left() + 24.0, rect.bottom() - 24.0),
-                    egui::Align2::LEFT_BOTTOM,
-                    format!("Queued: {}", queue.len().saturating_sub(1)),
-                    egui::FontId::proportional(14.0),
-                    egui::Color32::from_gray(110),
-                );
-            }
-            None => {
-                painter.text(
-                    rect.center() - egui::vec2(0.0, 30.0),
-                    egui::Align2::CENTER_CENTER,
-                    "NO TRUCK",
-                    egui::FontId::proportional(44.0),
-                    egui::Color32::from_gray(60),
-                );
-                painter.text(
-                    rect.center() + egui::vec2(0.0, 44.0),
-                    egui::Align2::CENTER_CENTER,
-                    format!("Loading time {loading_mins} min"),
-                    egui::FontId::proportional(16.0),
-                    egui::Color32::from_gray(100),
-                );
-            }
+        if let Some(current) = queue.first() {
+            let (status, label) = truck_status_info(current);
+            let color = if status == "loading" {
+                S::GREEN
+            } else if status == "waiting" {
+                S::AMBER
+            } else {
+                S::MUTED
+            };
+            signage::text(
+                &p,
+                row(0.26, 0.51),
+                &current.registration_number,
+                76.0 * scale,
+                S::TEXT,
+            );
+            signage::text(&p, row(0.54, 0.66), label, 30.0 * scale, color);
+            let next = queue
+                .get(1)
+                .map(|n| format!("Next: {}", n.registration_number))
+                .unwrap_or_else(|| format!("Queue empty  /  {loading} min loading"));
+            signage::text(&p, row(0.72, 0.86), &next, 24.0 * scale, S::MUTED);
+            signage::text(
+                &p,
+                row(0.9, 1.0),
+                &format!("Queued: {}", queue.len().saturating_sub(1)),
+                20.0 * scale,
+                S::MUTED,
+            );
+        } else {
+            signage::text(&p, row(0.3, 0.55), "GATE AVAILABLE", 50.0 * scale, S::TEXT);
+            signage::text(
+                &p,
+                row(0.64, 0.8),
+                &format!("Loading time {loading} min"),
+                26.0 * scale,
+                S::MUTED,
+            );
         }
     }
 
@@ -1151,81 +1193,106 @@ mod artists {
         widget: &ProductionWidget,
         table: &ProductionTable,
     ) {
-        let painter = ui.painter();
-        painter.rect_filled(rect, 8.0, egui::Color32::from_rgb(22, 26, 38));
-        painter.rect_stroke(
+        let p = ui.painter_at(rect);
+        let scale = S::scale(ui.ctx().content_rect())
+            .min(rect.width() / 360.0)
+            .min(rect.height() / 240.0)
+            .max(0.4);
+        p.rect_filled(rect, 10.0, S::SURFACE);
+        p.rect_stroke(
             rect,
-            8.0,
-            egui::Stroke::new(1.0, egui::Color32::from_gray(52)),
-            egui::StrokeKind::Outside,
+            10.0,
+            egui::Stroke::new(1.0, S::BORDER),
+            egui::StrokeKind::Inside,
         );
-        painter.text(
-            rect.min + egui::vec2(14.0, 24.0),
-            egui::Align2::LEFT_CENTER,
-            widget.title.clone(),
-            egui::FontId::proportional(16.0),
-            egui::Color32::from_gray(200),
+        let title = egui::Rect::from_min_max(
+            rect.min + egui::vec2(20.0, 12.0) * scale,
+            egui::pos2(rect.right() - 20.0 * scale, rect.top() + 56.0 * scale),
         );
-
+        signage::text(&p, title, &widget.title, 28.0 * scale, S::TEXT);
         let series = aggregate(widget, table);
         if series.is_empty() {
-            painter.text(
-                rect.center() + egui::vec2(0.0, 10.0),
-                egui::Align2::CENTER_CENTER,
+            signage::text(
+                &p,
+                rect.shrink(50.0 * scale),
                 "No data",
-                egui::FontId::proportional(14.0),
-                egui::Color32::from_gray(90),
+                24.0 * scale,
+                S::MUTED,
             );
             return;
         }
-
-        let max_value = series
-            .iter()
-            .map(|(_, value)| *value)
-            .fold(0.0f64, f64::max)
-            .max(1.0);
-        let plot_rect = egui::Rect::from_min_max(
-            rect.min + egui::vec2(20.0, 54.0),
-            rect.max - egui::vec2(20.0, 26.0),
+        let plot = egui::Rect::from_min_max(
+            rect.min + egui::vec2(24.0, 90.0) * scale,
+            rect.max - egui::vec2(24.0, 55.0) * scale,
         );
-        let bars = series.len().min(12);
-        let bar_width = plot_rect.width() / bars.max(1) as f32 * 0.7;
-
-        for (index, (label, value)) in series.iter().take(bars).enumerate() {
-            let shade = egui::Color32::from_rgba_unmultiplied(
-                92 + (index * 22) as u8 % 120,
-                150,
-                246 - (index * 14) as u8 % 90,
-                255,
+        if !plot.is_positive() {
+            return;
+        }
+        let maximum = series
+            .iter()
+            .map(|(_, v)| v.abs())
+            .fold(0.0_f64, f64::max)
+            .max(1.0);
+        let count = series.len().min(12);
+        let band = plot.width() / count.max(1) as f32;
+        let has_negative = series.iter().take(count).any(|(_, v)| *v < 0.0);
+        let base = if has_negative {
+            plot.center().y
+        } else {
+            plot.bottom()
+        };
+        p.line_segment(
+            [
+                egui::pos2(plot.left(), base),
+                egui::pos2(plot.right(), base),
+            ],
+            egui::Stroke::new(1.0, S::BORDER),
+        );
+        for (i, (label, value)) in series.iter().take(count).enumerate() {
+            let color = widget
+                .color_map
+                .get(label)
+                .and_then(|v| egui::Color32::from_hex(v).ok())
+                .unwrap_or([S::BLUE, S::GREEN, S::AMBER][i % 3]);
+            let h =
+                (plot.height() * if has_negative { 0.5 } else { 1.0 } * (*value / maximum) as f32)
+                    .abs();
+            let x = plot.left() + i as f32 * band;
+            let bar = egui::Rect::from_min_size(
+                egui::pos2(x + band * 0.12, if *value < 0.0 { base } else { base - h }),
+                egui::vec2(band * 0.65, h),
             );
-            let height = plot_rect.height() * (value / max_value) as f32;
-            let bar_rect = egui::Rect::from_min_size(
+            p.rect_filled(bar, 3.0, color);
+            let value_rect = egui::Rect::from_min_size(
                 egui::pos2(
-                    plot_rect.left() + index as f32 * (plot_rect.width() / bars.max(1) as f32),
-                    plot_rect.bottom() - height,
+                    x,
+                    if *value < 0.0 {
+                        bar.bottom()
+                    } else {
+                        bar.top() - 30.0 * scale
+                    },
                 ),
-                egui::vec2(bar_width, height),
+                egui::vec2(band, 26.0 * scale),
             );
-            painter.rect_filled(bar_rect, 3.0, shade);
-            painter.text(
-                egui::pos2(bar_rect.center().x, plot_rect.bottom() + 10.0),
-                egui::Align2::CENTER_TOP,
-                label.clone(),
-                egui::FontId::proportional(10.0),
-                egui::Color32::from_gray(150),
+            signage::text(
+                &p,
+                value_rect,
+                &format!("{value:.0}"),
+                22.0 * scale,
+                S::TEXT,
             );
-            painter.text(
-                egui::pos2(bar_rect.center().x, bar_rect.top() - 6.0),
-                egui::Align2::CENTER_BOTTOM,
-                format!("{:.0}", value),
-                egui::FontId::proportional(10.5),
-                egui::Color32::from_gray(190),
+            let label_rect = egui::Rect::from_min_size(
+                egui::pos2(x, plot.bottom() + 10.0 * scale),
+                egui::vec2(band - 4.0, 36.0 * scale),
             );
+            signage::text(&p, label_rect, label, 22.0 * scale, S::MUTED);
         }
     }
 
     fn aggregate(widget: &ProductionWidget, table: &ProductionTable) -> Vec<(String, f64)> {
-        let Some(x_key) = &widget.x_key else { return Vec::new() };
+        let Some(x_key) = &widget.x_key else {
+            return Vec::new();
+        };
         let mut values: HashMap<String, (f64, usize)> = HashMap::new();
 
         let filters_ok = |row: &serde_json::Map<String, serde_json::Value>| {
@@ -1298,6 +1365,7 @@ mod artists {
                 (key, value)
             })
             .collect();
+        series.sort_by(|a, b| a.0.cmp(&b.0));
         if let Some(top_n) = widget.top_n {
             series.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
             series.truncate(top_n.clamp(1, 24) as usize);
@@ -1327,3 +1395,50 @@ mod artists {
 
 use crate::theme;
 use crate::ui::widgets;
+
+#[cfg(any(test, debug_assertions))]
+pub(crate) fn review_dashboard(
+    ui: &mut egui::Ui,
+    core: &Arc<AppCore>,
+    rect: egui::Rect,
+    dashboards: &mut Vec<crate::models::ProductionDashboard>,
+) {
+    render_dashboard_native(ui, core, rect, Some("dashboard".into()), dashboards);
+}
+#[cfg(any(test, debug_assertions))]
+pub(crate) fn review_gate(ui: &mut egui::Ui, core: &Arc<AppCore>, rect: egui::Rect) {
+    let trucks = crate::backend::trucks::get_active_trucks(&core.pool).unwrap();
+    let store = crate::state::load_gate_store(&core.config_dir);
+    let scale = S::scale(rect);
+    let layout = PageLayout::new(
+        rect.shrink(24.0 * scale),
+        store.gates.len(),
+        egui::vec2(540.0, 480.0) * scale,
+        3,
+        ui.input(|i| i.time),
+        20.0 * scale,
+    );
+    for (offset, index) in layout.range.clone().enumerate() {
+        painters::truck_gate_column(
+            ui,
+            layout.cell(offset),
+            &store.gates[index].number,
+            &trucks,
+            &store,
+            &[],
+        );
+    }
+    signage::page_indicator(ui.painter(), rect, &layout, scale);
+    if let Ok(marquee) = crate::backend::app_config::get_marquee_settings(core) {
+        painters::marquee(ui, rect, &marquee, ui.input(|i| i.time));
+    }
+}
+
+#[cfg(debug_assertions)]
+pub(crate) fn review_alert(ui: &mut egui::Ui, rect: egui::Rect) {
+    let alert:TruckScreenAlert=serde_json::from_value(serde_json::json!({
+        "id":"review-alert","truck_id":"truck-0","truck_number":"MH 12 AB 4810","gate":"d1",
+        "status":"loading","status_label":"Loading in.","changed_at":"2026-10-30T08:00:00Z","duration_secs":10
+    })).unwrap();
+    painters::truck_alert(ui, rect, &alert);
+}
